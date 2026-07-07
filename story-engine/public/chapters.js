@@ -29,8 +29,7 @@ function escapeHtml(value) {
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+    .replaceAll('"', '&quot;');
 }
 
 async function api(path, options = {}) {
@@ -53,7 +52,6 @@ function renderChapterList() {
     chapterListEl.innerHTML = '<li><p class="subtitle">No chapters yet.</p></li>';
     return;
   }
-
   chapterListEl.innerHTML = chapters.map((chapter, index) => `
     <li>
       <button class="chapter-btn ${chapter.id === currentId ? 'active' : ''}" data-id="${chapter.id}">
@@ -70,7 +68,6 @@ function renderChapterList() {
 function openChapter(id) {
   const chapter = chapters.find(item => Number(item.id) === Number(id));
   if (!chapter) return;
-
   currentId = Number(chapter.id);
   currentIncidentId = null;
   titleInputEl.value = chapter.title || '';
@@ -86,6 +83,17 @@ function resetLindyPanel() {
   lindyBadgeEl.textContent = 'Ready';
   lindyBadgeEl.className = 'health-pill health-good';
   lindySummaryEl.textContent = 'Save or run Lindymode to analyze this chapter.';
+  lindyFindingsEl.innerHTML = '';
+  lindyRecoveryEl.classList.add('hidden');
+}
+
+function renderQueuedDispatch(dispatch) {
+  currentIncidentId = null;
+  lindyBadgeEl.textContent = dispatch?.deduplicated ? 'Already queued' : 'Queued';
+  lindyBadgeEl.className = 'health-pill health-watch';
+  lindySummaryEl.textContent = dispatch?.dispatch_id
+    ? `Background analysis queued. Dispatch ${dispatch.dispatch_id}.`
+    : 'Background analysis queued.';
   lindyFindingsEl.innerHTML = '';
   lindyRecoveryEl.classList.add('hidden');
 }
@@ -106,11 +114,9 @@ async function loadHealth() {
       fetch(`/api/lindymode/state/${encodeURIComponent(workspace_id)}`).then(async response => response.ok ? response.json() : null),
       api(`/api/lindymode/incidents/${encodeURIComponent(workspace_id)}?status=active&limit=100`)
     ]);
-
     document.getElementById('activeDrift').textContent = String(incidents.length);
     document.getElementById('povStatus').textContent = stateResult?.pov ? stateResult.pov.replaceAll('_', ' ') : 'Not set';
     document.getElementById('stateVersion').textContent = stateResult?.version ? `v${stateResult.version}` : '—';
-
     const hasCritical = incidents.some(item => item.severity === 'sev3');
     const healthStatus = document.getElementById('healthStatus');
     healthStatus.textContent = hasCritical ? 'Critical' : incidents.length ? 'Needs review' : 'Healthy';
@@ -144,14 +150,12 @@ function renderLindyResult(result) {
     lindyRecoveryEl.classList.add('hidden');
     return;
   }
-
   const incident = incidents[0];
   currentIncidentId = incident.incident_id;
   const severityClass = incident.severity === 'sev3' ? 'health-critical' : 'health-watch';
   lindyBadgeEl.textContent = incident.severity === 'sev3' ? 'Critical drift' : 'Review drift';
   lindyBadgeEl.className = `health-pill ${severityClass}`;
   lindySummaryEl.textContent = incident.reason || 'Lindymode detected story drift.';
-
   const findings = Array.isArray(incident.details?.findings) ? incident.details.findings : [];
   lindyFindingsEl.innerHTML = findings.length
     ? `<ul class="finding-list">${findings.map(item => `<li><strong>${escapeHtml(item.type.replaceAll('_', ' '))}</strong><span>${escapeHtml(item.message)}</span></li>`).join('')}</ul>`
@@ -163,7 +167,6 @@ async function saveChapter({ silent = false } = {}) {
   if (!currentId || !dirty && silent) return;
   clearTimeout(saveTimer);
   if (!silent) setStatus('Saving…');
-
   try {
     const result = await api(`/api/chapters/${currentId}`, {
       method: 'PUT',
@@ -173,12 +176,10 @@ async function saveChapter({ silent = false } = {}) {
       })
     });
     dirty = false;
-    setStatus('Saved');
-    renderLindyResult(result.lindymode || {});
+    setStatus(result.dispatch?.deduplicated ? 'Already queued' : 'Saved · queued');
+    renderQueuedDispatch(result.dispatch);
     await Promise.all([loadChapters(currentId), loadHealth()]);
-    setTimeout(() => {
-      if (!dirty) setStatus('');
-    }, 1800);
+    setTimeout(() => { if (!dirty) setStatus(''); }, 2200);
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -189,12 +190,8 @@ async function analyzeCurrentChapter() {
   lindyBadgeEl.textContent = 'Analyzing';
   lindyBadgeEl.className = 'health-pill health-watch';
   lindySummaryEl.textContent = 'Lindymode is checking continuity, POV, and context budget.';
-
   try {
-    const result = await api(`/api/lindymode/analyze/${currentId}`, {
-      method: 'POST',
-      body: '{}'
-    });
+    const result = await api(`/api/lindymode/analyze/${currentId}`, { method: 'POST', body: '{}' });
     renderLindyResult(result);
     await loadHealth();
   } catch (error) {
@@ -238,6 +235,7 @@ document.getElementById('addBtn').addEventListener('click', async () => {
       body: JSON.stringify({ title, position: chapters.length })
     });
     input.value = '';
+    renderQueuedDispatch(result.dispatch);
     await Promise.all([loadChapters(Number(result.id)), loadHealth()]);
   } catch (error) {
     setStatus(error.message, true);
