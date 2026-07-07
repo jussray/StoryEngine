@@ -1,0 +1,55 @@
+{
+  "version": "1.0.0",
+  "principle": "authorization_precedes_similarity",
+  "decision_order": [
+    "identity",
+    "authorization",
+    "provenance",
+    "revocation",
+    "ttl",
+    "integrity",
+    "confidence",
+    "semantic_similarity"
+  ],
+  "required_matches": {
+    "tenant": true,
+    "user_scope": true,
+    "authorization_scope": true,
+    "provenance_domain": true,
+    "revocation_epoch": true,
+    "ttl": true,
+    "integrity_hashes": true
+  },
+  "missing_metadata_action": "deny_reuse_and_record_event",
+  "boundary_failure_action": "deny_reuse_and_enter_containment",
+  "revoked_scope_action": "invalidate_and_require_cold_start",
+  "quality_failure_actions": {
+    "stale_summary": "rollback_shadow_recover",
+    "low_confidence": "miss_only",
+    "narrative_drift": "verified_rebuild",
+    "ttl_expired": "miss_and_refresh",
+    "integrity_hash_mismatch": "invalidate_and_rebuild"
+  },
+  "promotion_blockers": [
+    "boundary_violation_detected",
+    "revoked_scope_reuse_detected",
+    "missing_provenance_fields_detected",
+    "shadow_security_gate_failed"
+  ],
+  "required_audit_fields": [
+    "request_id",
+    "candidate_entry_id",
+    "producer_tenant_id",
+    "consumer_tenant_id",
+    "producer_user_scope",
+    "consumer_user_scope",
+    "producer_authorization_scope",
+    "consumer_authorization_scope",
+    "provenance_domain",
+    "revocation_epoch",
+    "ttl_decision",
+    "integrity_decision",
+    "final_action",
+    "reason_code"
+  ]
+}
