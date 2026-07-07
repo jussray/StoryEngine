@@ -62,9 +62,40 @@ CREATE TABLE IF NOT EXISTS events (
   created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS lindymode_state (
+  workspace_id TEXT PRIMARY KEY,
+  summary TEXT DEFAULT '',
+  pov TEXT DEFAULT '',
+  arc_stage TEXT DEFAULT '',
+  token_budget INTEGER DEFAULT 0,
+  state_json TEXT NOT NULL DEFAULT '{}',
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+);
+
+CREATE TABLE IF NOT EXISTS lindymode_incidents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  incident_id TEXT NOT NULL UNIQUE,
+  correlation_id TEXT NOT NULL,
+  parent_event_id TEXT,
+  workspace_id TEXT NOT NULL,
+  chapter_id INTEGER,
+  event_type TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  reason TEXT NOT NULL,
+  drift_score REAL NOT NULL DEFAULT 0,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  recovery_action TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  resolved_at INTEGER
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_mode_created ON events(mode, created_at);
 CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_chapters_workspace ON chapters(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_beats_workspace ON movie_beats(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_lindy_incidents_workspace ON lindymode_incidents(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_lindy_incidents_correlation ON lindymode_incidents(correlation_id);
