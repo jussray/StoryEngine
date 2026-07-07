@@ -42,6 +42,37 @@ export function upsertState(db, workspace_id, input = {}) {
 }
 
 export function createIncident(db, incident) {
+  const existing = db.prepare(`
+    SELECT * FROM lindymode_incidents
+    WHERE workspace_id = ?
+      AND chapter_id IS ?
+      AND event_type = ?
+      AND reason = ?
+      AND status = 'active'
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).get(
+    incident.workspace_id,
+    incident.chapter_id ?? null,
+    incident.event_type,
+    incident.reason
+  );
+
+  if (existing) {
+    db.prepare(`
+      UPDATE lindymode_incidents
+      SET severity = ?, drift_score = ?, details_json = ?, correlation_id = ?
+      WHERE incident_id = ?
+    `).run(
+      incident.severity,
+      incident.drift_score || 0,
+      JSON.stringify(incident.details || {}),
+      incident.correlation_id,
+      existing.incident_id
+    );
+    return getIncident(db, existing.incident_id);
+  }
+
   db.prepare(`
     INSERT INTO lindymode_incidents (
       incident_id, correlation_id, parent_event_id, workspace_id, chapter_id,
