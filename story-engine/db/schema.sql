@@ -91,6 +91,29 @@ CREATE TABLE IF NOT EXISTS lindymode_incidents (
   resolved_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS ooda_decisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  decision_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  readiness TEXT NOT NULL,
+  confidence_score INTEGER NOT NULL,
+  reasons_json TEXT NOT NULL DEFAULT '[]',
+  recovery_plan_json TEXT NOT NULL DEFAULT '[]',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+);
+
+CREATE TABLE IF NOT EXISTS release_audits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  audit_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT NOT NULL,
+  result TEXT NOT NULL,
+  confidence_score INTEGER NOT NULL,
+  checks_json TEXT NOT NULL DEFAULT '[]',
+  blockers_json TEXT NOT NULL DEFAULT '[]',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_mode_created ON events(mode, created_at);
@@ -99,3 +122,5 @@ CREATE INDEX IF NOT EXISTS idx_chapters_workspace ON chapters(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_beats_workspace ON movie_beats(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_lindy_incidents_workspace ON lindymode_incidents(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_lindy_incidents_correlation ON lindymode_incidents(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_ooda_decisions_workspace ON ooda_decisions(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_release_audits_workspace ON release_audits(workspace_id, created_at);
