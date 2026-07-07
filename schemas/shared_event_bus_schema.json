@@ -20,6 +20,9 @@
     "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
     "event_version": { "type": "integer", "minimum": 1 },
     "event_id": { "type": "string", "minLength": 1 },
+    "parent_event_id": { "type": "string", "minLength": 1 },
+    "correlation_id": { "type": "string", "minLength": 1 },
+    "trace_id": { "type": "string", "minLength": 1 },
     "event_type": {
       "type": "string",
       "enum": [
@@ -70,7 +73,7 @@
     "invalidation_action": { "type": "string" },
     "promotion_action": { "type": "string" },
     "artifact_ref": { "type": "string" },
-    "correlation_id": { "type": "string" },
+    "group_key": { "type": "string" },
     "partition_id": { "type": "string" },
     "revocation_epoch": { "type": "integer", "minimum": 0 },
     "metadata": { "type": "object" }
