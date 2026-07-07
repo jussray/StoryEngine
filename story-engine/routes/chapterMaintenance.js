@@ -3,7 +3,7 @@
 import { json } from '../lib/miniRouter.js';
 import * as Chapter from '../models/chapterModel.js';
 import { log } from '../models/eventModel.js';
-import { runAutonomousRuntime } from '../lib/autonomousRuntime.js';
+import { enqueueRuntime } from '../lib/runtimeDispatcher.js';
 
 export default function chapterMaintenanceRoutes(router, db) {
   router.delete('/api/chapters/:id', (req, res) => {
@@ -18,21 +18,16 @@ export default function chapterMaintenanceRoutes(router, db) {
       payload: { id }
     });
 
-    const runtime = runAutonomousRuntime(db, {
-      workspaceId: chapter.workspace_id,
-      triggerType: 'chapter_deleted',
-      allowRecovery: false
-    });
-
-    json(res, 200, {
+    const dispatch = enqueueRuntime(db, chapter.workspace_id, 'chapter_deleted');
+    json(res, 202, {
       ok: true,
-      runtime: {
-        run_id: runtime.run_id,
-        correlation_id: runtime.correlation_id,
-        status: runtime.status,
-        release: runtime.result?.release || null,
-        prediction: runtime.result?.prediction || null
-      }
+      queued: true,
+      dispatch: dispatch ? {
+        dispatch_id: dispatch.dispatch_id,
+        status: dispatch.status,
+        deduplicated: Boolean(dispatch.deduplicated),
+        trigger_type: dispatch.trigger_type
+      } : null
     });
   });
 }
