@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://l99.local/schemas/isolation_envelope.schema.json",
+  "title": "L99 Isolation Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "user_scope",
+    "authorization_scope",
+    "namespace",
+    "model_version",
+    "policy_version",
+    "memory_schema_version",
+    "revocation_epoch",
+    "partition_version"
+  ],
+  "properties": {
+    "tenant_id": { "type": "string", "minLength": 1 },
+    "user_scope": { "type": "string", "minLength": 1 },
+    "authorization_scope": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "namespace": { "type": "string", "minLength": 1 },
+    "model_version": { "type": "string", "minLength": 1 },
+    "policy_version": { "type": "string", "minLength": 1 },
+    "memory_schema_version": { "type": "string", "minLength": 1 },
+    "revocation_epoch": { "type": "integer", "minimum": 0 },
+    "partition_version": { "type": "string", "minLength": 1 },
+    "workflow_id": { "type": "string" },
+    "region": { "type": "string" },
+    "data_residency_zone": { "type": "string" },
+    "shared_scope_policy": {
+      "type": "string",
+      "enum": ["private", "explicit_shared", "tenant_shared", "public_verified"]
+    }
+  }
+}
