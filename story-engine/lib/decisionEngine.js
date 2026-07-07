@@ -31,7 +31,11 @@ function runtimeStats(db, workspaceId, windowMs = 15 * 60 * 1000) {
   const rows = db.prepare(`
     SELECT duration_ms, rollback
     FROM events
-    WHERE workspace_id = ? AND created_at >= ?
+    WHERE workspace_id = ?
+      AND created_at >= ?
+      AND COALESCE(mode, '') NOT IN ('ooda', 'autonomous_runtime')
+      AND event_type NOT LIKE 'runtime.%'
+      AND event_type NOT LIKE 'release.%'
   `).all(workspaceId, since);
 
   const durations = rows
