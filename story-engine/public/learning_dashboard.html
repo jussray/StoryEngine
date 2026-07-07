@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OODA Learning — L99</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/ooda.css">
+</head>
+<body>
+  <main class="container ooda-shell">
+    <nav class="back"><a href="/front_door.html">← Front Door</a></nav>
+
+    <header class="section-heading-row writing-header">
+      <div>
+        <p class="eyebrow">L99 Learning Engine</p>
+        <h1>Predictive OODA</h1>
+        <p class="subtitle">Episode memory, learned recovery patterns, and forward risk.</p>
+      </div>
+    </header>
+
+    <section class="beat-card">
+      <div class="row">
+        <input id="workspaceId" placeholder="workspace_id">
+        <button id="runPrediction" type="button">Predict Risk</button>
+      </div>
+      <p id="status" class="subtitle">Enter a workspace ID or open this screen from a story workspace.</p>
+    </section>
+
+    <section id="predictionPanel" class="hidden">
+      <section class="story-health-strip">
+        <div>
+          <span class="health-label">Predicted Risk</span>
+          <strong id="predictedRisk">—</strong>
+        </div>
+        <div>
+          <span class="health-label">Confidence</span>
+          <strong id="predictionConfidence">—</strong>
+        </div>
+        <div>
+          <span class="health-label">Confidence Trend</span>
+          <strong id="confidenceTrend">—</strong>
+        </div>
+        <div>
+          <span class="health-label">Likely Action</span>
+          <strong id="likelyAction">—</strong>
+        </div>
+      </section>
+
+      <section class="ooda-layout">
+        <div>
+          <article class="beat-card">
+            <p class="eyebrow">Prediction Signals</p>
+            <h2>What L99 sees coming</h2>
+            <ul id="signalList" class="finding-list"></ul>
+          </article>
+
+          <article class="beat-card">
+            <p class="eyebrow">Episode Memory</p>
+            <h2>Past incidents and outcomes</h2>
+            <div id="episodeList"></div>
+          </article>
+        </div>
+
+        <aside class="correlation-panel">
+          <p class="eyebrow">Learned Recoveries</p>
+          <h2>What worked before</h2>
+          <p class="subtitle">Recovery actions are ranked from recorded episodes.</p>
+          <div id="recoveryList"></div>
+        </aside>
+      </section>
+    </section>
+  </main>
+  <script src="/learning_dashboard.js"></script>
+</body>
+</html>
