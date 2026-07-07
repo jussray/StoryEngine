@@ -10,17 +10,14 @@
   <main class="container">
     <h1>L99 Story Engine</h1>
     <p class="subtitle">Book-first story workspace</p>
+    <nav class="mode-nav">
+      <a href="/ooda_dashboard.html">OODA Live Incidents</a>
+    </nav>
     <form id="storyForm">
-      <label>Title
-        <input type="text" id="title" placeholder="My Story" required>
-      </label>
-      <label>Genre
-        <input type="text" id="genre" placeholder="Literary Fiction">
-      </label>
-      <label>Pitch
-        <textarea id="pitch" rows="4" placeholder="One-sentence pitch..."></textarea>
-      </label>
-      <button type="submit">Create Workspace →</button>
+      <label>Title<input type="text" id="title" required></label>
+      <label>Genre<input type="text" id="genre"></label>
+      <label>Pitch<textarea id="pitch" rows="4"></textarea></label>
+      <button type="submit">Create Workspace</button>
     </form>
     <div id="error" class="error hidden"></div>
   </main>
