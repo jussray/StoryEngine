@@ -1,0 +1,93 @@
+{
+  "summary": {
+    "record_count": 7,
+    "chain_count": 3,
+    "chain_success_rate": 0.3333333333333333,
+    "rollback_rate": 0.3333333333333333,
+    "validation_failure_rate": 0.6666666666666666,
+    "migration_applied_rate": 0.3333333333333333,
+    "unsupported_registry_block_rate": 0.3333333333333333,
+    "p50_chain_latency_ms": 1280.0,
+    "p95_chain_latency_ms": 2756.0,
+    "l99_chain_latency_ms": 2887.2,
+    "max_chain_latency_ms": 2920.0
+  },
+  "by_stage": {
+    "caveman.rewrite": { "count": 2, "p50_ms": 1205.0, "p95_ms": 1740.5, "l99_ms": 1788.1, "max_ms": 1800.0 },
+    "ghost.apply": { "count": 2, "p50_ms": 680.0, "p95_ms": 914.0, "l99_ms": 934.8, "max_ms": 940.0 },
+    "proofread.run": { "count": 1, "p50_ms": 250.0, "p95_ms": 250.0, "l99_ms": 250.0, "max_ms": 250.0 },
+    "registry.validate": { "count": 2, "p50_ms": 135.0, "p95_ms": 175.5, "l99_ms": 179.1, "max_ms": 180.0 }
+  },
+  "by_handler": {
+    "caveman_rewrite": { "count": 2, "p50_ms": 1205.0, "p95_ms": 1740.5, "l99_ms": 1788.1, "max_ms": 1800.0 },
+    "ghost_apply": { "count": 2, "p50_ms": 680.0, "p95_ms": 914.0, "l99_ms": 934.8, "max_ms": 940.0 },
+    "proofread_run": { "count": 1, "p50_ms": 250.0, "p95_ms": 250.0, "l99_ms": 250.0, "max_ms": 250.0 },
+    "registry_validator": { "count": 2, "p50_ms": 135.0, "p95_ms": 175.5, "l99_ms": 179.1, "max_ms": 180.0 }
+  },
+  "by_chain_id": {
+    "chain_001": {
+      "stage_count": 3,
+      "total_latency_ms": 1280.0,
+      "status": "completed",
+      "rollback_applied": false,
+      "validation_failed": false,
+      "migration_applied": false,
+      "unsupported_registry_blocked": false,
+      "tenant_id": "tenant_alpha",
+      "profile_tier": "pro",
+      "cache_state": "warm",
+      "command_type": "/style chain",
+      "registry_schema_version": "1.1.0",
+      "correlation_id": "inc_shell_chain_001"
+    },
+    "chain_002": {
+      "stage_count": 3,
+      "total_latency_ms": 2920.0,
+      "status": "failed",
+      "rollback_applied": true,
+      "validation_failed": true,
+      "migration_applied": true,
+      "unsupported_registry_blocked": false,
+      "tenant_id": "tenant_alpha",
+      "profile_tier": "starter",
+      "cache_state": "cold",
+      "command_type": "/style chain",
+      "registry_schema_version": "1.0.0",
+      "correlation_id": "inc_shell_chain_002"
+    },
+    "chain_003": {
+      "stage_count": 1,
+      "total_latency_ms": 90.0,
+      "status": "failed",
+      "rollback_applied": false,
+      "validation_failed": true,
+      "migration_applied": false,
+      "unsupported_registry_blocked": true,
+      "tenant_id": "tenant_beta",
+      "profile_tier": "enterprise",
+      "cache_state": "unknown",
+      "command_type": "/ghost apply",
+      "registry_schema_version": "2.0.0",
+      "correlation_id": "inc_shell_chain_003"
+    }
+  },
+  "by_profile_tier": {
+    "enterprise": { "count": 1, "p50_ms": 90.0, "p95_ms": 90.0, "l99_ms": 90.0, "max_ms": 90.0 },
+    "pro": { "count": 3, "p50_ms": 420.0, "p95_ms": 591.0, "l99_ms": 606.2, "max_ms": 610.0 },
+    "starter": { "count": 3, "p50_ms": 940.0, "p95_ms": 1714.0, "l99_ms": 1782.8, "max_ms": 1800.0 }
+  },
+  "by_cache_state": {
+    "cold": { "count": 3, "p50_ms": 940.0, "p95_ms": 1714.0, "l99_ms": 1782.8, "max_ms": 1800.0 },
+    "unknown": { "count": 1, "p50_ms": 90.0, "p95_ms": 90.0, "l99_ms": 90.0, "max_ms": 90.0 },
+    "warm": { "count": 3, "p50_ms": 420.0, "p95_ms": 591.0, "l99_ms": 606.2, "max_ms": 610.0 }
+  },
+  "by_command_type": {
+    "/ghost apply": { "count": 1, "p50_ms": 90.0, "p95_ms": 90.0, "l99_ms": 90.0, "max_ms": 90.0 },
+    "/style chain": { "count": 6, "p50_ms": 515.0, "p95_ms": 1585.0, "l99_ms": 1757.0, "max_ms": 1800.0 }
+  },
+  "by_registry_schema_version": {
+    "1.0.0": { "count": 1, "p50_ms": 180.0, "p95_ms": 180.0, "l99_ms": 180.0, "max_ms": 180.0 },
+    "1.1.0": { "count": 5, "p50_ms": 610.0, "p95_ms": 1628.0, "l99_ms": 1765.6, "max_ms": 1800.0 },
+    "2.0.0": { "count": 1, "p50_ms": 90.0, "p95_ms": 90.0, "l99_ms": 90.0, "max_ms": 90.0 }
+  }
+}
