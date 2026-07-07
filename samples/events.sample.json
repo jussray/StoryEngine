@@ -18,6 +18,7 @@
     "invalidation_action": "invalidate_scope",
     "artifact_ref": "artifacts/revocation_0001.json",
     "correlation_id": "inc_20260707_alpha_001",
+    "trace_id": "trace_alpha_001",
     "group_key": "tenant:tenant_alpha:severity:sev2",
     "partition_id": "l99_partition_alpha_story_state",
     "revocation_epoch": 8
@@ -26,6 +27,7 @@
     "schema_version": "1.0",
     "event_version": 1,
     "event_id": "evt_20260707_0002",
+    "parent_event_id": "evt_20260707_0001",
     "event_type": "cache.partition_invalidated",
     "timestamp_utc": "2026-07-07T10:00:05Z",
     "tenant_id": "tenant_alpha",
@@ -37,6 +39,7 @@
     "invalidation_action": "partition_flush",
     "artifact_ref": "artifacts/invalidation_0001.json",
     "correlation_id": "inc_20260707_alpha_001",
+    "trace_id": "trace_alpha_001",
     "group_key": "tenant:tenant_alpha:severity:sev2",
     "partition_id": "l99_partition_alpha_story_state",
     "revocation_epoch": 8
@@ -45,6 +48,7 @@
     "schema_version": "1.0",
     "event_version": 1,
     "event_id": "evt_20260707_0003",
+    "parent_event_id": "evt_20260707_0002",
     "event_type": "promotion.blocked",
     "timestamp_utc": "2026-07-07T10:00:10Z",
     "tenant_id": "tenant_alpha",
@@ -56,6 +60,7 @@
     "promotion_action": "block_until_shadow_pass",
     "artifact_ref": "artifacts/promotion_gate_0001.json",
     "correlation_id": "inc_20260707_alpha_001",
+    "trace_id": "trace_alpha_002",
     "group_key": "tenant:tenant_alpha:severity:sev2",
     "partition_id": "l99_partition_alpha_story_state",
     "revocation_epoch": 8
@@ -74,16 +79,16 @@
     "reason": "contamination_ratio_exceeded",
     "artifact_ref": "artifacts/poisoning_0001.json",
     "correlation_id": "inc_20260707_beta_001",
+    "trace_id": "trace_beta_001",
     "group_key": "tenant:tenant_beta:severity:sev3",
     "partition_id": "l99_partition_beta_continuity",
-    "metadata": {
-      "critical_bucket": true
-    }
+    "metadata": { "critical_bucket": true }
   },
   {
     "schema_version": "1.0",
     "event_version": 1,
     "event_id": "evt_20260707_0005",
+    "parent_event_id": "evt_20260707_0004",
     "event_type": "containment.started",
     "timestamp_utc": "2026-07-07T10:05:03Z",
     "tenant_id": "tenant_beta",
@@ -95,10 +100,9 @@
     "invalidation_action": "disable_semantic_hits_and_flush_partition",
     "artifact_ref": "artifacts/containment_0001.json",
     "correlation_id": "inc_20260707_beta_001",
+    "trace_id": "trace_beta_001",
     "group_key": "tenant:tenant_beta:severity:sev3",
     "partition_id": "l99_partition_beta_continuity",
-    "metadata": {
-      "critical_bucket": true
-    }
+    "metadata": { "critical_bucket": true }
   }
 ]
