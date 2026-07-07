@@ -1,0 +1,47 @@
+{
+  "record_count": 5,
+  "p50_latency_ms": 920.0,
+  "p95_latency_ms": 4240.0,
+  "l99_latency_ms": 4792.0,
+  "chain_success_rate": 0.6,
+  "command_failure_rate": 0.0,
+  "rollback_rate": 0.2,
+  "validation_failure_rate": 0.2,
+  "migration_applied_rate": 0.2,
+  "unsupported_registry_block_rate": 0.2,
+  "slices": {
+    "tenant_id=tenant_alpha|profile_tier=pro|cache_state=warm|command_type=/style chain|chain_id=chain_ghost_caveman_001|registry_schema_version=1.1.0": {
+      "record_count": 3,
+      "p50_latency_ms": 920.0,
+      "p95_latency_ms": 1424.0,
+      "l99_latency_ms": 1468.8,
+      "chain_success_rate": 1.0,
+      "rollback_rate": 0.0,
+      "validation_failure_rate": 0.0,
+      "migration_applied_rate": 0.0,
+      "unsupported_registry_block_rate": 0.0
+    },
+    "tenant_id=tenant_beta|profile_tier=enterprise|cache_state=cold|command_type=/pipeline release|chain_id=chain_release_002|registry_schema_version=2.0.0": {
+      "record_count": 1,
+      "p50_latency_ms": 310.0,
+      "p95_latency_ms": 310.0,
+      "l99_latency_ms": 310.0,
+      "chain_success_rate": 0.0,
+      "rollback_rate": 0.0,
+      "validation_failure_rate": 1.0,
+      "migration_applied_rate": 0.0,
+      "unsupported_registry_block_rate": 1.0
+    },
+    "tenant_id=tenant_alpha|profile_tier=pro|cache_state=cold|command_type=/style chain|chain_id=chain_ghost_caveman_003|registry_schema_version=1.0.0": {
+      "record_count": 1,
+      "p50_latency_ms": 4930.0,
+      "p95_latency_ms": 4930.0,
+      "l99_latency_ms": 4930.0,
+      "chain_success_rate": 0.0,
+      "rollback_rate": 1.0,
+      "validation_failure_rate": 0.0,
+      "migration_applied_rate": 1.0,
+      "unsupported_registry_block_rate": 0.0
+    }
+  }
+}
