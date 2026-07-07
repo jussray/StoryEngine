@@ -7,20 +7,50 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main class="container">
-    <h1>L99 Story Engine</h1>
-    <p class="subtitle">Book-first story workspace</p>
-    <nav class="mode-nav">
-      <a href="/ooda_dashboard.html">OODA Live Incidents</a>
-      <a href="/lindymode_dashboard.html">Lindymode Control Panel</a>
+  <main class="container app-shell">
+    <header class="hero-row">
+      <div>
+        <p class="eyebrow">RiverEditor Runtime</p>
+        <h1>L99 Story Engine</h1>
+        <p class="subtitle">Your story worlds, continuity health, and production tools in one place.</p>
+      </div>
+      <button id="showCreateForm" class="primary-action" type="button">New Story</button>
+    </header>
+
+    <nav class="mode-nav compact-nav" aria-label="Operations">
+      <a href="/ooda_dashboard.html">OODA Live</a>
+      <a href="/lindymode_dashboard.html">Lindymode</a>
     </nav>
-    <form id="storyForm">
-      <label>Title<input type="text" id="title" required></label>
-      <label>Genre<input type="text" id="genre"></label>
-      <label>Pitch<textarea id="pitch" rows="4"></textarea></label>
-      <button type="submit">Create Workspace</button>
-    </form>
-    <div id="error" class="error hidden"></div>
+
+    <section id="createPanel" class="beat-card create-panel hidden">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">Create</p>
+          <h2>New Story Workspace</h2>
+        </div>
+        <button id="hideCreateForm" class="quiet-button" type="button">Close</button>
+      </div>
+      <form id="storyForm">
+        <label>Title<input type="text" id="title" placeholder="The River Between Stars" required></label>
+        <label>Genre<input type="text" id="genre" placeholder="Fantasy, thriller, romance..."></label>
+        <label>Pitch<textarea id="pitch" rows="4" placeholder="What is this story really about?"></textarea></label>
+        <button type="submit">Create Workspace</button>
+      </form>
+      <div id="error" class="error hidden"></div>
+    </section>
+
+    <section class="library-section">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">Library</p>
+          <h2>Your Workspaces</h2>
+        </div>
+        <button id="refreshStories" class="quiet-button" type="button">Refresh</button>
+      </div>
+      <div id="workspaceList" class="workspace-grid">
+        <div class="beat-card"><p class="subtitle">Loading workspaces…</p></div>
+      </div>
+    </section>
   </main>
   <script src="/front_door.js"></script>
 </body>
