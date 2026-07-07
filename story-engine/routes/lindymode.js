@@ -4,6 +4,7 @@ import { json } from '../lib/miniRouter.js';
 import * as Lindy from '../models/lindymodeModel.js';
 import * as Chapter from '../models/chapterModel.js';
 import { analyzeChapter } from '../lib/lindymodeProcessor.js';
+import { captureEpisodeFromIncident } from '../lib/learningEngine.js';
 import { log } from '../models/eventModel.js';
 
 export default function lindymodeRoutes(router, db) {
@@ -38,6 +39,7 @@ export default function lindymodeRoutes(router, db) {
 
   router.post('/api/lindymode/recover/:incident_id', (req, res) => {
     const recoveryAction = req.body?.recovery_action || 'manual_state_review';
+    const outcome = req.body?.outcome || 'unknown';
     const incident = Lindy.resolveIncident(db, req.params.incident_id, recoveryAction);
     if (!incident) return json(res, 404, { error: 'Incident not found' });
 
@@ -48,10 +50,12 @@ export default function lindymodeRoutes(router, db) {
       payload: {
         incident_id: incident.incident_id,
         correlation_id: incident.correlation_id,
-        recovery_action: recoveryAction
+        recovery_action: recoveryAction,
+        outcome
       }
     });
 
-    json(res, 200, incident);
+    const episode = captureEpisodeFromIncident(db, incident.incident_id, outcome);
+    json(res, 200, { incident, episode });
   });
 }
