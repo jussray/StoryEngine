@@ -25,10 +25,10 @@ L99 is an AI runtime and operations layer focused on state integrity, provenance
 - `configs/rivereditor_command_registry.json` — first command registry for authoring, style, review, query, and operator commands.
 - `runtime/rivereditor_shell_router.py` — command parser/router skeleton with shell event creation.
 - `docs/rivereditor_l99_latency_monitor.md` — L99 tail-latency monitor spec for style-chain operations.
-- `schemas/rivereditor_telemetry_event.schema.json` — telemetry event schema for command and stage latency slices.
-- `runtime/rivereditor_l99_latency_monitor.py` — no-dependency reporter for p50, p95, L99, success, rollback, validation, migration, and registry-block rates.
-- `samples/rivereditor_style_chain_telemetry.sample.json` — sample style-chain telemetry input.
-- `artifacts/rivereditor_l99_latency_report.sample.json` — sample latency monitor output.
+- `schemas/style_chain_telemetry.schema.json` — telemetry record schema for command and stage latency slices.
+- `runtime/style_chain_l99_analyzer.py` — no-dependency reporter for p50, p95, L99, success, rollback, validation, migration, and registry-block rates.
+- `samples/style_chain_telemetry.sample.json` — sample style-chain telemetry input.
+- `samples/style_chain_l99_report.sample.json` — sample latency monitor output.
 - `samples/events.sample.json` — sample JSON event array for dashboards and tests.
 - `samples/events.ndjson` — sample live-feed event stream including cache, revocation, containment, and Lindymode events.
 
