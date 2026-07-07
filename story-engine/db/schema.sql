@@ -165,6 +165,20 @@ CREATE TABLE IF NOT EXISTS story_genomes (
   updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS autonomous_runtime_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL UNIQUE,
+  correlation_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  chapter_id INTEGER,
+  trigger_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  steps_json TEXT NOT NULL DEFAULT '[]',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  completed_at INTEGER
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_mode_created ON events(mode, created_at);
@@ -179,3 +193,5 @@ CREATE INDEX IF NOT EXISTS idx_ooda_episodes_workspace ON ooda_episodes(workspac
 CREATE INDEX IF NOT EXISTS idx_ooda_episodes_trigger ON ooda_episodes(trigger_type, outcome);
 CREATE INDEX IF NOT EXISTS idx_ooda_risk_workspace ON ooda_risk_snapshots(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ooda_recovery_workspace ON ooda_recovery_runs(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_runtime_runs_workspace ON autonomous_runtime_runs(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_runtime_runs_correlation ON autonomous_runtime_runs(correlation_id);
