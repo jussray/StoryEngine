@@ -3,24 +3,90 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chapters — L99</title>
+  <title>Writing Room — L99</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main class="container">
+  <main class="container writing-room">
     <nav class="back"><a id="homeLink" href="#">← Story Home</a></nav>
-    <h2>Chapters</h2>
-    <div class="row">
-      <input type="text" id="newTitle" placeholder="Chapter title">
-      <button id="addBtn">Add Chapter</button>
-    </div>
-    <ul id="chapterList" class="chapter-list"></ul>
-    <div id="editor" class="hidden">
-      <h3 id="editorTitle"></h3>
-      <textarea id="chapterContent" rows="15"></textarea>
-      <button id="saveChapter">Save Chapter</button>
-      <span id="status" class="status"></span>
-    </div>
+
+    <header class="section-heading-row writing-header">
+      <div>
+        <p class="eyebrow">RiverEditor</p>
+        <h1 id="workspaceTitle">Writing Room</h1>
+        <p class="subtitle">Write, save, and let Lindymode watch continuity in the background.</p>
+      </div>
+      <a id="lindymodeLink" class="button-link" href="#">Open Lindymode</a>
+    </header>
+
+    <section class="story-health-strip" aria-label="Lindymode story health">
+      <div>
+        <span class="health-label">Story Health</span>
+        <strong id="healthStatus">Loading…</strong>
+      </div>
+      <div>
+        <span class="health-label">Active Drift</span>
+        <strong id="activeDrift">—</strong>
+      </div>
+      <div>
+        <span class="health-label">POV</span>
+        <strong id="povStatus">Not set</strong>
+      </div>
+      <div>
+        <span class="health-label">State Version</span>
+        <strong id="stateVersion">—</strong>
+      </div>
+    </section>
+
+    <section class="writing-layout">
+      <aside class="chapter-sidebar">
+        <div class="section-heading-row">
+          <div>
+            <p class="eyebrow">Manuscript</p>
+            <h2>Chapters</h2>
+          </div>
+        </div>
+        <div class="row chapter-create-row">
+          <input type="text" id="newTitle" placeholder="Chapter title">
+          <button id="addBtn" type="button">Add</button>
+        </div>
+        <ul id="chapterList" class="chapter-list"></ul>
+      </aside>
+
+      <section id="editor" class="editor-panel hidden">
+        <div class="editor-toolbar">
+          <input id="editorTitleInput" class="editor-title-input" aria-label="Chapter title">
+          <div class="editor-actions">
+            <span id="status" class="status"></span>
+            <button id="analyzeChapter" class="quiet-button" type="button">Run Lindymode</button>
+            <button id="saveChapter" type="button">Save</button>
+          </div>
+        </div>
+
+        <textarea id="chapterContent" class="manuscript-editor" placeholder="Start writing..."></textarea>
+
+        <aside id="lindyPanel" class="lindy-inline-panel">
+          <div class="section-heading-row">
+            <div>
+              <p class="eyebrow">Lindymode</p>
+              <h2>Continuity Check</h2>
+            </div>
+            <span id="lindyBadge" class="health-pill health-good">Ready</span>
+          </div>
+          <p id="lindySummary" class="subtitle">Save or run Lindymode to analyze this chapter.</p>
+          <div id="lindyFindings"></div>
+          <div id="lindyRecovery" class="hidden">
+            <button id="markRecovered" type="button">Mark Recovered</button>
+          </div>
+        </aside>
+      </section>
+
+      <section id="emptyEditor" class="editor-empty-state beat-card">
+        <p class="eyebrow">Writing Room</p>
+        <h2>Select a chapter</h2>
+        <p class="subtitle">Choose a chapter from the left, or add a new one to begin.</p>
+      </section>
+    </section>
   </main>
   <script src="/chapters.js"></script>
 </body>
