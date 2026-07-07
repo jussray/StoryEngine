@@ -44,28 +44,23 @@
         "threshold.rejected",
         "incident.created",
         "incident.updated",
-        "incident.closed"
+        "incident.closed",
+        "lindymode.state_drift_detected",
+        "lindymode.summary_refresh_triggered",
+        "lindymode.continuity_conflict",
+        "lindymode.context_budget_breach",
+        "lindymode.recovery_completed"
       ]
     },
     "timestamp_utc": { "type": "string", "format": "date-time" },
     "tenant_id": { "type": "string", "minLength": 1 },
     "namespace": { "type": "string", "minLength": 1 },
-    "severity": {
-      "type": "string",
-      "enum": ["info", "watch", "sev1", "sev2", "sev3"]
-    },
-    "status": {
-      "type": "string",
-      "enum": ["observed", "active", "blocked", "running", "passed", "failed", "completed", "cleared"]
-    },
+    "severity": { "type": "string", "enum": ["info", "watch", "sev1", "sev2", "sev3"] },
+    "status": { "type": "string", "enum": ["observed", "active", "blocked", "running", "passed", "failed", "completed", "cleared"] },
     "source_system": { "type": "string", "minLength": 1 },
     "reason": { "type": "string", "minLength": 1 },
     "user_id": { "type": "string" },
-    "scope": {
-      "type": "array",
-      "items": { "type": "string" },
-      "uniqueItems": true
-    },
+    "scope": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "policy_version": { "type": "string" },
     "model_version": { "type": "string" },
     "threshold": { "type": "number" },
@@ -76,6 +71,14 @@
     "group_key": { "type": "string" },
     "partition_id": { "type": "string" },
     "revocation_epoch": { "type": "integer", "minimum": 0 },
+    "chapter_id": { "type": "string" },
+    "arc_stage": { "type": "string" },
+    "pov": { "type": "string" },
+    "continuity_entity": { "type": "string" },
+    "drift_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "summary_window": { "type": "string" },
+    "token_budget_state": { "type": "string" },
+    "recovery_action": { "type": "string" },
     "metadata": { "type": "object" }
   }
 }
