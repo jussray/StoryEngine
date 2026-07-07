@@ -1,5 +1,5 @@
 // lib/oodaProcessor.js
-// OODA loop: combines runtime metrics with active Lindymode incidents.
+// OODA loop: combines application runtime metrics with active Lindymode incidents.
 
 function percentile(sorted, p) {
   if (!sorted.length) return 0;
@@ -13,12 +13,15 @@ export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
     SELECT workspace_id, mode, event_type, duration_ms, rollback
     FROM events
     WHERE created_at >= ?
+      AND COALESCE(mode, '') NOT IN ('ooda', 'autonomous_runtime')
+      AND event_type NOT LIKE 'runtime.%'
+      AND event_type NOT LIKE 'release.%'
     ORDER BY workspace_id, mode, duration_ms ASC
   `).all(since);
 
   const groups = {};
   for (const row of rows) {
-    const key = `${row.workspace_id}::${row.mode ?? 'unknown'}`;
+    const key = `${row.workspace_id}::${row.mode ?? 'application'}`;
     if (!groups[key]) {
       groups[key] = {
         workspace_id: row.workspace_id,
@@ -51,7 +54,7 @@ export function detectMetricIncidents(metrics, thresholds = { p99: 1000, rollbac
   return metrics
     .filter(metric => metric.p99 > thresholds.p99 || metric.rollback_rate > thresholds.rollback_rate)
     .map(metric => ({
-      incident_id: `ooda_metric:${metric.workspace_id}:${metric.mode || 'unknown'}`,
+      incident_id: `ooda_metric:${metric.workspace_id}:${metric.mode || 'application'}`,
       correlation_id: null,
       source: 'runtime',
       workspace_id: metric.workspace_id,
@@ -67,20 +70,9 @@ export function detectMetricIncidents(metrics, thresholds = { p99: 1000, rollbac
 export function getLindymodeIncidents(db, limit = 200) {
   return db.prepare(`
     SELECT
-      incident_id,
-      correlation_id,
-      parent_event_id,
-      workspace_id,
-      chapter_id,
-      event_type,
-      severity,
-      status,
-      reason,
-      drift_score,
-      details_json,
-      recovery_action,
-      created_at,
-      resolved_at
+      incident_id, correlation_id, parent_event_id, workspace_id, chapter_id,
+      event_type, severity, status, reason, drift_score, details_json,
+      recovery_action, created_at, resolved_at
     FROM lindymode_incidents
     WHERE status = 'active'
     ORDER BY created_at DESC
@@ -122,12 +114,7 @@ export function startOODALoop(
   onIncidents = incidents => console.log('[OODA] Incidents:', incidents)
 ) {
   console.log(`[OODA] Loop started — window: 15min, interval: ${intervalMs / 1000}s`);
-
-  const run = () => {
-    const incidents = collectActiveIncidents(db);
-    onIncidents(incidents);
-  };
-
+  const run = () => onIncidents(collectActiveIncidents(db));
   run();
   return setInterval(run, intervalMs);
 }
