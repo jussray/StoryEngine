@@ -3,17 +3,61 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OODA Dashboard — L99</title>
+  <title>OODA Control Plane — L99</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main class="container">
+  <main class="container ooda-shell">
     <nav class="back"><a href="/front_door.html">← Front Door</a></nav>
-    <h1>OODA Incidents</h1>
-    <p class="subtitle">Live incidents streamed from <code>/api/ooda/incidents</code></p>
-    <div id="connectionStatus" class="status">Connecting…</div>
-    <section id="incidentList" class="incident-list">
-      <p class="subtitle">Waiting for OODA events.</p>
+
+    <header class="section-heading-row writing-header">
+      <div>
+        <p class="eyebrow">L99 Control Plane</p>
+        <h1>OODA</h1>
+        <p class="subtitle">Runtime health and Lindymode story drift on one incident spine.</p>
+      </div>
+      <div id="connectionStatus" class="health-pill health-watch">Connecting</div>
+    </header>
+
+    <section class="story-health-strip" aria-label="OODA status overview">
+      <div>
+        <span class="health-label">Total Active</span>
+        <strong id="totalActive">0</strong>
+      </div>
+      <div>
+        <span class="health-label">Critical</span>
+        <strong id="criticalCount">0</strong>
+      </div>
+      <div>
+        <span class="health-label">Lindymode</span>
+        <strong id="lindyCount">0</strong>
+      </div>
+      <div>
+        <span class="health-label">Runtime</span>
+        <strong id="runtimeCount">0</strong>
+      </div>
+    </section>
+
+    <section class="ooda-layout">
+      <div>
+        <div class="section-heading-row">
+          <div>
+            <p class="eyebrow">Active Queue</p>
+            <h2>Incidents</h2>
+          </div>
+          <button id="refreshSnapshot" class="quiet-button" type="button">Refresh</button>
+        </div>
+        <section id="incidentList" class="incident-list">
+          <p class="subtitle">Waiting for OODA events.</p>
+        </section>
+      </div>
+
+      <aside class="correlation-panel">
+        <p class="eyebrow">Explainability</p>
+        <h2>Incident Timeline</h2>
+        <p id="timelineIntro" class="subtitle">Select a Lindymode incident to trace detection, events, and recovery by correlation ID.</p>
+        <div id="timelineList"></div>
+      </aside>
     </section>
   </main>
   <script src="/ooda_dashboard.js"></script>
