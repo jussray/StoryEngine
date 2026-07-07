@@ -1,6 +1,7 @@
 // lib/runtimeDispatcher.js
 
 import { createHash, randomUUID } from 'node:crypto';
+import * as Chapter from '../models/chapterModel.js';
 import { runAutonomousRuntime } from './autonomousRuntime.js';
 import { log } from '../models/eventModel.js';
 
@@ -10,6 +11,7 @@ function ensureSchema(db) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       dispatch_id TEXT NOT NULL UNIQUE,
       workspace_id TEXT NOT NULL,
+      chapter_id INTEGER,
       trigger_type TEXT NOT NULL,
       fingerprint TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'queued',
@@ -25,9 +27,14 @@ function ensureSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_dispatch_workspace
       ON runtime_dispatch_queue(workspace_id, created_at);
   `);
+
+  const columns = db.prepare('PRAGMA table_info(runtime_dispatch_queue)').all();
+  if (!columns.some(column => column.name === 'chapter_id')) {
+    db.exec('ALTER TABLE runtime_dispatch_queue ADD COLUMN chapter_id INTEGER');
+  }
 }
 
-function workspaceFingerprint(db, workspaceId) {
+function workspaceFingerprint(db, workspaceId, chapterId = null) {
   const row = db.prepare(`
     SELECT
       s.updated_at AS story_updated,
@@ -41,17 +48,18 @@ function workspaceFingerprint(db, workspaceId) {
     GROUP BY s.workspace_id
   `).get(workspaceId);
   if (!row) return null;
-  return createHash('sha256').update(JSON.stringify(row)).digest('hex');
+  return createHash('sha256').update(JSON.stringify({ ...row, chapter_id: chapterId })).digest('hex');
 }
 
-export function enqueueRuntime(db, workspaceId, triggerType = 'event_dispatch') {
+export function enqueueRuntime(db, workspaceId, triggerType = 'event_dispatch', chapterId = null) {
   ensureSchema(db);
-  const fingerprint = workspaceFingerprint(db, workspaceId);
+  const fingerprint = workspaceFingerprint(db, workspaceId, chapterId);
   if (!fingerprint) return null;
 
   const duplicate = db.prepare(`
     SELECT * FROM runtime_dispatch_queue
-    WHERE workspace_id = ? AND fingerprint = ?
+    WHERE workspace_id = ?
+      AND fingerprint = ?
       AND status IN ('queued', 'running', 'completed')
     ORDER BY created_at DESC LIMIT 1
   `).get(workspaceId, fingerprint);
@@ -60,15 +68,16 @@ export function enqueueRuntime(db, workspaceId, triggerType = 'event_dispatch') 
   const dispatchId = randomUUID();
   db.prepare(`
     INSERT INTO runtime_dispatch_queue (
-      dispatch_id, workspace_id, trigger_type, fingerprint, status, created_at
-    ) VALUES (?, ?, ?, ?, 'queued', ?)
-  `).run(dispatchId, workspaceId, triggerType, fingerprint, Date.now());
+      dispatch_id, workspace_id, chapter_id, trigger_type,
+      fingerprint, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, 'queued', ?)
+  `).run(dispatchId, workspaceId, chapterId, triggerType, fingerprint, Date.now());
 
   log(db, {
     workspace_id: workspaceId,
     mode: 'autonomous_runtime',
     event_type: 'runtime.dispatch.queued',
-    payload: { dispatch_id: dispatchId, trigger_type: triggerType, fingerprint }
+    payload: { dispatch_id: dispatchId, trigger_type: triggerType, chapter_id: chapterId, fingerprint }
   });
 
   return db.prepare('SELECT * FROM runtime_dispatch_queue WHERE dispatch_id = ?').get(dispatchId);
@@ -92,8 +101,10 @@ export function drainRuntimeQueue(db, limit = 5) {
     `).run(Date.now(), item.dispatch_id);
 
     try {
+      const chapter = item.chapter_id ? Chapter.get(db, Number(item.chapter_id)) : null;
       const run = runAutonomousRuntime(db, {
         workspaceId: item.workspace_id,
+        chapter,
         triggerType: item.trigger_type,
         allowRecovery: true
       });
@@ -103,7 +114,7 @@ export function drainRuntimeQueue(db, limit = 5) {
         SET status = ?, run_id = ?, completed_at = ?, error = NULL
         WHERE dispatch_id = ?
       `).run(status, run.run_id, Date.now(), item.dispatch_id);
-      results.push({ dispatch_id: item.dispatch_id, status, run_id: run.run_id });
+      results.push({ dispatch_id: item.dispatch_id, status, run_id: run.run_id, run });
     } catch (error) {
       db.prepare(`
         UPDATE runtime_dispatch_queue
