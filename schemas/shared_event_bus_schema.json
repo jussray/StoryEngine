@@ -49,7 +49,10 @@
         "lindymode.summary_refresh_triggered",
         "lindymode.continuity_conflict",
         "lindymode.context_budget_breach",
-        "lindymode.recovery_completed"
+        "lindymode.recovery_completed",
+        "shell.command_started",
+        "shell.command_completed",
+        "shell.command_failed"
       ]
     },
     "timestamp_utc": { "type": "string", "format": "date-time" },
