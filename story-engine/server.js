@@ -14,6 +14,7 @@ import { startOODALoop } from './lib/oodaProcessor.js';
 import storyRoutes from './routes/story.js';
 import outlineRoutes from './routes/outline.js';
 import chapterRoutes from './routes/chapters.js';
+import chapterMaintenanceRoutes from './routes/chapterMaintenance.js';
 import movieRoutes from './routes/movie.js';
 import eventsRoutes from './routes/events.js';
 import lindymodeRoutes from './routes/lindymode.js';
@@ -21,6 +22,7 @@ import oodaRoutes from './routes/ooda.js';
 import decisionRoutes from './routes/decision.js';
 import learningRoutes from './routes/learning.js';
 import recoveryRoutes from './routes/recovery.js';
+import runtimeRoutes from './routes/runtime.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -37,6 +39,7 @@ const router = createRouter();
 storyRoutes(router, db);
 outlineRoutes(router, db);
 chapterRoutes(router, db);
+chapterMaintenanceRoutes(router, db);
 movieRoutes(router, db);
 eventsRoutes(router, db);
 lindymodeRoutes(router, db);
@@ -44,6 +47,7 @@ oodaRoutes(router, db);
 decisionRoutes(router, db);
 learningRoutes(router, db);
 recoveryRoutes(router, db);
+runtimeRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -101,5 +105,5 @@ startOODALoop(db, 30_000, incidents => {
 server.listen(PORT, () => {
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
   console.log('OODA SSE: GET /api/ooda/incidents for live incidents.');
-  console.log('Lindymode, OODA decisions, recovery, learning, prediction, release gates, and Story Genome registered.');
+  console.log('Autonomous L99 runtime orchestration registered.');
 });
