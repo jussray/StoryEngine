@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapters — L99</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="container">
+    <nav class="back"><a id="homeLink" href="#">← Story Home</a></nav>
+    <h2>Chapters</h2>
+    <div class="row">
+      <input type="text" id="newTitle" placeholder="Chapter title">
+      <button id="addBtn">Add Chapter</button>
+    </div>
+    <ul id="chapterList" class="chapter-list"></ul>
+    <div id="editor" class="hidden">
+      <h3 id="editorTitle"></h3>
+      <textarea id="chapterContent" rows="15"></textarea>
+      <button id="saveChapter">Save Chapter</button>
+      <span id="status" class="status"></span>
+    </div>
+  </main>
+  <script src="/chapters.js"></script>
+</body>
+</html>

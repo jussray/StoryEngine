@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Events — L99</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="container">
+    <nav class="back"><a id="homeLink" href="#">← Story Home</a></nav>
+    <h2>Event Log <span id="count"></span></h2>
+    <p class="subtitle">Raw OODA/L99 feed — every mutation in this workspace</p>
+    <button id="refreshBtn">Refresh</button>
+    <table id="eventTable">
+      <thead><tr><th>Time</th><th>Type</th><th>Mode</th><th>Duration</th><th>Rollback</th></tr></thead>
+      <tbody id="eventBody"></tbody>
+    </table>
+  </main>
+  <script src="/events_view.js"></script>
+</body>
+</html>
