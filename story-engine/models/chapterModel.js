@@ -17,12 +17,21 @@ export function create(db, workspace_id, { title, content = '', position = 0 }) 
   return result.lastInsertRowid;
 }
 
-export function update(db, id, { title, content, position }) {
+export function update(db, id, fields = {}) {
+  const current = get(db, id);
+  if (!current) return false;
   const now = Date.now();
   db.prepare(`
     UPDATE chapters SET title = ?, content = ?, position = ?, updated_at = ?
     WHERE id = ?
-  `).run(title, content, position, now, id);
+  `).run(
+    fields.title ?? current.title,
+    fields.content ?? current.content ?? '',
+    fields.position ?? current.position ?? 0,
+    now,
+    id
+  );
+  return true;
 }
 
 export function remove(db, id) {
