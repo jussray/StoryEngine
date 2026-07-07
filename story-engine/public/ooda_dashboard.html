@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OODA Dashboard — L99</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="container">
+    <nav class="back"><a href="/front_door.html">← Front Door</a></nav>
+    <h1>OODA Incidents</h1>
+    <p class="subtitle">Live incidents streamed from <code>/api/ooda/incidents</code></p>
+    <div id="connectionStatus" class="status">Connecting…</div>
+    <section id="incidentList" class="incident-list">
+      <p class="subtitle">Waiting for OODA events.</p>
+    </section>
+  </main>
+  <script src="/ooda_dashboard.js"></script>
+</body>
+</html>
