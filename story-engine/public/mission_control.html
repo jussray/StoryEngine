@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mission Control — L99</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/ooda.css">
+</head>
+<body>
+  <main class="container ooda-shell">
+    <nav class="back"><a href="/front_door.html">← Front Door</a></nav>
+    <header class="writing-header">
+      <p class="eyebrow">L99 Operations</p>
+      <h1>Mission Control</h1>
+      <p class="subtitle">Workspace health, dispatch queue, incidents, recovery, prediction, and release readiness.</p>
+      <div class="workspace-actions">
+        <button id="scanNow" class="quiet-button" type="button">Scan Changes</button>
+        <button id="drainNow" type="button">Process Queue</button>
+        <button id="refresh" class="quiet-button" type="button">Refresh</button>
+      </div>
+    </header>
+    <p id="status" class="subtitle">Loading mission state…</p>
+    <section id="overview" class="story-health-strip"></section>
+    <section class="ooda-layout">
+      <div>
+        <article class="beat-card">
+          <p class="eyebrow">Fleet</p>
+          <h2>Workspace Health</h2>
+          <div id="workspaceList"></div>
+        </article>
+        <article class="beat-card">
+          <p class="eyebrow">Queue</p>
+          <h2>Runtime Dispatch</h2>
+          <div id="queueList"></div>
+        </article>
+      </div>
+      <aside class="correlation-panel">
+        <p class="eyebrow">Operations</p>
+        <h2>Active Incidents</h2>
+        <div id="incidentList"></div>
+        <p class="eyebrow">Recovery</p>
+        <div id="recoveryStats"></div>
+      </aside>
+    </section>
+  </main>
+  <script src="/mission_control.js"></script>
+</body>
+</html>
