@@ -13,20 +13,16 @@ mkdirSync(join(__dirname, '../db'), { recursive: true });
 
 const db = new DatabaseSync(join(__dirname, '../db/l99.db'));
 
-// WAL mode: readers don't block writers
 db.exec('PRAGMA journal_mode = WAL;');
-
-// Reduced fsync strictness — safe for most workloads
 db.exec('PRAGMA synchronous = NORMAL;');
-
-// 10MB page cache
+db.exec('PRAGMA busy_timeout = 5000;');
+db.exec('PRAGMA foreign_keys = ON;');
 db.exec('PRAGMA cache_size = -10000;');
-
-// Temp tables in memory
 db.exec('PRAGMA temp_store = MEMORY;');
+db.exec('PRAGMA wal_autocheckpoint = 1000;');
 
-// Load and run schema
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
 db.exec(schema);
+db.exec('PRAGMA optimize;');
 
 export default db;
