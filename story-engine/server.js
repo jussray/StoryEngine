@@ -19,6 +19,7 @@ import eventsRoutes from './routes/events.js';
 import lindymodeRoutes from './routes/lindymode.js';
 import oodaRoutes from './routes/ooda.js';
 import decisionRoutes from './routes/decision.js';
+import learningRoutes from './routes/learning.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,7 @@ eventsRoutes(router, db);
 lindymodeRoutes(router, db);
 oodaRoutes(router, db);
 decisionRoutes(router, db);
+learningRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -97,5 +99,5 @@ startOODALoop(db, 30_000, incidents => {
 server.listen(PORT, () => {
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
   console.log('OODA SSE: GET /api/ooda/incidents for live incidents.');
-  console.log('Lindymode, OODA decisions, and release gates registered.');
+  console.log('Lindymode, OODA decisions, release gates, learning, and prediction registered.');
 });
