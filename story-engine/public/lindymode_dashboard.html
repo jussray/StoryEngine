@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lindymode — L99</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="container">
+    <nav class="back"><a href="/front_door.html">← Front Door</a></nav>
+    <h1>Lindymode</h1>
+    <p class="subtitle">Canonical story state, continuity drift, and recovery controls.</p>
+
+    <section class="beat-card">
+      <h2>Workspace</h2>
+      <div class="row">
+        <input id="workspaceId" placeholder="workspace_id">
+        <button id="loadWorkspace" type="button">Load</button>
+      </div>
+      <div id="workspaceStatus" class="subtitle">Enter a workspace ID.</div>
+    </section>
+
+    <section class="beat-card">
+      <h2>Canonical Story State</h2>
+      <label>Summary
+        <textarea id="summary" rows="5" placeholder="Current canonical summary"></textarea>
+      </label>
+      <label>POV
+        <select id="pov">
+          <option value="">Not set</option>
+          <option value="first_person">First person</option>
+          <option value="third_person">Third person</option>
+        </select>
+      </label>
+      <label>Arc Stage
+        <input id="arcStage" placeholder="rising_conflict">
+      </label>
+      <label>Token Budget
+        <input id="tokenBudget" type="number" min="0" value="0">
+      </label>
+      <label>Continuity Rules JSON
+        <textarea id="rules" rows="10" spellcheck="false">[]</textarea>
+      </label>
+      <button id="saveState" type="button">Save Lindymode State</button>
+      <span id="saveStatus" class="status"></span>
+    </section>
+
+    <section class="beat-card">
+      <h2>Manual Chapter Analysis</h2>
+      <div class="row">
+        <input id="chapterId" type="number" min="1" placeholder="chapter_id">
+        <button id="analyzeChapter" type="button">Analyze</button>
+      </div>
+      <pre id="analysisResult" class="code-panel">No analysis run.</pre>
+    </section>
+
+    <section>
+      <div class="row section-heading-row">
+        <div>
+          <h2>Incidents</h2>
+          <p class="subtitle">Active continuity, POV, and context-budget findings.</p>
+        </div>
+        <button id="refreshIncidents" type="button">Refresh</button>
+      </div>
+      <div id="incidentList"><p class="subtitle">Load a workspace to view incidents.</p></div>
+    </section>
+  </main>
+  <script src="/lindymode_dashboard.js"></script>
+</body>
+</html>
