@@ -1,0 +1,127 @@
+// lib/missionControl.js
+
+import { collectActiveIncidents, computeMetrics } from './oodaProcessor.js';
+import { listDispatchQueue } from './runtimeDispatcher.js';
+
+function safeJson(value, fallback = {}) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function getMissionControlSnapshot(db) {
+  const stories = db.prepare(`
+    SELECT
+      s.workspace_id,
+      s.title,
+      s.updated_at,
+      COUNT(DISTINCT c.id) AS chapter_count,
+      COUNT(DISTINCT CASE WHEN li.status = 'active' THEN li.incident_id END) AS active_incidents
+    FROM stories s
+    LEFT JOIN chapters c ON c.workspace_id = s.workspace_id
+    LEFT JOIN lindymode_incidents li ON li.workspace_id = s.workspace_id
+    GROUP BY s.workspace_id
+    ORDER BY s.updated_at DESC
+  `).all();
+
+  const latestRuns = db.prepare(`
+    SELECT r.*
+    FROM autonomous_runtime_runs r
+    JOIN (
+      SELECT workspace_id, MAX(created_at) AS latest
+      FROM autonomous_runtime_runs
+      GROUP BY workspace_id
+    ) x ON x.workspace_id = r.workspace_id AND x.latest = r.created_at
+  `).all();
+  const runsByWorkspace = new Map(latestRuns.map(row => [row.workspace_id, row]));
+
+  const latestAudits = db.prepare(`
+    SELECT a.*
+    FROM release_audits a
+    JOIN (
+      SELECT workspace_id, MAX(created_at) AS latest
+      FROM release_audits
+      GROUP BY workspace_id
+    ) x ON x.workspace_id = a.workspace_id AND x.latest = a.created_at
+  `).all();
+  const auditsByWorkspace = new Map(latestAudits.map(row => [row.workspace_id, row]));
+
+  const latestRisks = db.prepare(`
+    SELECT r.*
+    FROM ooda_risk_snapshots r
+    JOIN (
+      SELECT workspace_id, MAX(created_at) AS latest
+      FROM ooda_risk_snapshots
+      GROUP BY workspace_id
+    ) x ON x.workspace_id = r.workspace_id AND x.latest = r.created_at
+  `).all();
+  const risksByWorkspace = new Map(latestRisks.map(row => [row.workspace_id, row]));
+
+  const recoveryStats = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'validated' THEN 1 ELSE 0 END) AS validated,
+      SUM(CASE WHEN status = 'rolled_back' THEN 1 ELSE 0 END) AS rolled_back,
+      SUM(CASE WHEN status = 'awaiting_author' THEN 1 ELSE 0 END) AS awaiting_author
+    FROM ooda_recovery_runs
+  `).get();
+
+  const runtimeStats = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+    FROM autonomous_runtime_runs
+  `).get();
+
+  const metrics = computeMetrics(db);
+  const incidents = collectActiveIncidents(db);
+  const queue = listDispatchQueue(db, 100);
+
+  const workspaces = stories.map(story => {
+    const run = runsByWorkspace.get(story.workspace_id);
+    const audit = auditsByWorkspace.get(story.workspace_id);
+    const risk = risksByWorkspace.get(story.workspace_id);
+    const runResult = safeJson(run?.result_json, {});
+    return {
+      workspace_id: story.workspace_id,
+      title: story.title,
+      chapter_count: Number(story.chapter_count || 0),
+      active_incidents: Number(story.active_incidents || 0),
+      updated_at: story.updated_at,
+      runtime_status: run?.status || 'never_run',
+      runtime_run_id: run?.run_id || null,
+      release_result: audit?.result || runResult.release?.result || 'UNKNOWN',
+      confidence_score: Number(audit?.confidence_score || runResult.decision?.confidence_score || 0),
+      predicted_risk: risk?.predicted_risk || runResult.prediction?.predicted_risk || 'UNKNOWN'
+    };
+  });
+
+  const validated = Number(recoveryStats?.validated || 0);
+  const recoveryTotal = Number(recoveryStats?.total || 0);
+
+  return {
+    generated_at: Date.now(),
+    overview: {
+      workspaces: workspaces.length,
+      active_incidents: incidents.length,
+      queue_depth: queue.filter(item => item.status === 'queued').length,
+      running_dispatches: queue.filter(item => item.status === 'running').length,
+      runtime_runs: Number(runtimeStats?.total || 0),
+      runtime_failures: Number(runtimeStats?.failed || 0),
+      recovery_success_rate: recoveryTotal ? validated / recoveryTotal : null
+    },
+    workspaces,
+    incidents,
+    metrics,
+    queue: queue.slice(0, 25),
+    recovery: {
+      total: recoveryTotal,
+      validated,
+      rolled_back: Number(recoveryStats?.rolled_back || 0),
+      awaiting_author: Number(recoveryStats?.awaiting_author || 0)
+    }
+  };
+}
