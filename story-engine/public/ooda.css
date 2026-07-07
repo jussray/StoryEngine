@@ -1,0 +1,111 @@
+.ooda-shell {
+  max-width: 1180px;
+}
+
+.ooda-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.ooda-incident-card {
+  margin-bottom: 14px;
+}
+
+.ooda-incident-card > strong {
+  margin-top: 14px;
+  font-size: 1rem;
+}
+
+.compact-empty {
+  text-align: left;
+  padding: 28px;
+}
+
+.compact-empty h3 {
+  margin-top: 16px;
+}
+
+.correlation-panel {
+  position: sticky;
+  top: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  min-height: 360px;
+}
+
+.timeline-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 20px;
+}
+
+.timeline-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 14px;
+  bottom: 0;
+  width: 1px;
+  background: #3d3d44;
+}
+
+.timeline-dot {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #73737d;
+  border: 3px solid #242428;
+  margin-top: 2px;
+  z-index: 1;
+}
+
+.timeline-incident .timeline-dot {
+  background: #d4a85d;
+}
+
+.timeline-event .timeline-dot {
+  background: #78a8d3;
+}
+
+.timeline-item strong,
+.timeline-item small {
+  display: block;
+}
+
+.timeline-item strong {
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.timeline-item small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  margin-bottom: 7px;
+}
+
+.timeline-item p {
+  color: #c9c9cf;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.timeline-recovery {
+  color: #9fe0bc !important;
+  margin-top: 7px;
+}
+
+@media (max-width: 900px) {
+  .ooda-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .correlation-panel {
+    position: static;
+  }
+}
