@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "commands": [
+    {
+      "command": "> dashboard ooda",
+      "mode": "action",
+      "group": "navigation",
+      "description": "Open the OODA quality dashboard.",
+      "handler": "open_dashboard",
+      "args": ["dashboard_id"],
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": ":open episode <correlation_id>",
+      "mode": "operator",
+      "group": "operations",
+      "description": "Open an incident episode by correlation ID.",
+      "handler": "open_episode",
+      "args": ["correlation_id"],
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": ":show events",
+      "mode": "operator",
+      "group": "operations",
+      "description": "Show the shared NDJSON event feed.",
+      "handler": "show_events",
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": ":emit lindy-event",
+      "mode": "operator",
+      "group": "operations",
+      "description": "Emit a Lindymode event into the shared event feed.",
+      "handler": "emit_lindymode_event",
+      "args": ["event_type", "tenant_id", "reason", "correlation_id"],
+      "emits": ["shell.command_started", "lindymode.state_drift_detected", "shell.command_completed"],
+      "requires_confirmation": true
+    },
+    {
+      "command": "/chapter generate",
+      "mode": "writing",
+      "group": "authoring",
+      "description": "Generate a chapter draft.",
+      "handler": "chapter_generate",
+      "args": ["chapter_id"],
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": "/outline build",
+      "mode": "writing",
+      "group": "authoring",
+      "description": "Build or refresh a project outline.",
+      "handler": "outline_build",
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": "/summary refresh",
+      "mode": "writing",
+      "group": "authoring",
+      "description": "Refresh summaries for the active project.",
+      "handler": "summary_refresh",
+      "emits": ["shell.command_started", "lindymode.summary_refresh_triggered", "shell.command_completed"]
+    },
+    {
+      "command": "/ghost apply <profile_id>",
+      "mode": "writing",
+      "group": "style",
+      "description": "Apply a ghostwriting voice profile.",
+      "handler": "ghost_apply",
+      "args": ["profile_id"],
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": "/caveman rewrite",
+      "mode": "writing",
+      "group": "style",
+      "description": "Rewrite selected text in Caveman mode.",
+      "handler": "caveman_rewrite",
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": "/style chain ghost->caveman <profile_id>",
+      "mode": "writing",
+      "group": "style",
+      "description": "Run a chained Ghost to Caveman style transform.",
+      "handler": "style_chain",
+      "args": ["profile_id"],
+      "pipeline": ["/ghost apply <profile_id>", "/caveman rewrite", "/proofread run"],
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": "/proofread run",
+      "mode": "writing",
+      "group": "review",
+      "description": "Proofread selected or active text.",
+      "handler": "proofread_run",
+      "emits": ["shell.command_started", "shell.command_completed"]
+    },
+    {
+      "command": "/audit continuity",
+      "mode": "writing",
+      "group": "review",
+      "description": "Run a continuity audit.",
+      "handler": "audit_continuity",
+      "emits": ["shell.command_started", "lindymode.state_drift_detected", "shell.command_completed"]
+    },
+    {
+      "command": "? events <tenant_id>",
+      "mode": "query",
+      "group": "inspection",
+      "description": "Query events by tenant.",
+      "handler": "query_events",
+      "args": ["tenant_id"],
+      "emits": ["shell.command_started", "shell.command_completed"]
+    }
+  ]
+}
