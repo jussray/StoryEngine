@@ -4,18 +4,7 @@
   "title": "L99 Shared Event Bus Event",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "event_id",
-    "event_type",
-    "timestamp_utc",
-    "tenant_id",
-    "namespace",
-    "severity",
-    "status",
-    "source_system",
-    "reason"
-  ],
+  "required": ["schema_version", "event_id", "event_type", "timestamp_utc", "tenant_id", "namespace", "severity", "status", "source_system", "reason"],
   "properties": {
     "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
     "event_version": { "type": "integer", "minimum": 1 },
@@ -52,7 +41,20 @@
         "lindymode.recovery_completed",
         "shell.command_started",
         "shell.command_completed",
-        "shell.command_failed"
+        "shell.command_failed",
+        "registry.validation_started",
+        "registry.validation_completed",
+        "registry.validation_failed",
+        "registry.migration_applied",
+        "registry.migration_blocked",
+        "style_chain.started",
+        "style_chain.stage_completed",
+        "style_chain.completed",
+        "style_chain.failed",
+        "rollback.audit_recorded",
+        "anomaly.alert_triggered",
+        "audit.tier_aggregation_completed",
+        "latency.window_computed"
       ]
     },
     "timestamp_utc": { "type": "string", "format": "date-time" },
@@ -82,6 +84,15 @@
     "summary_window": { "type": "string" },
     "token_budget_state": { "type": "string" },
     "recovery_action": { "type": "string" },
+    "registry_schema_version": { "type": "string" },
+    "previous_registry_schema_version": { "type": "string" },
+    "new_registry_schema_version": { "type": "string" },
+    "profile_tier": { "type": "string" },
+    "chain_id": { "type": "string" },
+    "latency_ms": { "type": "number", "minimum": 0 },
+    "l99_latency_ms": { "type": "number", "minimum": 0 },
+    "rollback_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "migration_success_rate": { "type": "number", "minimum": 0, "maximum": 1 },
     "metadata": { "type": "object" }
   }
 }
