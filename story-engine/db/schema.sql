@@ -143,6 +143,28 @@ CREATE TABLE IF NOT EXISTS ooda_risk_snapshots (
   created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS ooda_recovery_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT NOT NULL,
+  incident_id TEXT,
+  strategy TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planned',
+  reversible INTEGER NOT NULL DEFAULT 1,
+  before_json TEXT NOT NULL DEFAULT '{}',
+  after_json TEXT NOT NULL DEFAULT '{}',
+  validation_json TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  completed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS story_genomes (
+  workspace_id TEXT PRIMARY KEY,
+  genome_json TEXT NOT NULL DEFAULT '{}',
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_mode_created ON events(mode, created_at);
@@ -156,3 +178,4 @@ CREATE INDEX IF NOT EXISTS idx_release_audits_workspace ON release_audits(worksp
 CREATE INDEX IF NOT EXISTS idx_ooda_episodes_workspace ON ooda_episodes(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ooda_episodes_trigger ON ooda_episodes(trigger_type, outcome);
 CREATE INDEX IF NOT EXISTS idx_ooda_risk_workspace ON ooda_risk_snapshots(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ooda_recovery_workspace ON ooda_recovery_runs(workspace_id, created_at);
