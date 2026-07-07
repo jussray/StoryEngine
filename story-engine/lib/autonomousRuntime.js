@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { analyzeChapter } from './lindymodeProcessor.js';
-import { evaluateWorkspace, runReleaseAudit } from './decisionEngine.js';
+import { evaluateWorkspace, persistDecision, runReleaseAudit } from './decisionEngine.js';
 import { planRecovery, runRecovery } from './recoveryEngine.js';
 import { predictWorkspaceRisk } from './learningEngine.js';
 import { buildStoryGenome } from './storyGenome.js';
@@ -101,8 +101,9 @@ export function runAutonomousRuntime(db, {
       writeStepEvent(db, workspaceId, correlation, 'lindymode_analysis', 'completed', steps.at(-1).data);
     }
 
-    let decision = evaluateWorkspace(db, workspaceId);
+    let decision = persistDecision(db, evaluateWorkspace(db, workspaceId));
     steps.push(step('ooda_decision', 'completed', {
+      decision_id: decision.decision_id,
       action: decision.action,
       readiness: decision.readiness,
       confidence_score: decision.confidence_score
@@ -146,8 +147,9 @@ export function runAutonomousRuntime(db, {
         writeStepEvent(db, workspaceId, correlation, 'recovery', recovery.status, steps.at(-1).data);
       }
 
-      decision = evaluateWorkspace(db, workspaceId);
+      decision = persistDecision(db, evaluateWorkspace(db, workspaceId));
       steps.push(step('post_recovery_decision', 'completed', {
+        decision_id: decision.decision_id,
         action: decision.action,
         readiness: decision.readiness,
         confidence_score: decision.confidence_score
