@@ -17,6 +17,7 @@ import chapterRoutes from './routes/chapters.js';
 import movieRoutes from './routes/movie.js';
 import eventsRoutes from './routes/events.js';
 import lindymodeRoutes from './routes/lindymode.js';
+import oodaRoutes from './routes/ooda.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -36,6 +37,7 @@ chapterRoutes(router, db);
 movieRoutes(router, db);
 eventsRoutes(router, db);
 lindymodeRoutes(router, db);
+oodaRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -85,14 +87,13 @@ const server = createServer((req, res) => {
   }
 });
 
-startOODALoop(db, 30_000, (incidents) => {
-  if (!incidents.length) return;
-  console.log('[OODA] Active incidents:', JSON.stringify(incidents, null, 2));
+startOODALoop(db, 30_000, incidents => {
+  console.log(`[OODA] Active incidents: ${incidents.length}`);
   broadcastIncidents(incidents);
 });
 
 server.listen(PORT, () => {
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
   console.log('OODA SSE: GET /api/ooda/incidents for live incidents.');
-  console.log('Lindymode API registered.');
+  console.log('Lindymode and unified OODA APIs registered.');
 });
