@@ -1,6 +1,5 @@
 // lib/oodaProcessor.js
-// OODA loop: reads events table, computes p50/p95/p99 latency + rollback rate
-// per workspace/mode over a rolling window.
+// OODA loop: combines runtime metrics with active Lindymode incidents.
 
 function percentile(sorted, p) {
   if (!sorted.length) return 0;
@@ -10,7 +9,6 @@ function percentile(sorted, p) {
 
 export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
   const since = Date.now() - windowMs;
-
   const rows = db.prepare(`
     SELECT workspace_id, mode, event_type, duration_ms, rollback
     FROM events
@@ -27,7 +25,7 @@ export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
         mode: row.mode,
         durations: [],
         rollbacks: 0,
-        total: 0,
+        total: 0
       };
     }
     groups[key].total++;
@@ -35,41 +33,101 @@ export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
     if (row.rollback) groups[key].rollbacks++;
   }
 
-  return Object.values(groups).map(g => {
-    const sorted = [...g.durations].sort((a, b) => a - b);
+  return Object.values(groups).map(group => {
+    const sorted = [...group.durations].sort((a, b) => a - b);
     return {
-      workspace_id: g.workspace_id,
-      mode: g.mode,
-      total_events: g.total,
+      workspace_id: group.workspace_id,
+      mode: group.mode,
+      total_events: group.total,
       p50: percentile(sorted, 50),
       p95: percentile(sorted, 95),
       p99: percentile(sorted, 99),
-      rollback_rate: g.total > 0 ? g.rollbacks / g.total : 0,
+      rollback_rate: group.total > 0 ? group.rollbacks / group.total : 0
     };
   });
 }
 
-export function detectIncidents(metrics, thresholds = { p99: 1000, rollback_rate: 0.02 }) {
+export function detectMetricIncidents(metrics, thresholds = { p99: 1000, rollback_rate: 0.02 }) {
   return metrics
-    .filter(m => m.p99 > thresholds.p99 || m.rollback_rate > thresholds.rollback_rate)
-    .map(m => ({
-      workspace_id: m.workspace_id,
-      mode: m.mode,
-      severity: m.p99 > 2000 || m.rollback_rate > 0.05 ? 'critical' : 'warning',
-      summary: `p99=${m.p99}ms rollback_rate=${(m.rollback_rate * 100).toFixed(1)}%`,
-      metrics: m,
+    .filter(metric => metric.p99 > thresholds.p99 || metric.rollback_rate > thresholds.rollback_rate)
+    .map(metric => ({
+      incident_id: `ooda_metric:${metric.workspace_id}:${metric.mode || 'unknown'}`,
+      correlation_id: null,
+      source: 'runtime',
+      workspace_id: metric.workspace_id,
+      mode: metric.mode,
+      severity: metric.p99 > 2000 || metric.rollback_rate > 0.05 ? 'critical' : 'warning',
+      summary: `p99=${metric.p99}ms rollback_rate=${(metric.rollback_rate * 100).toFixed(1)}%`,
+      status: 'active',
+      created_at: Date.now(),
+      metrics: metric
     }));
+}
+
+export function getLindymodeIncidents(db, limit = 200) {
+  return db.prepare(`
+    SELECT
+      incident_id,
+      correlation_id,
+      parent_event_id,
+      workspace_id,
+      chapter_id,
+      event_type,
+      severity,
+      status,
+      reason,
+      drift_score,
+      details_json,
+      recovery_action,
+      created_at,
+      resolved_at
+    FROM lindymode_incidents
+    WHERE status = 'active'
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(limit).map(row => ({
+    incident_id: row.incident_id,
+    correlation_id: row.correlation_id,
+    parent_event_id: row.parent_event_id,
+    source: 'lindymode',
+    workspace_id: row.workspace_id,
+    chapter_id: row.chapter_id,
+    mode: 'lindymode',
+    event_type: row.event_type,
+    severity: row.severity === 'sev3' ? 'critical' : row.severity === 'sev2' ? 'warning' : 'watch',
+    summary: row.reason,
+    status: row.status,
+    drift_score: row.drift_score,
+    details: JSON.parse(row.details_json || '{}'),
+    recovery_action: row.recovery_action,
+    created_at: row.created_at,
+    resolved_at: row.resolved_at,
+    metrics: null
+  }));
+}
+
+export function collectActiveIncidents(db, thresholds) {
+  const metricIncidents = detectMetricIncidents(computeMetrics(db), thresholds);
+  const lindymodeIncidents = getLindymodeIncidents(db);
+  return [...lindymodeIncidents, ...metricIncidents].sort((a, b) => {
+    const rank = { critical: 3, warning: 2, watch: 1 };
+    const severityDelta = (rank[b.severity] || 0) - (rank[a.severity] || 0);
+    return severityDelta || Number(b.created_at || 0) - Number(a.created_at || 0);
+  });
 }
 
 export function startOODALoop(
   db,
   intervalMs = 30_000,
-  onIncidents = (incidents) => console.log('[OODA] Incidents:', incidents)
+  onIncidents = incidents => console.log('[OODA] Incidents:', incidents)
 ) {
   console.log(`[OODA] Loop started — window: 15min, interval: ${intervalMs / 1000}s`);
-  setInterval(() => {
-    const metrics = computeMetrics(db);
-    const incidents = detectIncidents(metrics);
-    if (incidents.length) onIncidents(incidents);
-  }, intervalMs);
+
+  const run = () => {
+    const incidents = collectActiveIncidents(db);
+    onIncidents(incidents);
+  };
+
+  run();
+  return setInterval(run, intervalMs);
 }
