@@ -16,7 +16,18 @@ export function get(db, workspace_id) {
 }
 
 export function list(db) {
-  return db.prepare('SELECT * FROM stories ORDER BY created_at DESC').all();
+  return db.prepare(`
+    SELECT
+      s.*,
+      (SELECT COUNT(*) FROM chapters c WHERE c.workspace_id = s.workspace_id) AS chapter_count,
+      (SELECT COUNT(*) FROM lindymode_incidents li
+        WHERE li.workspace_id = s.workspace_id AND li.status = 'active') AS active_incident_count,
+      (SELECT MAX(li.severity) FROM lindymode_incidents li
+        WHERE li.workspace_id = s.workspace_id AND li.status = 'active') AS highest_severity,
+      (SELECT MAX(e.created_at) FROM events e WHERE e.workspace_id = s.workspace_id) AS last_activity_at
+    FROM stories s
+    ORDER BY COALESCE(last_activity_at, s.updated_at, s.created_at) DESC
+  `).all();
 }
 
 export function update(db, workspace_id, fields) {
