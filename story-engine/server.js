@@ -10,6 +10,7 @@ import { dirname } from 'node:path';
 import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
+import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 
 import storyRoutes from './routes/story.js';
 import outlineRoutes from './routes/outline.js';
@@ -23,6 +24,7 @@ import decisionRoutes from './routes/decision.js';
 import learningRoutes from './routes/learning.js';
 import recoveryRoutes from './routes/recovery.js';
 import runtimeRoutes from './routes/runtime.js';
+import missionControlRoutes from './routes/missionControl.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -48,6 +50,7 @@ decisionRoutes(router, db);
 learningRoutes(router, db);
 recoveryRoutes(router, db);
 runtimeRoutes(router, db);
+missionControlRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -102,8 +105,13 @@ startOODALoop(db, 30_000, incidents => {
   broadcastIncidents(incidents);
 });
 
+startRuntimeScheduler(db, {
+  scanIntervalMs: Number(process.env.RUNTIME_SCAN_INTERVAL_MS || 300000),
+  drainIntervalMs: Number(process.env.RUNTIME_DRAIN_INTERVAL_MS || 15000)
+});
+
 server.listen(PORT, () => {
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
   console.log('OODA SSE: GET /api/ooda/incidents for live incidents.');
-  console.log('Autonomous L99 runtime orchestration registered.');
+  console.log('Mission Control and autonomous runtime scheduler registered.');
 });
