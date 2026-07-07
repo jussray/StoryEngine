@@ -16,6 +16,7 @@ import outlineRoutes from './routes/outline.js';
 import chapterRoutes from './routes/chapters.js';
 import movieRoutes from './routes/movie.js';
 import eventsRoutes from './routes/events.js';
+import lindymodeRoutes from './routes/lindymode.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -34,6 +35,7 @@ outlineRoutes(router, db);
 chapterRoutes(router, db);
 movieRoutes(router, db);
 eventsRoutes(router, db);
+lindymodeRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -45,9 +47,7 @@ function sendSse(res, name, data) {
 
 function broadcastIncidents(incidents) {
   latestIncidents = incidents;
-  for (const res of oodaClients) {
-    sendSse(res, 'incidents', incidents);
-  }
+  for (const res of oodaClients) sendSse(res, 'incidents', incidents);
 }
 
 const server = createServer((req, res) => {
@@ -59,14 +59,10 @@ const server = createServer((req, res) => {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive'
     });
-
     sendSse(res, 'heartbeat', { t: Date.now() });
     sendSse(res, 'incidents', latestIncidents);
-
     oodaClients.add(res);
-    req.on('close', () => {
-      oodaClients.delete(res);
-    });
+    req.on('close', () => oodaClients.delete(res));
     return;
   }
 
@@ -98,5 +94,5 @@ startOODALoop(db, 30_000, (incidents) => {
 server.listen(PORT, () => {
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
   console.log('OODA SSE: GET /api/ooda/incidents for live incidents.');
-  console.log('No npm install needed. Node 22.5+ required.');
+  console.log('Lindymode API registered.');
 });
