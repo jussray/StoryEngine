@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autonomous Runtime — L99</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/ooda.css">
+</head>
+<body>
+  <main class="container ooda-shell">
+    <nav class="back"><a href="/front_door.html">← Front Door</a></nav>
+    <header class="section-heading-row writing-header">
+      <div>
+        <p class="eyebrow">L99 Runtime</p>
+        <h1>Autonomous Ledger</h1>
+        <p class="subtitle">One correlation chain from workspace change through release readiness.</p>
+      </div>
+    </header>
+
+    <section class="beat-card">
+      <div class="row">
+        <input id="workspaceId" placeholder="workspace_id">
+        <button id="loadRuns" type="button">Load Runs</button>
+        <button id="runNow" class="quiet-button" type="button">Run Now</button>
+      </div>
+      <p id="status" class="subtitle">Open from a workspace or enter its ID.</p>
+    </section>
+
+    <section class="ooda-layout">
+      <div>
+        <div class="section-heading-row">
+          <div>
+            <p class="eyebrow">History</p>
+            <h2>Runtime Runs</h2>
+          </div>
+        </div>
+        <div id="runList"><p class="subtitle">No runtime loaded.</p></div>
+      </div>
+
+      <aside class="correlation-panel">
+        <p class="eyebrow">Correlation Chain</p>
+        <h2 id="runTitle">Select a run</h2>
+        <p id="runSummary" class="subtitle">The ordered runtime steps will appear here.</p>
+        <div id="stepList"></div>
+      </aside>
+    </section>
+  </main>
+  <script src="/runtime_dashboard.js"></script>
+</body>
+</html>
