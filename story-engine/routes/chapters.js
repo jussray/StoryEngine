@@ -2,16 +2,16 @@
 import { json } from '../lib/miniRouter.js';
 import * as Chapter from '../models/chapterModel.js';
 import { log } from '../models/eventModel.js';
-import { runAutonomousRuntime } from '../lib/autonomousRuntime.js';
+import { enqueueRuntime } from '../lib/runtimeDispatcher.js';
 
-function summarizeRuntime(runtime) {
-  return {
-    run_id: runtime.run_id,
-    correlation_id: runtime.correlation_id,
-    status: runtime.status,
-    release: runtime.result?.release || null,
-    prediction: runtime.result?.prediction || null
-  };
+function dispatchSummary(dispatch) {
+  return dispatch ? {
+    dispatch_id: dispatch.dispatch_id,
+    status: dispatch.status,
+    deduplicated: Boolean(dispatch.deduplicated),
+    trigger_type: dispatch.trigger_type,
+    chapter_id: dispatch.chapter_id ?? null
+  } : null;
 }
 
 export default function chapterRoutes(router, db) {
@@ -33,17 +33,13 @@ export default function chapterRoutes(router, db) {
       duration_ms: Date.now() - startedAt
     });
 
-    const chapter = Chapter.get(db, Number(id));
-    const runtime = runAutonomousRuntime(db, {
-      workspaceId: workspace_id,
-      chapter,
-      triggerType: 'chapter_created'
-    });
-
-    json(res, 201, {
+    const dispatch = enqueueRuntime(db, workspace_id, 'chapter_created', Number(id));
+    json(res, 202, {
       id,
-      lindymode: runtime.result?.analysis || { incidents: [] },
-      runtime: summarizeRuntime(runtime)
+      ok: true,
+      queued: true,
+      dispatch: dispatchSummary(dispatch),
+      lindymode: { queued: true, incidents: [] }
     });
   });
 
@@ -61,17 +57,12 @@ export default function chapterRoutes(router, db) {
       duration_ms: Date.now() - startedAt
     });
 
-    const updated = Chapter.get(db, id);
-    const runtime = runAutonomousRuntime(db, {
-      workspaceId: chapter.workspace_id,
-      chapter: updated,
-      triggerType: 'chapter_updated'
-    });
-
-    json(res, 200, {
+    const dispatch = enqueueRuntime(db, chapter.workspace_id, 'chapter_updated', id);
+    json(res, 202, {
       ok: true,
-      lindymode: runtime.result?.analysis || { incidents: [] },
-      runtime: summarizeRuntime(runtime)
+      queued: true,
+      dispatch: dispatchSummary(dispatch),
+      lindymode: { queued: true, incidents: [] }
     });
   });
 }
