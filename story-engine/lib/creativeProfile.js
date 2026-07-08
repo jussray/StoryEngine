@@ -2,6 +2,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { log } from '../models/eventModel.js';
+import { resolveAudienceLens } from './audienceLens.js';
+import { getChildrenBookProfile, childrenBookInstruction } from './childrenBookProfile.js';
 
 const MEDIUMS = new Set(['book', 'picture_book', 'movie', 'tv', 'song', 'short_clip', 'comic', 'game', 'play', 'podcast', 'series']);
 const AUDIENCES = new Set(['baby', 'child', 'eli5', 'eli10', 'middle_grade', 'teen', 'young_adult', 'adult', 'expert']);
@@ -100,10 +102,20 @@ export function resolveCreativeProfile(input = {}) {
   const eliLevel = text(input.eli_level, audience.startsWith('eli') ? audience : '');
   const audienceRules = AUDIENCE_RULES[audience];
   const mediumRules = MEDIUM_RULES[medium] || MEDIUM_RULES.book;
+  const audienceLens = resolveAudienceLens(audience);
+  const childrenBookProfile = getChildrenBookProfile(audience, medium);
   const constraints = array(input.constraints);
   const outputs = array(input.outputs).length ? array(input.outputs) : [medium];
-  const tone = text(input.tone, audience === 'baby' || audience === 'child' ? 'gentle' : 'engaging');
+  const tone = text(input.tone, ['baby', 'child', 'eli5'].includes(audience) ? 'gentle' : 'engaging');
   const genre = text(input.genre, storyKind === 'other' ? 'general' : storyKind);
+  const profileInstructions = [
+    `Tell this story: ${storyVision}`,
+    `Build it as a ${storyKind} ${medium} for ${audience}.`,
+    `Make the audience feel ${emotionalEffect}.`,
+    `Use ${audienceRules.vocabulary} vocabulary, ${audienceRules.sentence_style} sentences, a ${tone} tone, and optimize to ${goal}.`,
+    audienceLens.instruction,
+    childrenBookInstruction(childrenBookProfile)
+  ].filter(Boolean).join(' ');
 
   return {
     story_vision: storyVision,
@@ -126,10 +138,13 @@ export function resolveCreativeProfile(input = {}) {
       tone,
       genre,
       goal,
+      audience_lens: audienceLens.active ? audienceLens : null,
+      children_book_profile: childrenBookProfile,
+      process_requirements: childrenBookProfile?.process_requirements || null,
       require_human_decision: true,
       redteam_pre_runtime: true,
       redteam_pre_release: true,
-      profile_instruction: `Tell this story: ${storyVision} Build it as a ${storyKind} ${medium} for ${audience}. Make the audience feel ${emotionalEffect}. Use ${audienceRules.vocabulary} vocabulary, ${audienceRules.sentence_style} sentences, a ${tone} tone, and optimize to ${goal}.`
+      profile_instruction: profileInstructions
     }
   };
 }
@@ -206,6 +221,7 @@ export function upsertCreativeProfile(db, workspaceId, input = {}) {
       medium: profile.medium,
       audience: profile.audience,
       eli_level: profile.eli_level,
+      children_book_profile: Boolean(profile.resolved_rules.children_book_profile),
       outputs: profile.outputs,
       version: profile.version
     }
