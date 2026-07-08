@@ -164,6 +164,18 @@ export function patchMemoryFromChapter(db, workspaceId, chapterId, chapterText, 
   const rows = [];
 
   const apply = db.transaction(() => {
+    const already = db.prepare(`
+      SELECT id
+      FROM memory_diffs
+      WHERE workspace_id = ?
+        AND chapter_id = ?
+        AND field = 'content_hash'
+        AND new_value = ?
+      LIMIT 1
+    `).get(workspaceId, chapterId, hash);
+
+    if (already) return;
+
     rows.push(recordMemoryDiff(db, {
       workspace_id: workspaceId,
       chapter_id: chapterId,
@@ -174,6 +186,7 @@ export function patchMemoryFromChapter(db, workspaceId, chapterId, chapterText, 
       conflict: false,
       source: 'chapter_save'
     }));
+
     for (const patch of changes) {
       rows.push(recordMemoryDiff(db, {
         ...patch,
@@ -183,6 +196,7 @@ export function patchMemoryFromChapter(db, workspaceId, chapterId, chapterText, 
       }));
     }
   });
+
   apply();
   return rows;
 }
