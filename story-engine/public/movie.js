@@ -25,7 +25,7 @@ async function loadBeats() {
       await fetch(`/api/movie/beats/${btn.dataset.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logline, workspace_id }),
+        body: JSON.stringify({ logline, workspace_id })
       });
       btn.textContent = 'Saved ✓';
       setTimeout(() => (btn.textContent = 'Save beat'), 1500);
@@ -34,8 +34,36 @@ async function loadBeats() {
 }
 
 document.getElementById('generateBtn').addEventListener('click', async () => {
-  await fetch(`/api/movie/beats/generate/${workspace_id}`, { method: 'POST' });
-  loadBeats();
+  const button = document.getElementById('generateBtn');
+  const container = document.getElementById('beats');
+  button.disabled = true;
+  button.textContent = 'Checking Release Gate…';
+
+  try {
+    const response = await fetch(`/api/movie/beats/generate/${workspace_id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allow_warning: true })
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const blockers = result.gate?.blockers || [];
+      container.innerHTML = `
+        <div class="beat-card">
+          <strong>Release Gate blocked Movie Mode</strong>
+          <p>${result.error || 'Workspace is not ready.'}</p>
+          ${blockers.length ? `<ul>${blockers.map(item => `<li>${item}</li>`).join('')}</ul>` : ''}
+          <a href="/decision_dashboard.html?workspace_id=${encodeURIComponent(workspace_id)}">Open OODA Decision</a>
+        </div>`;
+      return;
+    }
+
+    await loadBeats();
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate from chapters';
+  }
 });
 
 loadBeats();
