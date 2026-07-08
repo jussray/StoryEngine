@@ -2,6 +2,7 @@
 
 import { collectActiveIncidents, computeMetrics } from './oodaProcessor.js';
 import { listDispatchQueue } from './runtimeDispatcher.js';
+import { getRetentionStatus } from './eventRetention.js';
 
 function safeJson(value, fallback = {}) {
   try {
@@ -79,6 +80,7 @@ export function getMissionControlSnapshot(db) {
   const metrics = computeMetrics(db);
   const incidents = collectActiveIncidents(db);
   const queue = listDispatchQueue(db, 100);
+  const retention = getRetentionStatus(db);
 
   const workspaces = stories.map(story => {
     const run = runsByWorkspace.get(story.workspace_id);
@@ -111,12 +113,15 @@ export function getMissionControlSnapshot(db) {
       running_dispatches: queue.filter(item => item.status === 'running').length,
       runtime_runs: Number(runtimeStats?.total || 0),
       runtime_failures: Number(runtimeStats?.failed || 0),
-      recovery_success_rate: recoveryTotal ? validated / recoveryTotal : null
+      recovery_success_rate: recoveryTotal ? validated / recoveryTotal : null,
+      live_event_count: retention.live_event_count,
+      compacted_episode_count: retention.compacted_episode_count
     },
     workspaces,
     incidents,
     metrics,
     queue: queue.slice(0, 25),
+    retention,
     recovery: {
       total: recoveryTotal,
       validated,
