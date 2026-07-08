@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
+import { storyEngineBrainSnapshot } from '../lib/storyEngineOrchestrator.js';
 import {
   OPERATOR_PROFILE_OPTIONS,
   getOperatorSummary,
@@ -20,9 +21,7 @@ function safeJson(value, fallback = []) {
 }
 
 function tableExists(db, tableName) {
-  return Boolean(db.prepare(`
-    SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1
-  `).get(tableName));
+  return Boolean(db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1`).get(tableName));
 }
 
 function storyMemorySignals(db) {
@@ -43,10 +42,7 @@ function engineMemorySignals(db, now = Date.now()) {
     return { engine_drift_count: 0, lessons_today: 0, repeated_mistake_count: 0, recent_lessons: [], confidence_trend: [] };
   }
   const since = now - DAY_MS;
-  const drift = db.prepare(`
-    SELECT COUNT(*) AS count FROM engine_memory_episodes
-    WHERE repeated_mistake=1 AND created_at>=?
-  `).get(since);
+  const drift = db.prepare(`SELECT COUNT(*) AS count FROM engine_memory_episodes WHERE repeated_mistake=1 AND created_at>=?`).get(since);
   const rows = db.prepare(`
     SELECT episode_id, workspace_id, chapter_id, lessons_json,
            repeated_mistake, confidence_before, confidence_after,
@@ -55,9 +51,7 @@ function engineMemorySignals(db, now = Date.now()) {
     WHERE created_at>=?
     ORDER BY created_at DESC LIMIT 25
   `).all(since);
-  const recentLessons = rows
-    .map(row => ({ ...row, lessons: safeJson(row.lessons_json, []) }))
-    .filter(row => row.lessons.length > 0);
+  const recentLessons = rows.map(row => ({ ...row, lessons: safeJson(row.lessons_json, []) })).filter(row => row.lessons.length > 0);
   const trend = db.prepare(`
     SELECT episode_id, workspace_id, chapter_id, confidence_before,
            confidence_after, gate_result, user_accepted, created_at
@@ -74,14 +68,16 @@ function engineMemorySignals(db, now = Date.now()) {
   };
 }
 
-function pipelineHealth(snapshot, memory) {
+function pipelineHealth(snapshot, memory, brain) {
   const running = Number(snapshot.overview?.running_dispatches || 0);
   const failed = Number(snapshot.overview?.runtime_failures || 0);
   const gateBlocked = Number(snapshot.overview?.release_gate_blocked_count || 0);
   return [
+    { key: 'story_engine', label: 'Story Engine', status: brain.active_count ? 'running' : 'ok' },
+    { key: 'ghost', label: 'Ghost', status: brain.current?.current_stage === 'ghost' ? 'running' : 'ok' },
     { key: 'lindymode', label: 'Lindymode', status: snapshot.incidents?.length ? 'watch' : 'ok' },
     { key: 'ooda', label: 'OODA Loop', status: 'running' },
-    { key: 'redteam', label: 'Redteam', status: 'planned' },
+    { key: 'redteam', label: 'Redteam', status: brain.current?.current_stage?.startsWith('redteam') ? 'running' : 'ok' },
     { key: 'runtime', label: 'Runtime', status: failed ? 'error' : running ? 'running' : 'ok' },
     { key: 'release_gate', label: 'Release Gate', status: gateBlocked ? 'blocked' : 'ok' },
     { key: 'story_memory', label: 'Story Memory', status: memory.story_drift_count ? 'watch' : 'ok' },
@@ -94,13 +90,15 @@ export function buildControlRoomOverview(db, now = Date.now()) {
   const memory = { ...storyMemorySignals(db), ...engineMemorySignals(db, now) };
   const operator = getOperatorSummary(db, now);
   const operatorAlerts = getOperatorAlerts(db, snapshot.overview || {});
+  const brain = storyEngineBrainSnapshot(db);
   return {
     ...snapshot,
     control_room_generated_at: now,
     memory,
     operator,
     operator_alerts: operatorAlerts,
-    pipeline_health: pipelineHealth(snapshot, memory)
+    story_engine_brain: brain,
+    pipeline_health: pipelineHealth(snapshot, memory, brain)
   };
 }
 
@@ -119,28 +117,19 @@ export function resolveControlRoomIncident(db, input = {}) {
       const diff = db.prepare('SELECT workspace_id FROM memory_diffs WHERE id=?').get(diffId);
       if (!diff) throw new Error('Memory diff not found.');
       workspaceId = diff.workspace_id;
-      diffChanges = Number(db.prepare(`
-        UPDATE memory_diffs SET resolved=1, resolution=?, resolved_at=?
-        WHERE id=? AND resolved=0
-      `).run(resolution, now, diffId).changes || 0);
+      diffChanges = Number(db.prepare(`UPDATE memory_diffs SET resolved=1, resolution=?, resolved_at=? WHERE id=? AND resolved=0`).run(resolution, now, diffId).changes || 0);
     }
     if (incidentId) {
       const incident = db.prepare('SELECT workspace_id FROM lindymode_incidents WHERE incident_id=?').get(incidentId);
       if (!incident) throw new Error('Lindymode incident not found.');
       workspaceId = incident.workspace_id;
       incidentChanges = Number(db.prepare(`
-        UPDATE lindymode_incidents
-        SET status='resolved', recovery_action=?, resolved_at=?
+        UPDATE lindymode_incidents SET status='resolved', recovery_action=?, resolved_at=?
         WHERE incident_id=? AND status='active'
       `).run(`operator:${resolution}`, now, incidentId).changes || 0);
     }
   })();
-  log(db, {
-    workspace_id: workspaceId,
-    mode: 'control_room',
-    event_type: 'control_room.incident_resolved',
-    payload: { incident_id: incidentId || null, diff_id: diffId || null, resolution }
-  });
+  log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.incident_resolved', payload: { incident_id: incidentId || null, diff_id: diffId || null, resolution } });
   return { ok: true, incident_id: incidentId || null, diff_id: diffId || null, resolved: diffChanges + incidentChanges, resolution, resolved_at: now };
 }
 
@@ -154,85 +143,36 @@ export function forceControlRoomGatePass(db, input = {}) {
   const now = Date.now();
   const checks = [{ check: 'operator_override', passed: true, chapter_id: input.chapter_id ?? null, note: operatorNote }];
   db.prepare(`
-    INSERT INTO release_audits (
-      audit_id, workspace_id, result, confidence_score, checks_json, blockers_json, created_at
-    ) VALUES (?, ?, 'OPERATOR_OVERRIDE', 100, ?, '[]', ?)
+    INSERT INTO release_audits (audit_id, workspace_id, result, confidence_score, checks_json, blockers_json, created_at)
+    VALUES (?, ?, 'OPERATOR_OVERRIDE', 100, ?, '[]', ?)
   `).run(auditId, workspaceId, JSON.stringify(checks), now);
-  log(db, {
-    workspace_id: workspaceId,
-    mode: 'control_room',
-    event_type: 'control_room.gate_overridden',
-    payload: { audit_id: auditId, chapter_id: input.chapter_id ?? null, operator_note: operatorNote }
-  });
+  log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.gate_overridden', payload: { audit_id: auditId, chapter_id: input.chapter_id ?? null, operator_note: operatorNote } });
   return { ok: true, audit_id: auditId, workspace_id: workspaceId, chapter_id: input.chapter_id ?? null, result: 'OPERATOR_OVERRIDE', created_at: now };
 }
 
 function registerOperatorRoutes(router, db, basePath) {
   router.get(`${basePath}/options`, (req, res) => json(res, 200, OPERATOR_PROFILE_OPTIONS));
-  router.get(basePath, (req, res) => {
-    try { json(res, 200, getOperatorSummary(db)); }
-    catch (error) { json(res, 500, { error: error.message }); }
-  });
-  router.put(basePath, (req, res) => {
-    try {
-      const profile = updateOperatorProfile(db, req.body || {});
-      json(res, 200, { profile, summary: getOperatorSummary(db) });
-    } catch (error) { json(res, 400, { error: error.message }); }
-  });
-  router.post(`${basePath}/event`, (req, res) => {
-    try {
-      const event = recordOperatorEvent(db, req.body || {});
-      json(res, 201, { event, summary: getOperatorSummary(db) });
-    } catch (error) { json(res, 400, { error: error.message }); }
-  });
-  router.post(`${basePath}/evaluate-cost`, (req, res) => {
-    try { json(res, 200, evaluateOperatorConstraint(db, req.body || {})); }
-    catch (error) { json(res, 400, { error: error.message }); }
-  });
-  router.get(`${basePath}/alerts`, (req, res) => {
-    try {
-      const snapshot = getMissionControlSnapshot(db);
-      json(res, 200, getOperatorAlerts(db, snapshot.overview || {}));
-    } catch (error) { json(res, 500, { error: error.message }); }
-  });
+  router.get(basePath, (req, res) => { try { json(res, 200, getOperatorSummary(db)); } catch (error) { json(res, 500, { error: error.message }); } });
+  router.put(basePath, (req, res) => { try { const profile = updateOperatorProfile(db, req.body || {}); json(res, 200, { profile, summary: getOperatorSummary(db) }); } catch (error) { json(res, 400, { error: error.message }); } });
+  router.post(`${basePath}/event`, (req, res) => { try { const event = recordOperatorEvent(db, req.body || {}); json(res, 201, { event, summary: getOperatorSummary(db) }); } catch (error) { json(res, 400, { error: error.message }); } });
+  router.post(`${basePath}/evaluate-cost`, (req, res) => { try { json(res, 200, evaluateOperatorConstraint(db, req.body || {})); } catch (error) { json(res, 400, { error: error.message }); } });
+  router.get(`${basePath}/alerts`, (req, res) => { try { const snapshot = getMissionControlSnapshot(db); json(res, 200, getOperatorAlerts(db, snapshot.overview || {})); } catch (error) { json(res, 500, { error: error.message }); } });
 }
 
 export default function controlRoomRoutes(router, db) {
-  router.get('/api/control-room/overview', (req, res) => {
-    try { json(res, 200, buildControlRoomOverview(db)); }
-    catch (error) { json(res, 500, { error: error.message }); }
-  });
-
+  router.get('/api/control-room/overview', (req, res) => { try { json(res, 200, buildControlRoomOverview(db)); } catch (error) { json(res, 500, { error: error.message }); } });
   registerOperatorRoutes(router, db, '/api/control-room/operator');
   registerOperatorRoutes(router, db, '/api/control-room/founder');
-
   router.get('/api/control-room/stream', (req, res) => {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive'
-    });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     const send = () => {
-      try {
-        res.write('event: snapshot\n');
-        res.write(`data: ${JSON.stringify(buildControlRoomOverview(db))}\n\n`);
-      } catch (error) {
-        res.write('event: error\n');
-        res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-      }
+      try { res.write('event: snapshot\n'); res.write(`data: ${JSON.stringify(buildControlRoomOverview(db))}\n\n`); }
+      catch (error) { res.write('event: error\n'); res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`); }
     };
     send();
     const interval = setInterval(send, 30_000);
     req.on('close', () => clearInterval(interval));
   });
-
-  router.post('/api/control-room/resolve-incident', (req, res) => {
-    try { json(res, 200, resolveControlRoomIncident(db, req.body)); }
-    catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
-  });
-
-  router.post('/api/control-room/force-gate-pass', (req, res) => {
-    try { json(res, 201, forceControlRoomGatePass(db, req.body)); }
-    catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
-  });
+  router.post('/api/control-room/resolve-incident', (req, res) => { try { json(res, 200, resolveControlRoomIncident(db, req.body)); } catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); } });
+  router.post('/api/control-room/force-gate-pass', (req, res) => { try { json(res, 201, forceControlRoomGatePass(db, req.body)); } catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); } });
 }
