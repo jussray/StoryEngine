@@ -1,0 +1,34 @@
+name: L99 Story Engine CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'story-engine/**'
+      - '.github/workflows/l99-story-engine.yml'
+  pull_request:
+    paths:
+      - 'story-engine/**'
+      - '.github/workflows/l99-story-engine.yml'
+
+jobs:
+  test:
+    name: Node tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Show Node version
+        run: node --version
+
+      - name: Run L99 integration tests
+        working-directory: story-engine
+        run: npm test
