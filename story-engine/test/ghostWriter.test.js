@@ -16,10 +16,20 @@ test('Ghost builds a voice fingerprint from creative profile and intent', () => 
 });
 
 test('Ghost humanize pass strips common AI-signaling phrases', () => {
-  const text = ghostHumanizePass('Furthermore, the child learned. In conclusion, the garden was a tapestry of wonder.');
+  const text = ghostHumanizePass('Furthermore, the child learned. In conclusion, the garden was a tapestry of wonder. Needless to say, it was a beacon that underscores the journey.');
   assert.doesNotMatch(text, /Furthermore/i);
   assert.doesNotMatch(text, /In conclusion/i);
   assert.doesNotMatch(text, /tapestry/i);
+  assert.doesNotMatch(text, /Needless to say/i);
+  assert.doesNotMatch(text, /beacon/i);
+  assert.doesNotMatch(text, /underscores/i);
+  assert.doesNotMatch(text, /journey/i);
+});
+
+test('Ghost humanize pass does not inject fixed cadence fragments', () => {
+  const text = ghostHumanizePass('The cat sat. The dog ran. The sun rose.');
+  assert.doesNotMatch(text, /For a second, nothing moved/);
+  assert.doesNotMatch(text, /Then—quietly—it changed/);
 });
 
 test('Ghost commands expose draft, humanize, suggest, and rewrite', () => {
