@@ -4,6 +4,7 @@ import { collectActiveIncidents, computeMetrics } from './oodaProcessor.js';
 import { listDispatchQueue } from './runtimeDispatcher.js';
 import { getRetentionStatus } from './eventRetention.js';
 import { evaluateReleaseGate } from './releaseGate.js';
+import { latestReleaseAttempt } from './releaseAttempts.js';
 
 function safeJson(value, fallback = {}) {
   try {
@@ -67,6 +68,16 @@ export function getMissionControlSnapshot(db) {
     FROM autonomous_runtime_runs
   `).get();
 
+  const attemptStats = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+      SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running
+    FROM release_attempts
+  `).get();
+
   const metrics = computeMetrics(db);
   const incidents = collectActiveIncidents(db);
   const queue = listDispatchQueue(db, 100);
@@ -77,6 +88,7 @@ export function getMissionControlSnapshot(db) {
     const risk = risksByWorkspace.get(story.workspace_id);
     const runResult = safeJson(run?.result_json, {});
     const gate = evaluateReleaseGate(db, story.workspace_id);
+    const attempt = latestReleaseAttempt(db, story.workspace_id);
     return {
       workspace_id: story.workspace_id,
       title: story.title,
@@ -88,7 +100,16 @@ export function getMissionControlSnapshot(db) {
       release_gate_status: gate?.status || 'UNKNOWN',
       release_gate_reasons: gate?.reasons || [],
       confidence_score: Number(gate?.confidence || runResult.decision?.confidence_score || 0),
-      predicted_risk: risk?.predicted_risk || runResult.prediction?.predicted_risk || 'UNKNOWN'
+      predicted_risk: risk?.predicted_risk || runResult.prediction?.predicted_risk || 'UNKNOWN',
+      latest_release_attempt: attempt ? {
+        attempt_id: attempt.attempt_id,
+        operation: attempt.operation,
+        status: attempt.status,
+        gate_status: attempt.gate_status,
+        created_at: attempt.created_at,
+        completed_at: attempt.completed_at,
+        error: attempt.error
+      } : null
     };
   });
 
@@ -113,13 +134,24 @@ export function getMissionControlSnapshot(db) {
       compacted_episode_count: retention.compacted_episode_count,
       release_gate_ready: gateCounts.READY || 0,
       release_gate_warning: gateCounts.WARNING || 0,
-      release_gate_blocked_count: gateCounts.BLOCKED || 0
+      release_gate_blocked_count: gateCounts.BLOCKED || 0,
+      release_attempts_total: Number(attemptStats?.total || 0),
+      release_attempts_running: Number(attemptStats?.running || 0),
+      release_attempts_blocked: Number(attemptStats?.blocked || 0),
+      release_attempts_failed: Number(attemptStats?.failed || 0)
     },
     workspaces,
     incidents,
     metrics,
     queue: queue.slice(0, 25),
     retention,
+    release_attempts: {
+      total: Number(attemptStats?.total || 0),
+      completed: Number(attemptStats?.completed || 0),
+      blocked: Number(attemptStats?.blocked || 0),
+      failed: Number(attemptStats?.failed || 0),
+      running: Number(attemptStats?.running || 0)
+    },
     recovery: {
       total: recoveryTotal,
       validated,
