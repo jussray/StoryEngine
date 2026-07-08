@@ -39,6 +39,7 @@ import auditRoutes from './routes/audit.js';
 import storyEngineRoutes from './routes/storyEngine.js';
 import assistModeRoutes from './routes/assistMode.js';
 import audienceLensRoutes from './routes/audienceLens.js';
+import blueprintRoutes from './routes/blueprint.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -79,6 +80,7 @@ auditRoutes(router, db);
 storyEngineRoutes(router, db);
 assistModeRoutes(router, db);
 audienceLensRoutes(router, db);
+blueprintRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -170,5 +172,6 @@ server.listen(PORT, () => {
   console.log('Story Memory API: GET /api/memory/:workspace_id');
   console.log('Assist Mode: GET /api/assist/options');
   console.log('Audience lenses: GET /api/audience-lenses');
-  console.log('Unified Story Engine, Assist Mode, Audience Lenses, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
+  console.log('Story Blueprint conversions: GET /api/blueprints/options');
+  console.log('Unified Story Engine, Story Blueprints, Assist Mode, Audience Lenses, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
 });
