@@ -4,99 +4,67 @@ import { randomUUID } from 'node:crypto';
 import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import {
-  FOUNDER_PROFILE_OPTIONS,
-  getFounderSummary,
-  updateFounderProfile,
-  recordFounderEvent,
-  evaluateFounderConstraint
-} from '../lib/founderProfile.js';
+  OPERATOR_PROFILE_OPTIONS,
+  getOperatorSummary,
+  updateOperatorProfile,
+  recordOperatorEvent,
+  evaluateOperatorConstraint,
+  getOperatorAlerts
+} from '../lib/operatorProfile.js';
 import { log } from '../models/eventModel.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function safeJson(value, fallback = []) {
-  try {
-    return value ? JSON.parse(value) : fallback;
-  } catch {
-    return fallback;
-  }
+  try { return value ? JSON.parse(value) : fallback; } catch { return fallback; }
 }
 
 function tableExists(db, tableName) {
   return Boolean(db.prepare(`
-    SELECT 1 FROM sqlite_master
-    WHERE type = 'table' AND name = ?
-    LIMIT 1
+    SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1
   `).get(tableName));
 }
 
 function storyMemorySignals(db) {
-  if (!tableExists(db, 'memory_diffs')) {
-    return { story_drift_count: 0, story_conflicts: [] };
-  }
-
-  const count = db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM memory_diffs
-    WHERE conflict = 1 AND resolved = 0
-  `).get();
-
+  if (!tableExists(db, 'memory_diffs')) return { story_drift_count: 0, story_conflicts: [] };
+  const count = db.prepare(`SELECT COUNT(*) AS count FROM memory_diffs WHERE conflict=1 AND resolved=0`).get();
   const conflicts = db.prepare(`
     SELECT id, workspace_id, chapter_id, entity_type, entity_id, field,
            old_value, new_value, created_at
     FROM memory_diffs
-    WHERE conflict = 1 AND resolved = 0
-    ORDER BY created_at DESC
-    LIMIT 25
+    WHERE conflict=1 AND resolved=0
+    ORDER BY created_at DESC LIMIT 25
   `).all();
-
-  return {
-    story_drift_count: Number(count?.count || 0),
-    story_conflicts: conflicts
-  };
+  return { story_drift_count: Number(count?.count || 0), story_conflicts: conflicts };
 }
 
 function engineMemorySignals(db, now = Date.now()) {
   if (!tableExists(db, 'engine_memory_episodes')) {
-    return {
-      engine_drift_count: 0,
-      lessons_today: 0,
-      repeated_mistake_count: 0,
-      recent_lessons: [],
-      confidence_trend: []
-    };
+    return { engine_drift_count: 0, lessons_today: 0, repeated_mistake_count: 0, recent_lessons: [], confidence_trend: [] };
   }
-
   const since = now - DAY_MS;
   const drift = db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM engine_memory_episodes
-    WHERE repeated_mistake = 1 AND created_at >= ?
+    SELECT COUNT(*) AS count FROM engine_memory_episodes
+    WHERE repeated_mistake=1 AND created_at>=?
   `).get(since);
-
   const rows = db.prepare(`
     SELECT episode_id, workspace_id, chapter_id, lessons_json,
            repeated_mistake, confidence_before, confidence_after,
            gate_result, user_accepted, created_at
     FROM engine_memory_episodes
-    WHERE created_at >= ?
-    ORDER BY created_at DESC
-    LIMIT 25
+    WHERE created_at>=?
+    ORDER BY created_at DESC LIMIT 25
   `).all(since);
-
   const recentLessons = rows
     .map(row => ({ ...row, lessons: safeJson(row.lessons_json, []) }))
     .filter(row => row.lessons.length > 0);
-
   const trend = db.prepare(`
     SELECT episode_id, workspace_id, chapter_id, confidence_before,
            confidence_after, gate_result, user_accepted, created_at
     FROM engine_memory_episodes
     WHERE confidence_before IS NOT NULL OR confidence_after IS NOT NULL
-    ORDER BY created_at DESC
-    LIMIT 10
+    ORDER BY created_at DESC LIMIT 10
   `).all().reverse();
-
   return {
     engine_drift_count: Number(drift?.count || 0),
     lessons_today: recentLessons.reduce((total, row) => total + row.lessons.length, 0),
@@ -110,7 +78,6 @@ function pipelineHealth(snapshot, memory) {
   const running = Number(snapshot.overview?.running_dispatches || 0);
   const failed = Number(snapshot.overview?.runtime_failures || 0);
   const gateBlocked = Number(snapshot.overview?.release_gate_blocked_count || 0);
-
   return [
     { key: 'lindymode', label: 'Lindymode', status: snapshot.incidents?.length ? 'watch' : 'ok' },
     { key: 'ooda', label: 'OODA Loop', status: 'running' },
@@ -124,16 +91,15 @@ function pipelineHealth(snapshot, memory) {
 
 export function buildControlRoomOverview(db, now = Date.now()) {
   const snapshot = getMissionControlSnapshot(db);
-  const story = storyMemorySignals(db);
-  const engine = engineMemorySignals(db, now);
-  const memory = { ...story, ...engine };
-  const founder = getFounderSummary(db, now);
-
+  const memory = { ...storyMemorySignals(db), ...engineMemorySignals(db, now) };
+  const operator = getOperatorSummary(db, now);
+  const operatorAlerts = getOperatorAlerts(db, snapshot.overview || {});
   return {
     ...snapshot,
     control_room_generated_at: now,
     memory,
-    founder,
+    operator,
+    operator_alerts: operatorAlerts,
     pipeline_health: pipelineHealth(snapshot, memory)
   };
 }
@@ -143,57 +109,39 @@ export function resolveControlRoomIncident(db, input = {}) {
   const resolution = String(input.resolution || '').trim();
   if (!incidentId && !diffId) throw new Error('incident_id or diff_id is required.');
   if (!resolution) throw new Error('resolution is required.');
-
   const now = Date.now();
   let diffChanges = 0;
   let incidentChanges = 0;
   let workspaceId = input.workspace_id || 'control-room';
-
-  const apply = db.transaction(() => {
+  db.transaction(() => {
     if (diffId) {
       if (!tableExists(db, 'memory_diffs')) throw new Error('Memory Engine is not available.');
-      const diff = db.prepare('SELECT workspace_id FROM memory_diffs WHERE id = ?').get(diffId);
+      const diff = db.prepare('SELECT workspace_id FROM memory_diffs WHERE id=?').get(diffId);
       if (!diff) throw new Error('Memory diff not found.');
       workspaceId = diff.workspace_id;
-      const result = db.prepare(`
-        UPDATE memory_diffs
-        SET resolved = 1, resolution = ?, resolved_at = ?
-        WHERE id = ? AND resolved = 0
-      `).run(resolution, now, diffId);
-      diffChanges = Number(result.changes || 0);
+      diffChanges = Number(db.prepare(`
+        UPDATE memory_diffs SET resolved=1, resolution=?, resolved_at=?
+        WHERE id=? AND resolved=0
+      `).run(resolution, now, diffId).changes || 0);
     }
-
     if (incidentId) {
-      const incident = db.prepare(`
-        SELECT workspace_id FROM lindymode_incidents WHERE incident_id = ?
-      `).get(incidentId);
+      const incident = db.prepare('SELECT workspace_id FROM lindymode_incidents WHERE incident_id=?').get(incidentId);
       if (!incident) throw new Error('Lindymode incident not found.');
       workspaceId = incident.workspace_id;
-      const result = db.prepare(`
+      incidentChanges = Number(db.prepare(`
         UPDATE lindymode_incidents
-        SET status = 'resolved', recovery_action = ?, resolved_at = ?
-        WHERE incident_id = ? AND status = 'active'
-      `).run(`operator:${resolution}`, now, incidentId);
-      incidentChanges = Number(result.changes || 0);
+        SET status='resolved', recovery_action=?, resolved_at=?
+        WHERE incident_id=? AND status='active'
+      `).run(`operator:${resolution}`, now, incidentId).changes || 0);
     }
-  });
-  apply();
-
+  })();
   log(db, {
     workspace_id: workspaceId,
     mode: 'control_room',
     event_type: 'control_room.incident_resolved',
     payload: { incident_id: incidentId || null, diff_id: diffId || null, resolution }
   });
-
-  return {
-    ok: true,
-    incident_id: incidentId || null,
-    diff_id: diffId || null,
-    resolved: diffChanges + incidentChanges,
-    resolution,
-    resolved_at: now
-  };
+  return { ok: true, incident_id: incidentId || null, diff_id: diffId || null, resolved: diffChanges + incidentChanges, resolution, resolved_at: now };
 }
 
 export function forceControlRoomGatePass(db, input = {}) {
@@ -201,93 +149,62 @@ export function forceControlRoomGatePass(db, input = {}) {
   const operatorNote = String(input.operator_note || '').trim();
   if (!workspaceId) throw new Error('workspace_id is required.');
   if (!operatorNote) throw new Error('operator_note is required for an override.');
-
-  const story = db.prepare('SELECT workspace_id FROM stories WHERE workspace_id = ?').get(workspaceId);
-  if (!story) throw new Error('Workspace not found.');
-
+  if (!db.prepare('SELECT workspace_id FROM stories WHERE workspace_id=?').get(workspaceId)) throw new Error('Workspace not found.');
   const auditId = `override_${randomUUID()}`;
   const now = Date.now();
-  const checks = [{
-    check: 'operator_override',
-    passed: true,
-    chapter_id: input.chapter_id ?? null,
-    note: operatorNote
-  }];
-
+  const checks = [{ check: 'operator_override', passed: true, chapter_id: input.chapter_id ?? null, note: operatorNote }];
   db.prepare(`
     INSERT INTO release_audits (
-      audit_id, workspace_id, result, confidence_score,
-      checks_json, blockers_json, created_at
+      audit_id, workspace_id, result, confidence_score, checks_json, blockers_json, created_at
     ) VALUES (?, ?, 'OPERATOR_OVERRIDE', 100, ?, '[]', ?)
   `).run(auditId, workspaceId, JSON.stringify(checks), now);
-
   log(db, {
     workspace_id: workspaceId,
     mode: 'control_room',
     event_type: 'control_room.gate_overridden',
-    payload: {
-      audit_id: auditId,
-      chapter_id: input.chapter_id ?? null,
-      operator_note: operatorNote
-    }
+    payload: { audit_id: auditId, chapter_id: input.chapter_id ?? null, operator_note: operatorNote }
   });
+  return { ok: true, audit_id: auditId, workspace_id: workspaceId, chapter_id: input.chapter_id ?? null, result: 'OPERATOR_OVERRIDE', created_at: now };
+}
 
-  return {
-    ok: true,
-    audit_id: auditId,
-    workspace_id: workspaceId,
-    chapter_id: input.chapter_id ?? null,
-    result: 'OPERATOR_OVERRIDE',
-    created_at: now
-  };
+function registerOperatorRoutes(router, db, basePath) {
+  router.get(`${basePath}/options`, (req, res) => json(res, 200, OPERATOR_PROFILE_OPTIONS));
+  router.get(basePath, (req, res) => {
+    try { json(res, 200, getOperatorSummary(db)); }
+    catch (error) { json(res, 500, { error: error.message }); }
+  });
+  router.put(basePath, (req, res) => {
+    try {
+      const profile = updateOperatorProfile(db, req.body || {});
+      json(res, 200, { profile, summary: getOperatorSummary(db) });
+    } catch (error) { json(res, 400, { error: error.message }); }
+  });
+  router.post(`${basePath}/event`, (req, res) => {
+    try {
+      const event = recordOperatorEvent(db, req.body || {});
+      json(res, 201, { event, summary: getOperatorSummary(db) });
+    } catch (error) { json(res, 400, { error: error.message }); }
+  });
+  router.post(`${basePath}/evaluate-cost`, (req, res) => {
+    try { json(res, 200, evaluateOperatorConstraint(db, req.body || {})); }
+    catch (error) { json(res, 400, { error: error.message }); }
+  });
+  router.get(`${basePath}/alerts`, (req, res) => {
+    try {
+      const snapshot = getMissionControlSnapshot(db);
+      json(res, 200, getOperatorAlerts(db, snapshot.overview || {}));
+    } catch (error) { json(res, 500, { error: error.message }); }
+  });
 }
 
 export default function controlRoomRoutes(router, db) {
   router.get('/api/control-room/overview', (req, res) => {
-    try {
-      json(res, 200, buildControlRoomOverview(db));
-    } catch (error) {
-      json(res, 500, { error: error.message });
-    }
+    try { json(res, 200, buildControlRoomOverview(db)); }
+    catch (error) { json(res, 500, { error: error.message }); }
   });
 
-  router.get('/api/control-room/founder/options', (req, res) => {
-    json(res, 200, FOUNDER_PROFILE_OPTIONS);
-  });
-
-  router.get('/api/control-room/founder', (req, res) => {
-    try {
-      json(res, 200, getFounderSummary(db));
-    } catch (error) {
-      json(res, 500, { error: error.message });
-    }
-  });
-
-  router.put('/api/control-room/founder', (req, res) => {
-    try {
-      const profile = updateFounderProfile(db, req.body || {});
-      json(res, 200, { profile, summary: getFounderSummary(db) });
-    } catch (error) {
-      json(res, 400, { error: error.message });
-    }
-  });
-
-  router.post('/api/control-room/founder/event', (req, res) => {
-    try {
-      const event = recordFounderEvent(db, req.body || {});
-      json(res, 201, { event, summary: getFounderSummary(db) });
-    } catch (error) {
-      json(res, 400, { error: error.message });
-    }
-  });
-
-  router.post('/api/control-room/founder/evaluate-cost', (req, res) => {
-    try {
-      json(res, 200, evaluateFounderConstraint(db, req.body || {}));
-    } catch (error) {
-      json(res, 400, { error: error.message });
-    }
-  });
+  registerOperatorRoutes(router, db, '/api/control-room/operator');
+  registerOperatorRoutes(router, db, '/api/control-room/founder');
 
   router.get('/api/control-room/stream', (req, res) => {
     res.writeHead(200, {
@@ -295,37 +212,27 @@ export default function controlRoomRoutes(router, db) {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive'
     });
-
     const send = () => {
       try {
-        res.write(`event: snapshot\n`);
+        res.write('event: snapshot\n');
         res.write(`data: ${JSON.stringify(buildControlRoomOverview(db))}\n\n`);
       } catch (error) {
-        res.write(`event: error\n`);
+        res.write('event: error\n');
         res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
       }
     };
-
     send();
     const interval = setInterval(send, 30_000);
     req.on('close', () => clearInterval(interval));
   });
 
   router.post('/api/control-room/resolve-incident', (req, res) => {
-    try {
-      json(res, 200, resolveControlRoomIncident(db, req.body));
-    } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : 400;
-      json(res, status, { error: error.message });
-    }
+    try { json(res, 200, resolveControlRoomIncident(db, req.body)); }
+    catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
   });
 
   router.post('/api/control-room/force-gate-pass', (req, res) => {
-    try {
-      json(res, 201, forceControlRoomGatePass(db, req.body));
-    } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : 400;
-      json(res, status, { error: error.message });
-    }
+    try { json(res, 201, forceControlRoomGatePass(db, req.body)); }
+    catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
   });
 }
