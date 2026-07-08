@@ -3,10 +3,16 @@
 import { randomUUID } from 'node:crypto';
 import { log } from '../models/eventModel.js';
 
-export const ASSIST_MODES = Object.freeze(['human_first', 'system_first']);
+export const ASSIST_MODES = Object.freeze(['writer', 'co_writer', 'director', 'autonomous_studio']);
 
-function normalizeMode(value, fallback = 'human_first') {
-  const mode = String(value || fallback).trim().toLowerCase();
+const LEGACY_MODE_MAP = Object.freeze({
+  human_first: 'writer',
+  system_first: 'director'
+});
+
+function normalizeMode(value, fallback = 'writer') {
+  const raw = String(value || fallback).trim().toLowerCase();
+  const mode = LEGACY_MODE_MAP[raw] || raw;
   if (!ASSIST_MODES.includes(mode)) throw new Error(`Unsupported assist mode: ${mode}.`);
   return mode;
 }
@@ -15,17 +21,58 @@ function parseJson(value, fallback) {
   try { return JSON.parse(value || ''); } catch { return fallback; }
 }
 
+function permissionsFor(mode) {
+  return {
+    writer: {
+      primary_author: 'human',
+      collaboration: 'advisory',
+      may_draft_without_request: false,
+      may_run_full_pipeline: false,
+      stops_before_release_gate: true,
+      requires_accept_for_changes: true,
+      may_overwrite_human_text: false
+    },
+    co_writer: {
+      primary_author: 'shared',
+      collaboration: 'shared_drafting',
+      may_draft_without_request: false,
+      may_run_full_pipeline: false,
+      stops_before_release_gate: true,
+      requires_accept_for_changes: true,
+      may_overwrite_human_text: false
+    },
+    director: {
+      primary_author: 'l99',
+      collaboration: 'human_directed',
+      may_draft_without_request: true,
+      may_run_full_pipeline: false,
+      stops_before_release_gate: true,
+      requires_accept_for_changes: true,
+      may_overwrite_human_text: false
+    },
+    autonomous_studio: {
+      primary_author: 'l99',
+      collaboration: 'autonomous_until_release_gate',
+      may_draft_without_request: true,
+      may_run_full_pipeline: true,
+      stops_before_release_gate: false,
+      requires_accept_for_release: true,
+      may_overwrite_human_text: false
+    }
+  }[mode];
+}
+
 export function ensureAssistSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS operator_assist_settings (
       profile_id TEXT PRIMARY KEY,
-      default_assist_mode TEXT NOT NULL DEFAULT 'human_first',
+      default_assist_mode TEXT NOT NULL DEFAULT 'writer',
       updated_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS workspace_assist_profiles (
       workspace_id TEXT PRIMARY KEY,
-      assist_mode TEXT NOT NULL DEFAULT 'human_first',
+      assist_mode TEXT NOT NULL DEFAULT 'writer',
       suggestion_level TEXT NOT NULL DEFAULT 'on_request',
       overwrite_policy TEXT NOT NULL DEFAULT 'never_without_accept',
       voice_learning INTEGER NOT NULL DEFAULT 1,
@@ -51,18 +98,43 @@ export function ensureAssistSchema(db) {
       ON assist_contributions(workspace_id, created_at);
   `);
 
+  const now = Date.now();
   if (!db.prepare("SELECT 1 FROM operator_assist_settings WHERE profile_id='primary'").get()) {
     db.prepare(`
       INSERT INTO operator_assist_settings (profile_id, default_assist_mode, updated_at)
-      VALUES ('primary', 'human_first', ?)
-    `).run(Date.now());
+      VALUES ('primary', 'writer', ?)
+    `).run(now);
   }
+
+  db.prepare(`
+    UPDATE operator_assist_settings
+    SET default_assist_mode='writer', updated_at=?
+    WHERE default_assist_mode='human_first'
+  `).run(now);
+  db.prepare(`
+    UPDATE operator_assist_settings
+    SET default_assist_mode='director', updated_at=?
+    WHERE default_assist_mode='system_first'
+  `).run(now);
+  db.prepare(`
+    UPDATE workspace_assist_profiles
+    SET assist_mode='writer', version=version+1, updated_at=?
+    WHERE assist_mode='human_first'
+  `).run(now);
+  db.prepare(`
+    UPDATE workspace_assist_profiles
+    SET assist_mode='director', version=version+1, updated_at=?
+    WHERE assist_mode='system_first'
+  `).run(now);
 }
 
 export function getOperatorAssistDefault(db) {
   ensureAssistSchema(db);
   const row = db.prepare("SELECT * FROM operator_assist_settings WHERE profile_id='primary'").get();
-  return { default_assist_mode: normalizeMode(row?.default_assist_mode), updated_at: row?.updated_at || null };
+  return {
+    default_assist_mode: normalizeMode(row?.default_assist_mode),
+    updated_at: row?.updated_at || null
+  };
 }
 
 export function setOperatorAssistDefault(db, mode) {
@@ -89,37 +161,29 @@ export function getWorkspaceAssist(db, workspaceId, fallback = null) {
   if (!row) {
     const now = Date.now();
     const mode = normalizeMode(fallback || getOperatorAssistDefault(db).default_assist_mode);
+    const suggestionLevel = mode === 'co_writer' ? 'collaborative' : mode === 'writer' ? 'on_request' : 'proactive';
     db.prepare(`
       INSERT INTO workspace_assist_profiles (
         workspace_id, assist_mode, suggestion_level, overwrite_policy,
         voice_learning, version, created_at, updated_at
-      ) VALUES (?, ?, 'on_request', 'never_without_accept', 1, 1, ?, ?)
-    `).run(workspaceId, mode, now, now);
+      ) VALUES (?, ?, ?, 'never_without_accept', 1, 1, ?, ?)
+    `).run(workspaceId, mode, suggestionLevel, now, now);
     return getWorkspaceAssist(db, workspaceId, mode);
   }
+  const mode = normalizeMode(row.assist_mode);
   return {
     ...row,
+    assist_mode: mode,
     voice_learning: Boolean(row.voice_learning),
-    permissions: row.assist_mode === 'human_first'
-      ? {
-          may_draft_without_request: false,
-          may_overwrite_human_text: false,
-          requires_accept_for_changes: true,
-          primary_author: 'human'
-        }
-      : {
-          may_draft_without_request: true,
-          may_overwrite_human_text: false,
-          requires_accept_for_final_changes: true,
-          primary_author: 'l99'
-        }
+    permissions: permissionsFor(mode)
   };
 }
 
 export function setWorkspaceAssist(db, workspaceId, input = {}) {
   const current = getWorkspaceAssist(db, workspaceId, input.assist_mode || null);
   const assistMode = normalizeMode(input.assist_mode, current.assist_mode);
-  const suggestionLevel = String(input.suggestion_level || current.suggestion_level || 'on_request').trim();
+  const defaultSuggestion = assistMode === 'co_writer' ? 'collaborative' : assistMode === 'writer' ? 'on_request' : 'proactive';
+  const suggestionLevel = String(input.suggestion_level || defaultSuggestion).trim();
   const overwritePolicy = String(input.overwrite_policy || 'never_without_accept').trim();
   if (overwritePolicy !== 'never_without_accept') {
     throw new Error('L99 may not overwrite human text without explicit acceptance.');
@@ -139,7 +203,12 @@ export function setWorkspaceAssist(db, workspaceId, input = {}) {
     workspace_id: workspaceId,
     mode: 'assist_mode',
     event_type: 'assist_mode.updated',
-    payload: { assist_mode: profile.assist_mode, version: profile.version }
+    payload: {
+      assist_mode: profile.assist_mode,
+      primary_author: profile.permissions.primary_author,
+      collaboration: profile.permissions.collaboration,
+      version: profile.version
+    }
   });
   return profile;
 }
@@ -149,7 +218,7 @@ export function recordAssistContribution(db, input = {}) {
   const workspaceId = String(input.workspace_id || '').trim();
   if (!workspaceId) throw new Error('workspace_id is required.');
   const source = String(input.source || '').trim();
-  if (!['human', 'l99'].includes(source)) throw new Error('source must be human or l99.');
+  if (!['human', 'l99', 'shared'].includes(source)) throw new Error('source must be human, l99, or shared.');
   const action = String(input.action || '').trim();
   if (!action) throw new Error('action is required.');
   const contributionId = `assist_${randomUUID()}`;
