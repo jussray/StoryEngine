@@ -17,6 +17,12 @@ function parseJson(value, fallback) {
 
 export function ensureAssistSchema(db) {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS operator_assist_settings (
+      profile_id TEXT PRIMARY KEY,
+      default_assist_mode TEXT NOT NULL DEFAULT 'human_first',
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS workspace_assist_profiles (
       workspace_id TEXT PRIMARY KEY,
       assist_mode TEXT NOT NULL DEFAULT 'human_first',
@@ -44,14 +50,45 @@ export function ensureAssistSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_assist_contributions_workspace
       ON assist_contributions(workspace_id, created_at);
   `);
+
+  if (!db.prepare("SELECT 1 FROM operator_assist_settings WHERE profile_id='primary'").get()) {
+    db.prepare(`
+      INSERT INTO operator_assist_settings (profile_id, default_assist_mode, updated_at)
+      VALUES ('primary', 'human_first', ?)
+    `).run(Date.now());
+  }
 }
 
-export function getWorkspaceAssist(db, workspaceId, fallback = 'human_first') {
+export function getOperatorAssistDefault(db) {
+  ensureAssistSchema(db);
+  const row = db.prepare("SELECT * FROM operator_assist_settings WHERE profile_id='primary'").get();
+  return { default_assist_mode: normalizeMode(row?.default_assist_mode), updated_at: row?.updated_at || null };
+}
+
+export function setOperatorAssistDefault(db, mode) {
+  ensureAssistSchema(db);
+  const normalized = normalizeMode(mode);
+  const now = Date.now();
+  db.prepare(`
+    UPDATE operator_assist_settings
+    SET default_assist_mode=?, updated_at=?
+    WHERE profile_id='primary'
+  `).run(normalized, now);
+  log(db, {
+    workspace_id: 'control-room',
+    mode: 'operator_profile',
+    event_type: 'operator.assist_default_updated',
+    payload: { default_assist_mode: normalized }
+  });
+  return { default_assist_mode: normalized, updated_at: now };
+}
+
+export function getWorkspaceAssist(db, workspaceId, fallback = null) {
   ensureAssistSchema(db);
   const row = db.prepare('SELECT * FROM workspace_assist_profiles WHERE workspace_id=?').get(workspaceId);
   if (!row) {
     const now = Date.now();
-    const mode = normalizeMode(fallback);
+    const mode = normalizeMode(fallback || getOperatorAssistDefault(db).default_assist_mode);
     db.prepare(`
       INSERT INTO workspace_assist_profiles (
         workspace_id, assist_mode, suggestion_level, overwrite_policy,
@@ -80,7 +117,7 @@ export function getWorkspaceAssist(db, workspaceId, fallback = 'human_first') {
 }
 
 export function setWorkspaceAssist(db, workspaceId, input = {}) {
-  const current = getWorkspaceAssist(db, workspaceId, input.assist_mode || 'human_first');
+  const current = getWorkspaceAssist(db, workspaceId, input.assist_mode || null);
   const assistMode = normalizeMode(input.assist_mode, current.assist_mode);
   const suggestionLevel = String(input.suggestion_level || current.suggestion_level || 'on_request').trim();
   const overwritePolicy = String(input.overwrite_policy || 'never_without_accept').trim();
