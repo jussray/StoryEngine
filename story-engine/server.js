@@ -44,6 +44,7 @@ import validationSeedRoutes from './routes/validationSeed.js';
 import ipGrowthRoutes from './routes/ipGrowth.js';
 import ipStudioRoutes from './routes/ipStudio.js';
 import campaignStudioRoutes from './routes/campaignStudio.js';
+import bootstrapEngineRoutes from './routes/bootstrapEngine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -91,6 +92,7 @@ validationSeedRoutes(router, db);
 ipGrowthRoutes(router, db);
 ipStudioRoutes(router, db);
 campaignStudioRoutes(router, db);
+bootstrapEngineRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -198,4 +200,5 @@ server.listen(PORT, () => {
   console.log('IP Growth Engine: GET /api/ip-growth/overview');
   console.log('IP Studio: GET /api/ip-studio/options');
   console.log('Campaign Studio: GET /api/campaign-studio/options');
+  console.log('Founder Economics: GET /api/bootstrap-engine/overview');
 });
