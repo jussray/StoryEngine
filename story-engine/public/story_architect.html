@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L99 Story Architect</title>
+  <style>
+    :root{--bg:#0f0f10;--surface:#171719;--surface2:#202024;--border:#34343a;--text:#e8e8ea;--muted:#8c8c93;--green:#6daa45;--gold:#e8af34;--red:#dd6974;--teal:#4f98a3;--blue:#5591c7;--purple:#a86fdf}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif}a{color:var(--teal);text-decoration:none}button,input,select,textarea{font:inherit}
+    header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0}.brand{font-weight:800}.pill{border:1px solid var(--border);border-radius:999px;padding:4px 9px;font-size:12px;background:var(--surface2)}
+    main{max-width:1200px;margin:auto;padding:22px}.grid{display:grid;grid-template-columns:340px 1fr;gap:14px}.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px}.label{font-size:12px;color:var(--muted);display:block;margin:10px 0 5px}input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px}.btn{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;padding:8px 12px;cursor:pointer}.btn.primary{background:#1e3336;color:var(--teal);border-color:#315b61;width:100%;margin-top:12px}
+    h1{font-size:22px;margin:0 0 5px}h2{font-size:16px;margin:0 0 10px}h3{font-size:15px;margin:0 0 8px}.sub{font-size:13px;color:var(--muted);line-height:1.5}.acts{display:grid;gap:12px}.act{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px}.chapters{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px}.chapter{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px}.chapter b{display:block;margin-bottom:5px}.hook{color:var(--gold);font-size:12px}.ok{color:var(--green)}.warn{color:var(--gold)}
+    @media(max-width:760px){main{padding:14px}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header><div class="brand">🗂 L99 Story Architect</div><div><a class="pill" href="/studio.html">Idea Forge</a> <a class="pill" href="/control_room.html">Control Room</a></div></header>
+  <main>
+    <section class="grid">
+      <form id="architectForm" class="card">
+        <h1>Build the Story</h1>
+        <p class="sub">Turn a workspace and optional Idea Forge concept into a validated three-act structure.</p>
+        <label class="label">Workspace</label><select id="workspace" required></select>
+        <label class="label">Idea</label><select id="idea"><option value="">Use workspace story</option></select>
+        <label class="label">Chapter count</label><input id="chapterCount" type="number" min="6" max="40" value="12">
+        <label class="label">Theme</label><textarea id="theme" rows="3" placeholder="Transformation, belonging, trust, ambition..."></textarea>
+        <label class="label">Format</label><select id="format"><option value="book">Book</option><option value="novella">Novella</option><option value="series">Series</option></select>
+        <button class="btn primary" type="submit">Build Architecture</button>
+        <p id="status" class="sub"></p>
+      </form>
+      <div>
+        <div id="summary" class="card" style="margin-bottom:12px"><h2>Architecture Preview</h2><p class="sub">Choose a workspace and build the structure.</p></div>
+        <div id="acts" class="acts"></div>
+      </div>
+    </section>
+  </main>
+  <script src="/story_architect.js"></script>
+</body>
+</html>
