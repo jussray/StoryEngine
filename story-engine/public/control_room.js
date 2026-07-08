@@ -15,7 +15,7 @@ async function api(path, options={}){
 function statusClass(value){
   const text=String(value||'').toLowerCase();
   if(text.includes('block')||text.includes('error')||text.includes('fail')||text.includes('critical')) return 'red';
-  if(text.includes('warn')||text.includes('watch')||text.includes('planned')) return 'gold';
+  if(text.includes('warn')||text.includes('watch')||text.includes('planned')||text.includes('queued')) return 'gold';
   return 'green';
 }
 
@@ -37,6 +37,16 @@ function renderStats(data){
     ['Operator Alerts',(data.operator_alerts||[]).length,(data.operator_alerts||[]).some(a=>a.severity==='critical')?'red':'green','Business and system guidance']
   ];
   $('stats').innerHTML=cards.map(([label,value,cls,sub])=>`<article class="card"><div class="label">${esc(label)}</div><div class="value ${cls}">${esc(value)}</div><div class="sub">${esc(sub)}</div></article>`).join('');
+}
+
+function renderBrain(data){
+  const brain=data.story_engine_brain||{};
+  const current=brain.current;
+  $('brainCount').textContent=`${brain.active_count||0} active run${Number(brain.active_count||0)===1?'':'s'}`;
+  $('brainCurrent').textContent=current?`${current.active_agent} — ${current.current_stage}`:'Idle';
+  $('brainWhy').textContent=current?`${current.request_text} · ${current.status}`:'Waiting for a Story Engine request.';
+  $('brainOpen').href=current?`/story_engine.html?run_id=${encodeURIComponent(current.run_id)}`:'/story_engine.html';
+  $('brainTrack').innerHTML=(brain.pipeline_stages||[]).map(stage=>`<div class="brain-node ${current?.current_stage===stage?'active':''}">${esc(stage.replaceAll('_',' '))}</div>`).join('');
 }
 
 function renderOperator(data){
@@ -100,7 +110,7 @@ function renderConfidence(data){
 }
 
 function render(data){
-  renderStats(data); renderOperator(data); renderAlerts(data); renderIncidents(data); renderPipeline(data); renderWorkspaces(data); renderLessons(data); renderConfidence(data);
+  renderStats(data); renderBrain(data); renderOperator(data); renderAlerts(data); renderIncidents(data); renderPipeline(data); renderWorkspaces(data); renderLessons(data); renderConfidence(data);
   $('updated').textContent=`Updated ${new Date(data.control_room_generated_at||data.generated_at).toLocaleString()}`;
 }
 
