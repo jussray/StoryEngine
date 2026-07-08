@@ -15,7 +15,7 @@ function mockRes() {
   };
 }
 
-test('security context caches scoped registry and resolves actor identity', () => {
+test('security context caches scoped registry and resolves actor identity', { concurrency: false }, () => {
   const prior = process.env.L99_API_KEYS_JSON;
   try {
     process.env.L99_API_KEYS_JSON = JSON.stringify([{ key: 'secret-a', actor_id: 'actor-a', tenant_id: 'tenant-a', role: 'editor', workspace_ids: ['workspace_1'] }]);
@@ -35,7 +35,7 @@ test('security context caches scoped registry and resolves actor identity', () =
   }
 });
 
-test('security context refreshes cached registry when env source changes', () => {
+test('security context refreshes cached registry when env source changes', { concurrency: false }, () => {
   const prior = process.env.L99_API_KEYS_JSON;
   try {
     process.env.L99_API_KEYS_JSON = JSON.stringify([{ key: 'secret-one', actor_id: 'actor-one', tenant_id: 'tenant-one', role: 'viewer', workspace_ids: ['one'] }]);
