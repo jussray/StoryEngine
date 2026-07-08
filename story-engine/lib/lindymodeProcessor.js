@@ -1,6 +1,6 @@
 // lib/lindymodeProcessor.js
 
-import { createIncident, getState } from '../models/lindymodeModel.js';
+import { createIncident, getState, reconcileChapterIncidents } from '../models/lindymodeModel.js';
 import { log } from '../models/eventModel.js';
 
 function id(prefix) {
@@ -39,9 +39,24 @@ function detectPovConflict(content, expectedPov) {
   return null;
 }
 
+function logResolved(db, chapter, resolved, correlationId) {
+  if (!resolved.length) return;
+  log(db, {
+    workspace_id: chapter.workspace_id,
+    mode: 'lindymode',
+    event_type: 'lindymode.incidents_auto_resolved',
+    payload: {
+      correlation_id: correlationId,
+      chapter_id: chapter.id,
+      incident_ids: resolved.map(item => item.incident_id),
+      recovery_action: 'author_fix_validated'
+    }
+  });
+}
+
 export function analyzeChapter(db, chapter, options = {}) {
   const state = getState(db, chapter.workspace_id);
-  if (!state) return { incidents: [], state_missing: true };
+  if (!state) return { incidents: [], resolved_incidents: [], state_missing: true };
 
   const content = chapter.content || chapter.text || '';
   const rules = Array.isArray(state.state?.continuity_rules)
@@ -66,7 +81,18 @@ export function analyzeChapter(db, chapter, options = {}) {
     });
   }
 
-  if (!findings.length) return { incidents: [], drift_score: 0, token_estimate: tokenEstimate };
+  const correlationId = options.correlation_id || id('inc_lindy');
+
+  if (!findings.length) {
+    const resolved = reconcileChapterIncidents(db, chapter.workspace_id, chapter.id, null);
+    logResolved(db, chapter, resolved, correlationId);
+    return {
+      incidents: [],
+      resolved_incidents: resolved,
+      drift_score: 0,
+      token_estimate: tokenEstimate
+    };
+  }
 
   const driftScore = Math.min(1, findings.reduce((sum, finding) => sum + finding.weight, 0));
   const severity = driftScore >= 0.8 ? 'sev3' : driftScore >= 0.5 ? 'sev2' : 'watch';
@@ -75,8 +101,14 @@ export function analyzeChapter(db, chapter, options = {}) {
     : findings.some(f => f.type === 'pov_conflict')
       ? 'lindymode.continuity_conflict'
       : 'lindymode.state_drift_detected';
+  const reason = findings.map(f => f.message).join(' | ');
 
-  const correlationId = options.correlation_id || id('inc_lindy');
+  const resolved = reconcileChapterIncidents(db, chapter.workspace_id, chapter.id, {
+    event_type: eventType,
+    reason
+  });
+  logResolved(db, chapter, resolved, correlationId);
+
   const incident = createIncident(db, {
     incident_id: id('lindy'),
     correlation_id: correlationId,
@@ -85,7 +117,7 @@ export function analyzeChapter(db, chapter, options = {}) {
     chapter_id: chapter.id,
     event_type: eventType,
     severity,
-    reason: findings.map(f => f.message).join(' | '),
+    reason,
     drift_score: driftScore,
     details: {
       findings,
@@ -111,5 +143,10 @@ export function analyzeChapter(db, chapter, options = {}) {
     rollback: severity === 'sev3' ? 1 : 0
   });
 
-  return { incidents: [incident], drift_score: driftScore, token_estimate: tokenEstimate };
+  return {
+    incidents: [incident],
+    resolved_incidents: resolved,
+    drift_score: driftScore,
+    token_estimate: tokenEstimate
+  };
 }
