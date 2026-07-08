@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L99 Control Room</title>
+  <style>
+    :root {
+      --bg:#0f0f10;--surface:#171719;--surface2:#202024;--border:#34343a;
+      --text:#e8e8ea;--muted:#8c8c93;--green:#6daa45;--gold:#e8af34;
+      --red:#dd6974;--teal:#4f98a3;--purple:#a86fdf;--blue:#5591c7;
+    }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif}
+    button,a{font:inherit} a{color:var(--teal);text-decoration:none}
+    .topbar{height:52px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+    .brand{font-weight:800}.status{display:flex;gap:8px;align-items:center}.pill{border-radius:999px;padding:4px 9px;font-size:12px;background:var(--surface2);border:1px solid var(--border)}
+    .layout{display:grid;grid-template-columns:210px 1fr;min-height:calc(100vh - 52px)}
+    aside{background:var(--surface);border-right:1px solid var(--border);padding:14px}.nav-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:15px 8px 5px}.nav-link{display:block;padding:8px;border-radius:8px;color:var(--muted)}.nav-link:hover,.nav-link.active{background:var(--surface2);color:var(--text)}
+    main{padding:22px;min-width:0}.section{margin-bottom:24px}.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.section h2{font-size:16px;margin:0}
+    .btn{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:8px;padding:7px 11px;cursor:pointer}.btn:hover{border-color:var(--teal)}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px}.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.value{font-size:25px;font-weight:800;margin:5px 0}.sub{font-size:12px;color:var(--muted)}
+    .green{color:var(--green)}.gold{color:var(--gold)}.red{color:var(--red)}.teal{color:var(--teal)}.purple{color:var(--purple)}.blue{color:var(--blue)}
+    .two{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}.list{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}.row{padding:12px 14px;border-bottom:1px solid var(--border)}.row:last-child{border-bottom:0}.row-title{font-weight:700;font-size:13px}.row-meta{font-size:12px;color:var(--muted);margin-top:3px}.row-actions{display:flex;gap:6px;margin-top:8px}
+    table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}th,td{padding:10px;text-align:left;border-bottom:1px solid var(--border);font-size:13px}th{font-size:11px;text-transform:uppercase;color:var(--muted)}
+    .bar{height:5px;background:var(--surface2);border-radius:999px;overflow:hidden}.fill{height:100%;background:var(--green)}
+    .chart{display:flex;align-items:flex-end;gap:5px;height:90px;padding-top:10px}.chart-bar{flex:1;min-width:8px;background:var(--blue);border-radius:3px 3px 0 0}.empty{color:var(--muted);font-size:13px;padding:14px}
+    dialog{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:18px;max-width:460px;width:90%}dialog::backdrop{background:#0009}textarea,input{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px;margin-top:6px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+    @media(max-width:760px){.layout{grid-template-columns:1fr}aside{display:none}.two{grid-template-columns:1fr}main{padding:14px}}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🏠 L99 Control Room</div>
+    <div class="status"><span id="clock" class="pill"></span><span id="liveState" class="pill green">Connecting…</span><button id="refresh" class="btn">Refresh</button></div>
+  </header>
+  <div class="layout">
+    <aside>
+      <div class="nav-label">Overview</div><a class="nav-link active" href="/control_room.html">Dashboard</a>
+      <div class="nav-label">Intelligence</div><a class="nav-link" href="/lindymode_dashboard.html">Lindymode</a><a class="nav-link" href="/decision_dashboard.html">OODA</a><a class="nav-link" href="/runtime_dashboard.html">Runtime</a><a class="nav-link" href="/release_gate.html">Release Gate</a>
+      <div class="nav-label">Operations</div><a class="nav-link" href="/mission_control.html">Mission Control</a><a class="nav-link" href="/front_door.html">Workspace Library</a>
+    </aside>
+    <main>
+      <section class="section">
+        <div class="section-head"><h2>Signal Overview</h2><span id="updated" class="sub"></span></div>
+        <div id="stats" class="stats"></div>
+      </section>
+      <section class="section two">
+        <div><div class="section-head"><h2>Live Incidents</h2></div><div id="incidents" class="list"></div></div>
+        <div><div class="section-head"><h2>Pipeline Health</h2></div><div id="pipeline" class="list"></div></div>
+      </section>
+      <section class="section"><div class="section-head"><h2>Workspaces</h2></div><div style="overflow:auto"><table><thead><tr><th>Story</th><th>Health</th><th>Chapters</th><th>Gate</th><th>Runtime</th><th>Attempt</th><th>Open</th></tr></thead><tbody id="workspaces"></tbody></table></div></section>
+      <section class="section two">
+        <div><div class="section-head"><h2>Today's Lessons</h2></div><div id="lessons" class="list"></div></div>
+        <div><div class="section-head"><h2>Confidence Trend</h2></div><div class="card"><div id="confidenceSummary" class="sub"></div><div id="confidenceChart" class="chart"></div></div></div>
+      </section>
+    </main>
+  </div>
+  <dialog id="resolveDialog"><form method="dialog"><h3>Resolve Incident</h3><input id="resolveId" type="hidden"><input id="resolveType" type="hidden"><label>Resolution<textarea id="resolution" rows="4" required></textarea></label><div class="dialog-actions"><button value="cancel" class="btn">Cancel</button><button id="confirmResolve" value="default" class="btn">Resolve</button></div></form></dialog>
+  <script src="/control_room.js"></script>
+</body>
+</html>
