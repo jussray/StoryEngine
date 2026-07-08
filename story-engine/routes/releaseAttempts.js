@@ -6,7 +6,8 @@ import {
   completeReleaseAttempt,
   failReleaseAttempt,
   getReleaseAttempt,
-  listReleaseAttempts
+  listReleaseAttempts,
+  reconcileStaleReleaseAttempts
 } from '../lib/releaseAttempts.js';
 
 function transitionFailure(res, error) {
@@ -26,12 +27,25 @@ export default function releaseAttemptRoutes(router, db) {
         {
           allowWarning: req.body?.allow_warning === true,
           confidenceThreshold: req.body?.confidence_threshold,
-          p99Limit: req.body?.p99_limit
+          p99Limit: req.body?.p99_limit,
+          staleAfterMs: req.body?.stale_after_ms
         }
       );
 
       if (!result) return json(res, 404, { error: 'Workspace not found' });
+      if (result.deduplicated) return json(res, 200, result);
       json(res, result.allowed ? 201 : 409, result);
+    } catch (error) {
+      json(res, 400, { error: error.message });
+    }
+  });
+
+  router.post('/api/release/attempts/reconcile', (req, res) => {
+    try {
+      const attempts = reconcileStaleReleaseAttempts(db, {
+        staleAfterMs: req.body?.stale_after_ms
+      });
+      json(res, 200, { reconciled: attempts.length, attempts });
     } catch (error) {
       json(res, 400, { error: error.message });
     }
