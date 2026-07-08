@@ -9,6 +9,7 @@ import { dirname } from 'node:path';
 
 import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
+import { requireAuth } from './lib/requireAuth.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 
@@ -35,6 +36,7 @@ import studioRoutes from './routes/studio.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
+const API_MAX_BODY_BYTES = Number(process.env.API_MAX_BODY_BYTES || 10 * 1024 * 1024);
 
 const MIME = {
   '.html': 'text/html',
@@ -44,7 +46,8 @@ const MIME = {
   '.ico': 'image/x-icon'
 };
 
-const router = createRouter();
+const router = createRouter({ maxBodyBytes: API_MAX_BODY_BYTES });
+router.use('/api', requireAuth);
 storyRoutes(router, db);
 outlineRoutes(router, db);
 chapterRoutes(router, db);
@@ -79,19 +82,38 @@ function broadcastIncidents(incidents) {
   for (const res of oodaClients) sendSse(res, 'incidents', incidents);
 }
 
+function openOodaStream(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive'
+  });
+  sendSse(res, 'heartbeat', { t: Date.now() });
+  sendSse(res, 'incidents', latestIncidents);
+  oodaClients.add(res);
+  req.on('close', () => oodaClients.delete(res));
+}
+
+function serveStatic(filePath, ext, res) {
+  if (ext === '.html') {
+    const html = readFileSync(filePath, 'utf8');
+    const injected = html.includes('/l99_auth.js')
+      ? html
+      : html.replace('</head>', '  <script src="/l99_auth.js"></script>\n</head>');
+    res.writeHead(200, { 'Content-Type': MIME[ext] });
+    res.end(injected);
+    return;
+  }
+
+  res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain' });
+  res.end(readFileSync(filePath));
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   if (url.pathname === '/api/ooda/incidents') {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive'
-    });
-    sendSse(res, 'heartbeat', { t: Date.now() });
-    sendSse(res, 'incidents', latestIncidents);
-    oodaClients.add(res);
-    req.on('close', () => oodaClients.delete(res));
+    requireAuth(req, res, () => openOodaStream(req, res));
     return;
   }
 
@@ -105,9 +127,7 @@ const server = createServer((req, res) => {
   const filePath = join(__dirname, 'public', urlPath);
 
   if (existsSync(filePath)) {
-    const ext = extname(filePath);
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain' });
-    res.end(readFileSync(filePath));
+    serveStatic(filePath, extname(filePath), res);
   } else {
     res.writeHead(404);
     res.end('Not found');
@@ -126,7 +146,9 @@ startRuntimeScheduler(db, {
 
 server.listen(PORT, () => {
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
-  console.log('OODA SSE: GET /api/ooda/incidents for live incidents.');
+  console.log(`API authentication: ${process.env.API_KEY ? 'configured' : 'MISSING API_KEY'}`);
+  console.log(`API body limit: ${API_MAX_BODY_BYTES} bytes`);
+  console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
   console.log('Control Room: http://localhost:' + PORT + '/control_room.html');
   console.log('Performance Dashboard: http://localhost:' + PORT + '/performance_dashboard.html');
   console.log('L99 Studio: http://localhost:' + PORT + '/studio.html');
