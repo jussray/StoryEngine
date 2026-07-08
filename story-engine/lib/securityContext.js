@@ -4,6 +4,8 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { json } from './miniRouter.js';
 
 const ROLE_ORDER = Object.freeze({ viewer: 10, creator: 20, editor: 30, reviewer: 40, release_manager: 50, administrator: 60 });
+let registryCache = null;
+let registryCacheSource = null;
 
 function safeEqual(left, right) {
   const a = Buffer.from(String(left || ''));
@@ -12,8 +14,7 @@ function safeEqual(left, right) {
   return timingSafeEqual(a, b);
 }
 
-function parseKeyRegistry() {
-  const raw = String(process.env.L99_API_KEYS_JSON || '').trim();
+function parseKeyRegistry(raw = String(process.env.L99_API_KEYS_JSON || '').trim()) {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -28,6 +29,14 @@ function parseKeyRegistry() {
   } catch (error) {
     throw new Error(`Invalid L99_API_KEYS_JSON: ${error.message}`);
   }
+}
+
+function keyRegistry() {
+  const raw = String(process.env.L99_API_KEYS_JSON || '').trim();
+  if (registryCache && registryCacheSource === raw) return registryCache;
+  registryCache = parseKeyRegistry(raw);
+  registryCacheSource = raw;
+  return registryCache;
 }
 
 function suppliedCredential(req) {
@@ -55,7 +64,7 @@ function legacyIdentity(key) {
 }
 
 function resolveIdentity(key) {
-  const registry = parseKeyRegistry();
+  const registry = keyRegistry();
   for (const item of registry) {
     if (safeEqual(key, item.key)) return { type: 'scoped_api_key', ...item, key: undefined };
   }
@@ -102,12 +111,25 @@ export function requireRole(...allowedRoles) {
   };
 }
 
-export function enforceWorkspaceAccess(req, res, next) {
-  const workspaceId = req.params?.workspace_id || req.body?.workspace_id || null;
-  if (!workspaceId) return next();
+export function assertWorkspaceAccess(req, workspaceId) {
+  const normalized = String(workspaceId || '').trim();
+  if (!normalized) return true;
   const allowed = req.auth?.workspace_ids || [];
-  if (allowed.includes('*') || allowed.includes(String(workspaceId))) return next();
-  return json(res, 403, { error: 'workspace_forbidden', workspace_id: workspaceId, request_id: req.request_id });
+  return allowed.includes('*') || allowed.includes(normalized);
+}
+
+export function requireWorkspaceAccess(req, res, workspaceId) {
+  const normalized = String(workspaceId || '').trim();
+  if (!normalized) return true;
+  if (assertWorkspaceAccess(req, normalized)) return true;
+  json(res, 403, { error: 'workspace_forbidden', workspace_id: normalized, request_id: req.request_id });
+  return false;
+}
+
+export function enforceWorkspaceAccess(req, res, next) {
+  const workspaceId = req.params?.workspace_id || req.query?.workspace_id || null;
+  if (!workspaceId) return next();
+  if (requireWorkspaceAccess(req, res, workspaceId)) return next();
 }
 
 export function authSnapshot(req) {
@@ -117,5 +139,14 @@ export function authSnapshot(req) {
     role: req.auth?.role || null,
     auth_type: req.auth?.type || null,
     request_id: req.request_id || null
+  };
+}
+
+export function securitySnapshot() {
+  return {
+    scoped_key_count: keyRegistry().length,
+    legacy_api_key_enabled: Boolean(process.env.API_KEY) && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_LEGACY_API_KEY === 'true'),
+    registry_cached: Boolean(registryCache),
+    registry_loaded_at_runtime: true
   };
 }
