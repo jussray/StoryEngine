@@ -14,6 +14,7 @@ document.getElementById('decisionLink').href = `/decision_dashboard.html${qs}`;
 document.getElementById('learningLink').href = `/learning_dashboard.html${qs}`;
 document.getElementById('recoveryLink').href = `/recovery_dashboard.html${qs}`;
 document.getElementById('runtimeLink').href = `/runtime_dashboard.html${qs}`;
+document.getElementById('releaseGateLink').href = `/release_gate.html${qs}`;
 document.getElementById('eventsLink').href = `/events_view.html${qs}`;
 
 fetch(`/api/story/${encodeURIComponent(workspace_id)}`)
