@@ -9,6 +9,7 @@ import { enqueueRuntime } from './runtimeDispatcher.js';
 import { evaluateOperatorConstraint } from './operatorProfile.js';
 import { generateStoryArtifact, validateArtifactWithPlaywright } from './artifactValidation.js';
 import { writeRunSummary } from './runSummary.js';
+import { draftStoryUnit, ghostCommandOptions } from './ghostWriter.js';
 
 export const PIPELINE_STAGES = Object.freeze([
   'story_engine',
@@ -190,7 +191,9 @@ function ensureLindymodeState(db, workspaceId, intent, ghostPlan) {
     story_kind: intent.story_kind,
     emotional_effect: intent.emotional_effect,
     current_goal: ghostPlan.goal,
-    pipeline_run: ghostPlan.run_id
+    pipeline_run: ghostPlan.run_id,
+    ghost_voice_fingerprint: ghostPlan.voice_fingerprint || null,
+    ghost_draft_status: ghostPlan.draft?.status || null
   };
   if (existing) {
     db.prepare(`
@@ -207,11 +210,12 @@ function ensureLindymodeState(db, workspaceId, intent, ghostPlan) {
   }
 }
 
-function buildGhostPlan(runId, intent) {
+async function buildGhostPlan(runId, intent, profile) {
   const unitByMedium = {
     picture_book: 'pages', book: 'chapters', movie: 'scenes', tv: 'episodes', song: 'sections',
     podcast: 'segments', game: 'quests', comic: 'panels', play: 'scenes', short_clip: 'shots'
   };
+  const draft = await draftStoryUnit(intent, profile);
   return {
     run_id: runId,
     goal: `Create a ${intent.story_kind} ${intent.medium} for ${intent.audience}.`,
@@ -219,22 +223,35 @@ function buildGhostPlan(runId, intent) {
     tasks: [
       'Establish the creative contract.',
       'Build structure and canon.',
-      'Draft the first executable story unit.',
+      'Draft the first executable story unit with the Ghost voice fingerprint.',
+      'Run the Ghost human-voice post-pass before Lindymode validation.',
       'Validate continuity, audience fit, and operator constraints.',
       'Run browser validation before pre-release Redteam.',
       'Finalize the release artifact after pre-release Redteam.',
       'Write a permanent Control Room run summary.',
       'Prepare the work for human review.'
     ],
-    human_decisions: ['Approve paid execution when required.', 'Approve final release.']
+    ghost_commands: ghostCommandOptions(),
+    voice_fingerprint: draft.voice_fingerprint,
+    draft: {
+      status: draft.status,
+      provider: draft.provider,
+      task: draft.task,
+      draft_unit: draft.draft_unit,
+      humanize_pass: draft.humanize_pass,
+      error: draft.error || null
+    },
+    human_decisions: ['Approve paid execution when required.', 'Approve Ghost draft before overwriting human-authored text.', 'Approve final release.']
   };
 }
 
-function runRedteamPreRuntime(intent, decision, operatorCheck) {
+function runRedteamPreRuntime(intent, decision, operatorCheck, ghostPlan = {}) {
   const findings = [];
   if (!intent.story_vision) findings.push({ severity: 'critical', code: 'missing_vision', message: 'Story vision is missing.' });
   if (decision.action === 'BLOCK') findings.push({ severity: 'critical', code: 'ooda_block', message: 'OODA blocked execution.' });
   if (operatorCheck.requires_approval) findings.push({ severity: 'warning', code: 'operator_approval', message: operatorCheck.recommendation });
+  if (!ghostPlan.draft?.draft_unit) findings.push({ severity: 'warning', code: 'ghost_no_draft', message: 'Ghost did not produce a draft unit; continue in human-led mode or retry the writer provider.' });
+  if (ghostPlan.draft?.status === 'fallback_stub') findings.push({ severity: 'warning', code: 'ghost_provider_fallback', message: 'Ghost writing provider was unavailable; a review-safe fallback stub was created.' });
   return findings;
 }
 
@@ -265,7 +282,7 @@ function hydrateRun(db, runId) {
   };
 }
 
-export function startStoryEngineRun(db, input = {}) {
+export async function startStoryEngineRun(db, input = {}) {
   ensureStoryEngineSchema(db);
   const intent = parseStoryIntent(input);
   const runId = randomUUID();
@@ -285,9 +302,9 @@ export function startStoryEngineRun(db, input = {}) {
     const profile = upsertCreativeProfile(db, workspaceId, intent);
     setStage(db, runId, workspaceId, 'creative_profile', 'completed', 'Creative contract resolved.', { profile_id: profile.profile_id, version: profile.version });
 
-    const ghostPlan = buildGhostPlan(runId, intent);
+    const ghostPlan = await buildGhostPlan(runId, intent, profile);
     db.prepare('UPDATE story_engine_runs SET ghost_plan_json=? WHERE run_id=?').run(JSON.stringify(ghostPlan), runId);
-    setStage(db, runId, workspaceId, 'ghost', 'completed', 'Ghost decomposed the request into one coordinated plan.', ghostPlan);
+    setStage(db, runId, workspaceId, 'ghost', 'completed', 'Ghost created the voice fingerprint and drafted the first review unit.', { ...ghostPlan, draft: { ...ghostPlan.draft, draft_unit: '[stored in ghost_plan_json]' } });
 
     ensureLindymodeState(db, workspaceId, intent, ghostPlan);
     setStage(db, runId, workspaceId, 'lindymode', 'completed', 'Lindymode established creative context and canonical starting state.');
@@ -297,7 +314,7 @@ export function startStoryEngineRun(db, input = {}) {
     setStage(db, runId, workspaceId, 'ooda', 'completed', `OODA selected ${decision.action}.`, { decision_id: decision.decision_id, confidence_score: decision.confidence_score, reasons: decision.reasons });
 
     const operatorCheck = evaluateOperatorConstraint(db, { estimated_cost: Number(input.estimated_cost || 0), recurring: Boolean(input.recurring) });
-    const findings = runRedteamPreRuntime(intent, decision, operatorCheck);
+    const findings = runRedteamPreRuntime(intent, decision, operatorCheck, ghostPlan);
     db.prepare('UPDATE story_engine_runs SET pre_runtime_findings_json=? WHERE run_id=?').run(JSON.stringify(findings), runId);
     const blocked = findings.some(finding => finding.severity === 'critical') || operatorCheck.requires_approval;
     setStage(db, runId, workspaceId, 'redteam_pre_runtime', blocked ? 'blocked' : 'completed', blocked ? 'Pre-runtime validation requires human action.' : 'Pre-runtime validation passed.', { findings, operator_check: operatorCheck });
@@ -420,6 +437,7 @@ export function storyEngineBrainSnapshot(db) {
     recent_runs: runs,
     active_count: active.length,
     current: active[0] || runs[0] || null,
-    pipeline_stages: PIPELINE_STAGES
+    pipeline_stages: PIPELINE_STAGES,
+    ghost_commands: ghostCommandOptions()
   };
 }
