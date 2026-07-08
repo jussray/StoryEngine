@@ -7,9 +7,27 @@ const AI_SIGNALS = [
   [/\bin conclusion,?\s*/gi, ''],
   [/\bit'?s worth noting that\s*/gi, ''],
   [/\bmoreover,?\s*/gi, ''],
+  [/\badditionally,?\s*/gi, ''],
+  [/\bneedless to say,?\s*/gi, ''],
+  [/\bin other words,?\s*/gi, ''],
+  [/\bthis underscores\b/gi, 'this shows'],
+  [/\bunderscores\b/gi, 'shows'],
+  [/\bshowcase(?:s|d)?\b/gi, 'show'],
+  [/\bembark(?:s|ed)? on\b/gi, 'start'],
   [/\bdelve into\b/gi, 'step into'],
   [/\btapestry\b/gi, 'pattern'],
-  [/\ba testament to\b/gi, 'proof of']
+  [/\bbeacon\b/gi, 'signal'],
+  [/\ba testament to\b/gi, 'proof of'],
+  [/\bever-evolving\b/gi, 'changing'],
+  [/\bseamlessly\b/gi, 'smoothly'],
+  [/\brobust\b/gi, 'strong'],
+  [/\butilize\b/gi, 'use'],
+  [/\bleverage\b/gi, 'use'],
+  [/\bjourney\b/gi, 'path'],
+  [/\brealm\b/gi, 'place'],
+  [/\bunveil\b/gi, 'show'],
+  [/\btransformative\b/gi, 'big'],
+  [/\bcrucial\b/gi, 'important']
 ];
 
 const MEDIUM_UNIT = Object.freeze({
@@ -99,23 +117,28 @@ function promptForDraft(intent, fingerprint) {
   };
 }
 
+function cadenceReport(text) {
+  const sentences = String(text || '').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
+  const lengths = sentences.map(sentence => sentence.trim().split(/\s+/).filter(Boolean).length).filter(Boolean);
+  if (lengths.length < 3) return { checked: true, sentence_count: lengths.length, too_uniform: false };
+  return {
+    checked: true,
+    sentence_count: lengths.length,
+    shortest: Math.min(...lengths),
+    longest: Math.max(...lengths),
+    too_uniform: Math.max(...lengths) - Math.min(...lengths) <= 3
+  };
+}
+
 export function ghostHumanizePass(text = '') {
   let output = String(text || '').trim();
   for (const [pattern, replacement] of AI_SIGNALS) output = output.replace(pattern, replacement);
-  output = output.replace(/\n{3,}/g, '\n\n').trim();
-  if (!output) return '';
-
-  const paragraphs = output.split(/\n\s*\n/).map(paragraph => paragraph.trim()).filter(Boolean);
-  const repaired = paragraphs.map((paragraph, index) => {
-    const sentences = paragraph.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [paragraph];
-    const lengths = sentences.map(sentence => sentence.trim().split(/\s+/).filter(Boolean).length);
-    const allSimilar = lengths.length >= 3 && Math.max(...lengths) - Math.min(...lengths) <= 3;
-    if (!allSimilar) return paragraph;
-    const fragment = index % 2 === 0 ? 'For a second, nothing moved.' : 'Then—quietly—it changed.';
-    return `${paragraph}\n${fragment}`;
-  });
-
-  return repaired.join('\n\n').trim();
+  output = output
+    .replace(/\s+([,.!?;:])/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+  return output;
 }
 
 function fallbackDraft(intent = {}, fingerprint = {}) {
@@ -146,7 +169,7 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       humanize_pass: {
         applied: true,
         removed_ai_signals: AI_SIGNALS.map(([pattern]) => String(pattern)),
-        cadence_checked: true
+        cadence: cadenceReport(draft)
       }
     };
   } catch (error) {
