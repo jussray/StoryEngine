@@ -5,6 +5,7 @@ import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { storyEngineBrainSnapshot } from '../lib/storyEngineOrchestrator.js';
 import { getRunSummary, listRunSummaries } from '../lib/runSummary.js';
+import { ipGrowthOverview } from '../lib/ipGrowthEngine.js';
 import {
   OPERATOR_PROFILE_OPTIONS,
   getOperatorSummary,
@@ -69,7 +70,7 @@ function engineMemorySignals(db, now = Date.now()) {
   };
 }
 
-function pipelineHealth(snapshot, memory, brain) {
+function pipelineHealth(snapshot, memory, brain, growth) {
   const running = Number(snapshot.overview?.running_dispatches || 0);
   const failed = Number(snapshot.overview?.runtime_failures || 0);
   const gateBlocked = Number(snapshot.overview?.release_gate_blocked_count || 0);
@@ -83,7 +84,8 @@ function pipelineHealth(snapshot, memory, brain) {
     { key: 'release_gate', label: 'Release Gate', status: gateBlocked ? 'blocked' : 'ok' },
     { key: 'control_room', label: 'Control Room', status: brain.current?.current_stage === 'control_room' ? 'running' : 'ok' },
     { key: 'story_memory', label: 'Story Memory', status: memory.story_drift_count ? 'watch' : 'ok' },
-    { key: 'engine_memory', label: 'Engine Memory', status: memory.engine_drift_count ? 'watch' : 'ok' }
+    { key: 'engine_memory', label: 'Engine Memory', status: memory.engine_drift_count ? 'watch' : 'ok' },
+    { key: 'ip_growth', label: 'IP Growth Engine', status: growth.blocked_count ? 'watch' : growth.ready_count ? 'ready' : 'ok' }
   ];
 }
 
@@ -94,6 +96,7 @@ export function buildControlRoomOverview(db, now = Date.now()) {
   const operatorAlerts = getOperatorAlerts(db, snapshot.overview || {});
   const brain = storyEngineBrainSnapshot(db);
   const runSummaries = listRunSummaries(db, 10);
+  const ipGrowth = ipGrowthOverview(db);
   return {
     ...snapshot,
     control_room_generated_at: now,
@@ -101,8 +104,9 @@ export function buildControlRoomOverview(db, now = Date.now()) {
     operator,
     operator_alerts: operatorAlerts,
     story_engine_brain: brain,
+    ip_growth: ipGrowth,
     recent_run_summaries: runSummaries,
-    pipeline_health: pipelineHealth(snapshot, memory, brain)
+    pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth)
   };
 }
 
