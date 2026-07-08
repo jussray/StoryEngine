@@ -1,6 +1,7 @@
 // routes/bootstrapEngine.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireRole } from '../lib/securityContext.js';
 import {
   DEFAULT_BOOTSTRAP_PROVIDERS,
   listBootstrapProviders,
@@ -23,13 +24,17 @@ export default function bootstrapEngineRoutes(router, db) {
   });
 
   router.put('/api/bootstrap-engine/providers/:category', (req, res) => {
-    try { json(res, 200, updateBootstrapProvider(db, req.params.category, req.body || {})); }
-    catch (error) { json(res, /unknown/i.test(error.message) ? 404 : 400, { error: error.message }); }
+    requireRole('administrator')(req, res, () => {
+      try { json(res, 200, updateBootstrapProvider(db, req.params.category, req.body || {})); }
+      catch (error) { json(res, /unknown/i.test(error.message) ? 404 : 400, { error: error.message }); }
+    });
   });
 
   router.post('/api/bootstrap-engine/evaluate', (req, res) => {
-    try { json(res, 201, evaluateBootstrapStack(db, { persist: true })); }
-    catch (error) { json(res, 500, { error: error.message }); }
+    requireRole('reviewer')(req, res, () => {
+      try { json(res, 201, evaluateBootstrapStack(db, { persist: true })); }
+      catch (error) { json(res, 500, { error: error.message }); }
+    });
   });
 
   router.get('/api/bootstrap-engine/overview', (req, res) => {
