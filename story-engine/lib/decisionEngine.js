@@ -91,8 +91,8 @@ function buildRecoveryPlan(reasons, incidents) {
   if (reasons.some(reason => reason.code === 'missing_state')) {
     plan.push('Create canonical Lindymode state before release.');
   }
-  if (reasons.some(reason => reason.code === 'missing_creative_profile')) {
-    plan.push('Create a Creative Profile so every subsystem knows the medium, audience, tone, goal, and constraints.');
+  if (reasons.some(reason => ['missing_creative_profile', 'incomplete_creative_profile'].includes(reason.code))) {
+    plan.push('Tell L99 what story you want to tell and what kind of story it is before OODA plans execution.');
   }
   if (reasons.some(reason => reason.code === 'empty_chapters')) {
     plan.push('Complete or remove empty chapters before release.');
@@ -104,6 +104,7 @@ function buildRecoveryPlan(reasons, incidents) {
 export function evaluateWorkspace(db, workspaceId) {
   const state = latestState(db, workspaceId);
   const profile = creativeProfileContext(db, workspaceId);
+  const profileComplete = Boolean(profile?.story_vision?.trim() && profile?.story_kind?.trim());
   const incidents = activeIncidents(db, workspaceId);
   const runtime = runtimeStats(db, workspaceId);
   const chapters = chapterStats(db, workspaceId);
@@ -116,7 +117,12 @@ export function evaluateWorkspace(db, workspaceId) {
   if (!profile) reasons.push({
     code: 'missing_creative_profile',
     severity: 'warning',
-    message: 'Creative Profile is missing; audience and medium alignment cannot be verified.'
+    message: 'Creative Profile is missing; story intent, audience, and medium alignment cannot be verified.'
+  });
+  else if (!profileComplete) reasons.push({
+    code: 'incomplete_creative_profile',
+    severity: 'critical',
+    message: 'Story vision and story kind are required before OODA can authorize execution.'
   });
   if (!state) reasons.push({ code: 'missing_state', severity: 'warning', message: 'Canonical Lindymode state is missing.' });
   if (criticalIncidents.length) reasons.push({ code: 'critical_drift', severity: 'critical', message: `${criticalIncidents.length} critical story incident(s) active.` });
@@ -133,6 +139,7 @@ export function evaluateWorkspace(db, workspaceId) {
   score -= incidents.filter(item => item.severity === 'watch').length * 5;
   score -= Math.round(maxDrift * 20);
   if (!profile) score -= 20;
+  else if (!profileComplete) score -= 35;
   if (!state) score -= 15;
   if (runtime.p99 > 2000) score -= 15;
   else if (runtime.p99 > 1000) score -= 8;
@@ -163,8 +170,11 @@ export function evaluateWorkspace(db, workspaceId) {
     confidence_score: score,
     reasons,
     recovery_plan: buildRecoveryPlan(reasons, incidents),
-    strategy: profile ? {
+    strategy: profileComplete ? {
       profile_id: profile.profile_id,
+      story_vision: profile.story_vision,
+      story_kind: profile.story_kind,
+      emotional_effect: profile.emotional_effect,
       medium: profile.medium,
       audience: profile.audience,
       eli_level: profile.eli_level,
@@ -179,6 +189,7 @@ export function evaluateWorkspace(db, workspaceId) {
     } : null,
     evidence: {
       creative_profile: profile,
+      creative_profile_complete: profileComplete,
       active_incidents: incidents.length,
       critical_incidents: criticalIncidents.length,
       max_drift: maxDrift,
@@ -218,6 +229,7 @@ export function persistDecision(db, decision) {
       readiness: decision.readiness,
       confidence_score: decision.confidence_score,
       profile_id: decision.strategy?.profile_id || null,
+      story_kind: decision.strategy?.story_kind || null,
       medium: decision.strategy?.medium || null,
       audience: decision.strategy?.audience || null,
       eli_level: decision.strategy?.eli_level || null
@@ -232,6 +244,7 @@ export function runReleaseAudit(db, workspaceId) {
   const decision = evaluateWorkspace(db, workspaceId);
   const checks = [
     { name: 'creative_profile', passed: Boolean(decision.evidence.creative_profile) },
+    { name: 'story_intent', passed: decision.evidence.creative_profile_complete },
     { name: 'canonical_state', passed: !decision.reasons.some(item => item.code === 'missing_state') },
     { name: 'continuity', passed: decision.evidence.critical_incidents === 0 },
     { name: 'story_drift', passed: decision.evidence.max_drift < 0.8 },
