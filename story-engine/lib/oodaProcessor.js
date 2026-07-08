@@ -1,5 +1,5 @@
 // lib/oodaProcessor.js
-// OODA loop: combines application runtime metrics with active Lindymode incidents.
+// OODA loop: combines application runtime metrics, Lindymode incidents, and Story Memory drift.
 
 function percentile(sorted, p) {
   if (!sorted.length) return 0;
@@ -98,10 +98,48 @@ export function getLindymodeIncidents(db, limit = 200) {
   }));
 }
 
+export function getGenomeDriftIncidents(db, limit = 200) {
+  return db.prepare(`
+    SELECT id, diff_id, workspace_id, chapter_id, entity_type, entity_id,
+           field, old_value, new_value, source, created_at
+    FROM memory_diffs
+    WHERE conflict = 1 AND resolved = 0
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(limit).map(row => ({
+    incident_id: `genome_drift:${row.diff_id || row.id}`,
+    correlation_id: row.diff_id || null,
+    parent_event_id: null,
+    source: 'story_memory',
+    workspace_id: row.workspace_id,
+    chapter_id: row.chapter_id,
+    mode: 'memory',
+    event_type: 'GENOME_DRIFT',
+    severity: 'critical',
+    summary: `${row.entity_type}:${row.entity_id} ${row.field} conflicts (${row.old_value ?? 'unknown'} → ${row.new_value ?? 'unknown'}).`,
+    status: 'active',
+    drift_score: 1,
+    details: {
+      diff_id: row.diff_id || row.id,
+      entity_type: row.entity_type,
+      entity_id: row.entity_id,
+      field: row.field,
+      old_value: row.old_value,
+      new_value: row.new_value,
+      source: row.source
+    },
+    recovery_action: null,
+    created_at: row.created_at,
+    resolved_at: null,
+    metrics: null
+  }));
+}
+
 export function collectActiveIncidents(db, thresholds) {
   const metricIncidents = detectMetricIncidents(computeMetrics(db), thresholds);
   const lindymodeIncidents = getLindymodeIncidents(db);
-  return [...lindymodeIncidents, ...metricIncidents].sort((a, b) => {
+  const genomeIncidents = getGenomeDriftIncidents(db);
+  return [...genomeIncidents, ...lindymodeIncidents, ...metricIncidents].sort((a, b) => {
     const rank = { critical: 3, warning: 2, watch: 1 };
     const severityDelta = (rank[b.severity] || 0) - (rank[a.severity] || 0);
     return severityDelta || Number(b.created_at || 0) - Number(a.created_at || 0);
