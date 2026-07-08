@@ -34,7 +34,25 @@ ensureColumn('memory_diffs', 'diff_id', 'TEXT');
 ensureColumn('memory_diffs', 'resolution', 'TEXT');
 ensureColumn('memory_diffs', 'source', "TEXT NOT NULL DEFAULT 'system'");
 ensureColumn('memory_diffs', 'resolved_at', 'INTEGER');
-db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_diffs_diff_id ON memory_diffs(diff_id) WHERE diff_id IS NOT NULL;');
+
+db.exec(`
+  DELETE FROM memory_diffs
+  WHERE field = 'content_hash'
+    AND id NOT IN (
+      SELECT MIN(id)
+      FROM memory_diffs
+      WHERE field = 'content_hash'
+      GROUP BY workspace_id, chapter_id, field, new_value
+    );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_diffs_diff_id
+    ON memory_diffs(diff_id)
+    WHERE diff_id IS NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_content_hash_once
+    ON memory_diffs(workspace_id, chapter_id, field, new_value)
+    WHERE field = 'content_hash';
+`);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS studio_ideas (
