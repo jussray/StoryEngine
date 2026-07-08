@@ -24,7 +24,7 @@ function applyAssistMode(db, run, requestedMode) {
   if (profile.assist_mode === 'human_first' && run.dispatch_id) {
     db.prepare(`
       UPDATE runtime_dispatch_queue
-      SET status='cancelled', updated_at=?
+      SET status='cancelled', completed_at=?
       WHERE dispatch_id=? AND status='queued'
     `).run(Date.now(), run.dispatch_id);
     db.prepare(`
@@ -56,7 +56,13 @@ function applyAssistMode(db, run, requestedMode) {
     });
   }
 
-  return { ...run, assist_profile: profile, status: profile.assist_mode === 'human_first' ? 'human_writing' : run.status, current_stage: profile.assist_mode === 'human_first' ? 'story_engine' : run.current_stage, active_agent: profile.assist_mode === 'human_first' ? 'Human' : run.active_agent };
+  return {
+    ...run,
+    assist_profile: profile,
+    status: profile.assist_mode === 'human_first' ? 'human_writing' : run.status,
+    current_stage: profile.assist_mode === 'human_first' ? 'story_engine' : run.current_stage,
+    active_agent: profile.assist_mode === 'human_first' ? 'Human' : run.active_agent
+  };
 }
 
 export default function storyEngineRoutes(router, db) {
@@ -71,11 +77,8 @@ export default function storyEngineRoutes(router, db) {
   });
 
   router.post('/api/story-engine/intent', (req, res) => {
-    try {
-      json(res, 200, parseStoryIntent(req.body || {}));
-    } catch (error) {
-      json(res, 400, { error: error.message });
-    }
+    try { json(res, 200, parseStoryIntent(req.body || {})); }
+    catch (error) { json(res, 400, { error: error.message }); }
   });
 
   router.post('/api/story-engine/runs', (req, res) => {
@@ -97,11 +100,8 @@ export default function storyEngineRoutes(router, db) {
   });
 
   router.get('/api/story-engine/brain', (req, res) => {
-    try {
-      json(res, 200, storyEngineBrainSnapshot(db));
-    } catch (error) {
-      json(res, 500, { error: error.message });
-    }
+    try { json(res, 200, storyEngineBrainSnapshot(db)); }
+    catch (error) { json(res, 500, { error: error.message }); }
   });
 
   router.get('/api/story-engine/runs/:run_id', async (req, res) => {
@@ -115,12 +115,8 @@ export default function storyEngineRoutes(router, db) {
   });
 
   router.post('/api/story-engine/runs/:run_id/approve', (req, res) => {
-    try {
-      json(res, 200, approveStoryEngineRun(db, req.params.run_id));
-    } catch (error) {
-      const status = /not found/i.test(error.message) ? 404 : 400;
-      json(res, status, { error: error.message });
-    }
+    try { json(res, 200, approveStoryEngineRun(db, req.params.run_id)); }
+    catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
   });
 
   router.post('/api/story-engine/runs/:run_id/resume', async (req, res) => {
