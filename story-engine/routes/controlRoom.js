@@ -6,6 +6,11 @@ import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { storyEngineBrainSnapshot } from '../lib/storyEngineOrchestrator.js';
 import { getRunSummary, listRunSummaries } from '../lib/runSummary.js';
 import { ipGrowthOverview } from '../lib/ipGrowthEngine.js';
+import { ipStudioOverview } from '../lib/ipStudio.js';
+import { campaignStudioOverview } from '../lib/campaignStudio.js';
+import { founderEconomicsOverview } from '../lib/bootstrapEngine.js';
+import { llmRoutingSnapshot } from '../lib/llmClient.js';
+import { authSnapshot, requireRole } from '../lib/securityContext.js';
 import {
   OPERATOR_PROFILE_OPTIONS,
   getOperatorSummary,
@@ -70,10 +75,25 @@ function engineMemorySignals(db, now = Date.now()) {
   };
 }
 
-function pipelineHealth(snapshot, memory, brain, growth) {
+function lineageHealth(db) {
+  if (!tableExists(db, 'campaign_clips')) {
+    return { total_visual_products: 0, missing_credit_count: 0, platform_versions: 0, status: 'not_initialized' };
+  }
+  const clips = db.prepare('SELECT COUNT(*) AS count FROM campaign_clips').get();
+  const platforms = db.prepare('SELECT COUNT(DISTINCT platform_version) AS count FROM campaign_clips').get();
+  return {
+    total_visual_products: Number(clips?.count || 0),
+    missing_credit_count: 0,
+    platform_versions: Number(platforms?.count || 0),
+    status: 'credit_policy_attached_at_api_boundary'
+  };
+}
+
+function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudio, founderEconomics, llm) {
   const running = Number(snapshot.overview?.running_dispatches || 0);
   const failed = Number(snapshot.overview?.runtime_failures || 0);
   const gateBlocked = Number(snapshot.overview?.release_gate_blocked_count || 0);
+  const circuitOpen = Object.values(llm.circuits || {}).some(item => item.open);
   return [
     { key: 'story_engine', label: 'Story Engine', status: brain.active_count ? 'running' : 'ok' },
     { key: 'ghost', label: 'Ghost', status: brain.current?.current_stage === 'ghost' ? 'running' : 'ok' },
@@ -81,11 +101,15 @@ function pipelineHealth(snapshot, memory, brain, growth) {
     { key: 'ooda', label: 'OODA Loop', status: 'running' },
     { key: 'redteam', label: 'Redteam', status: brain.current?.current_stage?.startsWith('redteam') ? 'running' : 'ok' },
     { key: 'runtime', label: 'Runtime', status: failed ? 'error' : running ? 'running' : 'ok' },
+    { key: 'llm_gateway', label: 'LLM Gateway', status: circuitOpen ? 'blocked' : 'ok' },
     { key: 'release_gate', label: 'Release Gate', status: gateBlocked ? 'blocked' : 'ok' },
     { key: 'control_room', label: 'Control Room', status: brain.current?.current_stage === 'control_room' ? 'running' : 'ok' },
     { key: 'story_memory', label: 'Story Memory', status: memory.story_drift_count ? 'watch' : 'ok' },
     { key: 'engine_memory', label: 'Engine Memory', status: memory.engine_drift_count ? 'watch' : 'ok' },
-    { key: 'ip_growth', label: 'IP Growth Engine', status: growth.blocked_count ? 'watch' : growth.ready_count ? 'ready' : 'ok' }
+    { key: 'ip_growth', label: 'IP Growth Engine', status: growth.blocked_count ? 'watch' : growth.ready_count ? 'ready' : 'ok' },
+    { key: 'ip_studio', label: 'IP Studio', status: ipStudio.total_packs ? 'ready' : 'ok' },
+    { key: 'campaign_studio', label: 'Campaign Studio', status: campaignStudio.total_campaigns ? 'ready' : 'ok' },
+    { key: 'founder_economics', label: 'Founder Economics', status: founderEconomics.at_risk_count ? 'watch' : 'ok' }
   ];
 }
 
@@ -97,6 +121,11 @@ export function buildControlRoomOverview(db, now = Date.now()) {
   const brain = storyEngineBrainSnapshot(db);
   const runSummaries = listRunSummaries(db, 10);
   const ipGrowth = ipGrowthOverview(db);
+  const ipStudio = ipStudioOverview(db);
+  const campaignStudio = campaignStudioOverview(db);
+  const founderEconomics = founderEconomicsOverview(db);
+  const llm = llmRoutingSnapshot();
+  const lineage = lineageHealth(db);
   return {
     ...snapshot,
     control_room_generated_at: now,
@@ -105,8 +134,13 @@ export function buildControlRoomOverview(db, now = Date.now()) {
     operator_alerts: operatorAlerts,
     story_engine_brain: brain,
     ip_growth: ipGrowth,
+    ip_studio: ipStudio,
+    campaign_studio: campaignStudio,
+    lineage_health: lineage,
+    founder_economics: founderEconomics,
+    llm_gateway: llm,
     recent_run_summaries: runSummaries,
-    pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth)
+    pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth, ipStudio, campaignStudio, founderEconomics, llm)
   };
 }
 
@@ -137,7 +171,7 @@ export function resolveControlRoomIncident(db, input = {}) {
       `).run(`operator:${resolution}`, now, incidentId).changes || 0);
     }
   })();
-  log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.incident_resolved', payload: { incident_id: incidentId || null, diff_id: diffId || null, resolution } });
+  log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.incident_resolved', payload: { incident_id: incidentId || null, diff_id: diffId || null, resolution, actor: input.actor || null } });
   return { ok: true, incident_id: incidentId || null, diff_id: diffId || null, resolved: diffChanges + incidentChanges, resolution, resolved_at: now };
 }
 
@@ -146,29 +180,40 @@ export function forceControlRoomGatePass(db, input = {}) {
   const operatorNote = String(input.operator_note || '').trim();
   if (!workspaceId) throw new Error('workspace_id is required.');
   if (!operatorNote) throw new Error('operator_note is required for an override.');
+  if (!input.actor?.actor_id) throw new Error('Authenticated actor identity is required for an override.');
   if (!db.prepare('SELECT workspace_id FROM stories WHERE workspace_id=?').get(workspaceId)) throw new Error('Workspace not found.');
   const auditId = `override_${randomUUID()}`;
   const now = Date.now();
-  const checks = [{ check: 'operator_override', passed: true, chapter_id: input.chapter_id ?? null, note: operatorNote }];
+  const checks = [{ check: 'operator_override', passed: true, chapter_id: input.chapter_id ?? null, note: operatorNote, actor: input.actor }];
   db.prepare(`
     INSERT INTO release_audits (audit_id, workspace_id, result, confidence_score, checks_json, blockers_json, created_at)
     VALUES (?, ?, 'OPERATOR_OVERRIDE', 100, ?, '[]', ?)
   `).run(auditId, workspaceId, JSON.stringify(checks), now);
-  log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.gate_overridden', payload: { audit_id: auditId, chapter_id: input.chapter_id ?? null, operator_note: operatorNote } });
-  return { ok: true, audit_id: auditId, workspace_id: workspaceId, chapter_id: input.chapter_id ?? null, result: 'OPERATOR_OVERRIDE', created_at: now };
+  log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.gate_overridden', payload: { audit_id: auditId, chapter_id: input.chapter_id ?? null, operator_note: operatorNote, actor: input.actor } });
+  return { ok: true, audit_id: auditId, workspace_id: workspaceId, chapter_id: input.chapter_id ?? null, result: 'OPERATOR_OVERRIDE', actor: input.actor, created_at: now };
 }
 
 function registerOperatorRoutes(router, db, basePath) {
   router.get(`${basePath}/options`, (req, res) => json(res, 200, OPERATOR_PROFILE_OPTIONS));
   router.get(basePath, (req, res) => { try { json(res, 200, getOperatorSummary(db)); } catch (error) { json(res, 500, { error: error.message }); } });
-  router.put(basePath, (req, res) => { try { const profile = updateOperatorProfile(db, req.body || {}); json(res, 200, { profile, summary: getOperatorSummary(db) }); } catch (error) { json(res, 400, { error: error.message }); } });
-  router.post(`${basePath}/event`, (req, res) => { try { const event = recordOperatorEvent(db, req.body || {}); json(res, 201, { event, summary: getOperatorSummary(db) }); } catch (error) { json(res, 400, { error: error.message }); } });
+  router.put(basePath, (req, res) => {
+    requireRole('administrator')(req, res, () => {
+      try { const profile = updateOperatorProfile(db, req.body || {}); json(res, 200, { profile, summary: getOperatorSummary(db) }); }
+      catch (error) { json(res, 400, { error: error.message }); }
+    });
+  });
+  router.post(`${basePath}/event`, (req, res) => {
+    requireRole('release_manager')(req, res, () => {
+      try { const event = recordOperatorEvent(db, req.body || {}); json(res, 201, { event, summary: getOperatorSummary(db) }); }
+      catch (error) { json(res, 400, { error: error.message }); }
+    });
+  });
   router.post(`${basePath}/evaluate-cost`, (req, res) => { try { json(res, 200, evaluateOperatorConstraint(db, req.body || {})); } catch (error) { json(res, 400, { error: error.message }); } });
   router.get(`${basePath}/alerts`, (req, res) => { try { const snapshot = getMissionControlSnapshot(db); json(res, 200, getOperatorAlerts(db, snapshot.overview || {})); } catch (error) { json(res, 500, { error: error.message }); } });
 }
 
 export default function controlRoomRoutes(router, db) {
-  router.get('/api/control-room/overview', (req, res) => { try { json(res, 200, buildControlRoomOverview(db)); } catch (error) { json(res, 500, { error: error.message }); } });
+  router.get('/api/control-room/overview', (req, res) => { try { json(res, 200, { ...buildControlRoomOverview(db), viewer: authSnapshot(req) }); } catch (error) { json(res, 500, { error: error.message }); } });
   router.get('/api/control-room/run-summaries', (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
@@ -189,7 +234,7 @@ export default function controlRoomRoutes(router, db) {
   registerOperatorRoutes(router, db, '/api/control-room/operator');
   registerOperatorRoutes(router, db, '/api/control-room/founder');
   router.get('/api/control-room/stream', (req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     const send = () => {
       try { res.write('event: snapshot\n'); res.write(`data: ${JSON.stringify(buildControlRoomOverview(db))}\n\n`); }
       catch (error) { res.write('event: error\n'); res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`); }
@@ -198,6 +243,16 @@ export default function controlRoomRoutes(router, db) {
     const interval = setInterval(send, 30_000);
     req.on('close', () => clearInterval(interval));
   });
-  router.post('/api/control-room/resolve-incident', (req, res) => { try { json(res, 200, resolveControlRoomIncident(db, req.body)); } catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); } });
-  router.post('/api/control-room/force-gate-pass', (req, res) => { try { json(res, 201, forceControlRoomGatePass(db, req.body)); } catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); } });
+  router.post('/api/control-room/resolve-incident', (req, res) => {
+    requireRole('reviewer')(req, res, () => {
+      try { json(res, 200, resolveControlRoomIncident(db, { ...req.body, actor: authSnapshot(req) })); }
+      catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
+    });
+  });
+  router.post('/api/control-room/force-gate-pass', (req, res) => {
+    requireRole('release_manager')(req, res, () => {
+      try { json(res, 201, forceControlRoomGatePass(db, { ...req.body, actor: authSnapshot(req) })); }
+      catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
+    });
+  });
 }
