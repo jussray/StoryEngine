@@ -179,8 +179,95 @@ CREATE TABLE IF NOT EXISTS story_genomes (
   updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS memory_characters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  char_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  role TEXT,
+  status TEXT NOT NULL DEFAULT 'alive',
+  location TEXT,
+  arc_stage TEXT,
+  traits TEXT NOT NULL DEFAULT '[]',
+  data_json TEXT NOT NULL DEFAULT '{}',
+  first_chapter INTEGER,
+  last_chapter INTEGER,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  UNIQUE(workspace_id, char_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_locations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  loc_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT,
+  description TEXT,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  UNIQUE(workspace_id, loc_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_relationships (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  relationship_id TEXT NOT NULL,
+  char_a TEXT NOT NULL,
+  char_b TEXT NOT NULL,
+  rel_type TEXT NOT NULL,
+  strength REAL NOT NULL DEFAULT 1.0,
+  notes TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  UNIQUE(workspace_id, relationship_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_lore (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  lore_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  canonical INTEGER NOT NULL DEFAULT 1,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  UNIQUE(workspace_id, lore_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_objects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  obj_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT,
+  holder TEXT,
+  location TEXT,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  UNIQUE(workspace_id, obj_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_timeline (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  timeline_id TEXT NOT NULL,
+  event_label TEXT NOT NULL,
+  story_time TEXT NOT NULL,
+  chapter_id INTEGER,
+  description TEXT,
+  position INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  UNIQUE(workspace_id, timeline_id)
+);
+
 CREATE TABLE IF NOT EXISTS memory_diffs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  diff_id TEXT UNIQUE,
   workspace_id TEXT NOT NULL,
   chapter_id INTEGER,
   entity_type TEXT NOT NULL,
@@ -191,6 +278,7 @@ CREATE TABLE IF NOT EXISTS memory_diffs (
   conflict INTEGER NOT NULL DEFAULT 0,
   resolved INTEGER NOT NULL DEFAULT 0,
   resolution TEXT,
+  source TEXT NOT NULL DEFAULT 'system',
   created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
   resolved_at INTEGER
 );
@@ -277,6 +365,12 @@ CREATE INDEX IF NOT EXISTS idx_ooda_episodes_workspace ON ooda_episodes(workspac
 CREATE INDEX IF NOT EXISTS idx_ooda_episodes_trigger ON ooda_episodes(trigger_type, outcome);
 CREATE INDEX IF NOT EXISTS idx_ooda_risk_workspace ON ooda_risk_snapshots(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ooda_recovery_workspace ON ooda_recovery_runs(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_memory_characters_workspace ON memory_characters(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_memory_locations_workspace ON memory_locations(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_memory_relationships_workspace ON memory_relationships(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_memory_lore_workspace ON memory_lore(workspace_id, category);
+CREATE INDEX IF NOT EXISTS idx_memory_objects_workspace ON memory_objects(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_memory_timeline_workspace ON memory_timeline(workspace_id, position);
 CREATE INDEX IF NOT EXISTS idx_memory_diffs_workspace ON memory_diffs(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_memory_diffs_conflict ON memory_diffs(conflict, resolved);
 CREATE INDEX IF NOT EXISTS idx_engine_memory_workspace ON engine_memory_episodes(workspace_id, created_at);
