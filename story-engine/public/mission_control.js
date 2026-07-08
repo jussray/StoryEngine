@@ -27,25 +27,32 @@ async function api(path, options = {}) {
 function render(data) {
   const o = data.overview;
   const r = data.retention || {};
+  const a = data.release_attempts || {};
   overviewEl.innerHTML = `
     <div><span class="health-label">Workspaces</span><strong>${o.workspaces}</strong></div>
     <div><span class="health-label">Gate Ready</span><strong>${o.release_gate_ready ?? 0}</strong></div>
     <div><span class="health-label">Gate Warning</span><strong>${o.release_gate_warning ?? 0}</strong></div>
     <div><span class="health-label">Gate Stopped</span><strong>${o.release_gate_blocked_count ?? 0}</strong></div>
+    <div><span class="health-label">Attempts</span><strong>${a.total ?? 0}</strong></div>
+    <div><span class="health-label">Attempt Failures</span><strong>${(a.blocked ?? 0) + (a.failed ?? 0)}</strong></div>
     <div><span class="health-label">Queue</span><strong>${o.queue_depth}</strong></div>
-    <div><span class="health-label">Live Events</span><strong>${o.live_event_count ?? 0}</strong></div>
-    <div><span class="health-label">Compacted</span><strong>${o.compacted_episode_count ?? 0}</strong></div>`;
+    <div><span class="health-label">Live Events</span><strong>${o.live_event_count ?? 0}</strong></div>`;
 
-  workspaceListEl.innerHTML = data.workspaces.length ? data.workspaces.map(item => `
-    <article class="beat-card incident-card">
-      <strong>${esc(item.title)}</strong>
-      <p>Release Gate: ${esc(item.release_gate_status || 'UNKNOWN')} · Risk: ${esc(item.predicted_risk)}</p>
-      <p class="subtitle">Confidence ${item.confidence_score}% · ${item.chapter_count} chapters · ${item.active_incidents} incidents</p>
-      ${item.release_gate_reasons?.length ? `<p class="subtitle">${esc(item.release_gate_reasons[0])}</p>` : ''}
-      <a href="/release_gate.html?workspace_id=${encodeURIComponent(item.workspace_id)}">Open Release Gate</a>
-      <span> · </span>
-      <a href="/runtime_dashboard.html?workspace_id=${encodeURIComponent(item.workspace_id)}">Open runtime ledger</a>
-    </article>`).join('') : '<p class="subtitle">No workspaces.</p>';
+  workspaceListEl.innerHTML = data.workspaces.length ? data.workspaces.map(item => {
+    const attempt = item.latest_release_attempt;
+    return `
+      <article class="beat-card incident-card">
+        <strong>${esc(item.title)}</strong>
+        <p>Release Gate: ${esc(item.release_gate_status || 'UNKNOWN')} · Risk: ${esc(item.predicted_risk)}</p>
+        <p class="subtitle">Confidence ${item.confidence_score}% · ${item.chapter_count} chapters · ${item.active_incidents} incidents</p>
+        ${attempt ? `<p class="subtitle">Latest attempt: ${esc(attempt.operation)} · ${esc(attempt.status)} · ${fmtTime(attempt.created_at)}</p>` : '<p class="subtitle">No release attempts yet.</p>'}
+        ${attempt?.error ? `<p class="subtitle">${esc(attempt.error)}</p>` : ''}
+        ${item.release_gate_reasons?.length ? `<p class="subtitle">${esc(item.release_gate_reasons[0])}</p>` : ''}
+        <a href="/release_gate.html?workspace_id=${encodeURIComponent(item.workspace_id)}">Open Release Gate</a>
+        <span> · </span>
+        <a href="/runtime_dashboard.html?workspace_id=${encodeURIComponent(item.workspace_id)}">Open runtime ledger</a>
+      </article>`;
+  }).join('') : '<p class="subtitle">No workspaces.</p>';
 
   queueListEl.innerHTML = data.queue.length ? data.queue.map(item => `
     <div class="release-check"><strong>${esc(item.status)}</strong><span>${esc(item.trigger_type)} · ${esc(item.workspace_id)}</span></div>`).join('') : '<p class="subtitle">Queue is empty.</p>';
@@ -54,11 +61,12 @@ function render(data) {
     <div class="timeline-item timeline-event"><span class="timeline-dot"></span><div><strong>${esc(item.event_type || item.source)}</strong><p>${esc(item.summary)}</p></div></div>`).join('') : '<p class="subtitle">No active incidents.</p>';
 
   recoveryStatsEl.innerHTML = `
-    <div class="release-check"><strong>Validated</strong><span>${data.recovery.validated}</span></div>
-    <div class="release-check"><strong>Rolled back</strong><span>${data.recovery.rolled_back}</span></div>
-    <div class="release-check"><strong>Awaiting author</strong><span>${data.recovery.awaiting_author}</span></div>
+    <div class="release-check"><strong>Attempts completed</strong><span>${a.completed ?? 0}</span></div>
+    <div class="release-check"><strong>Attempts blocked</strong><span>${a.blocked ?? 0}</span></div>
+    <div class="release-check"><strong>Attempts failed</strong><span>${a.failed ?? 0}</span></div>
+    <div class="release-check"><strong>Attempts running</strong><span>${a.running ?? 0}</span></div>
+    <div class="release-check"><strong>Validated recoveries</strong><span>${data.recovery.validated}</span></div>
     <div class="release-check"><strong>Oldest live event</strong><span>${fmtTime(r.oldest_live_event_at)}</span></div>
-    <div class="release-check"><strong>Eligible events</strong><span>${r.eligible_event_count ?? 0}</span></div>
     <div class="release-check"><strong>Last compaction</strong><span>${fmtTime(r.last_compacted_at)}</span></div>
     <button id="runRetention" class="quiet-button" type="button">Run Retention</button>`;
 
