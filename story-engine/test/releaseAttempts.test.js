@@ -102,3 +102,43 @@ test('running attempt can be marked failed', () => {
   assert.equal(listReleaseAttempts(db, workspaceId).length, 1);
   db.close();
 });
+
+test('completing an already completed attempt is idempotent', () => {
+  const db = createDb();
+  const workspaceId = seedWorkspace(db);
+  const created = createReleaseAttempt(db, workspaceId, 'export');
+
+  completeReleaseAttempt(db, created.attempt.attempt_id, { file: 'draft.pdf' });
+  const repeated = completeReleaseAttempt(db, created.attempt.attempt_id, { file: 'other.pdf' });
+  const completionEvents = db.prepare(`
+    SELECT COUNT(*) AS count FROM events
+    WHERE workspace_id = ? AND event_type = 'release_attempt_completed'
+  `).get(workspaceId);
+
+  assert.equal(repeated.status, 'completed');
+  assert.equal(repeated.result.file, 'draft.pdf');
+  assert.equal(Number(completionEvents.count), 1);
+  db.close();
+});
+
+test('terminal attempts reject conflicting transitions', () => {
+  const db = createDb();
+  const workspaceId = seedWorkspace(db);
+  const completedAttempt = createReleaseAttempt(db, workspaceId, 'export');
+  completeReleaseAttempt(db, completedAttempt.attempt.attempt_id, {});
+
+  assert.throws(
+    () => failReleaseAttempt(db, completedAttempt.attempt.attempt_id, 'late failure'),
+    error => error.code === 'INVALID_RELEASE_ATTEMPT_TRANSITION'
+  );
+
+  const failedAttempt = createReleaseAttempt(db, workspaceId, 'publish');
+  failReleaseAttempt(db, failedAttempt.attempt.attempt_id, 'publish failed');
+
+  assert.throws(
+    () => completeReleaseAttempt(db, failedAttempt.attempt.attempt_id, {}),
+    error => error.code === 'INVALID_RELEASE_ATTEMPT_TRANSITION'
+  );
+
+  db.close();
+});
