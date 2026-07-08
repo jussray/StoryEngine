@@ -192,6 +192,22 @@ CREATE TABLE IF NOT EXISTS studio_ideas (
   created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS studio_architectures (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  architecture_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT NOT NULL UNIQUE,
+  idea_id TEXT,
+  title TEXT NOT NULL,
+  genre TEXT,
+  audience TEXT,
+  structure_json TEXT NOT NULL,
+  validation_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'draft',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+);
+
 CREATE TABLE IF NOT EXISTS story_genomes (
   workspace_id TEXT PRIMARY KEY,
   genome_json TEXT NOT NULL DEFAULT '{}',
@@ -388,6 +404,8 @@ CREATE INDEX IF NOT EXISTS idx_ooda_recovery_workspace ON ooda_recovery_runs(wor
 CREATE INDEX IF NOT EXISTS idx_studio_ideas_workspace ON studio_ideas(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_studio_ideas_niche ON studio_ideas(niche, market_score);
 CREATE INDEX IF NOT EXISTS idx_studio_ideas_selected ON studio_ideas(selected, created_at);
+CREATE INDEX IF NOT EXISTS idx_studio_architectures_workspace ON studio_architectures(workspace_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_studio_architectures_idea ON studio_architectures(idea_id);
 CREATE INDEX IF NOT EXISTS idx_memory_characters_workspace ON memory_characters(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_memory_locations_workspace ON memory_locations(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_memory_relationships_workspace ON memory_relationships(workspace_id);
