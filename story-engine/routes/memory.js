@@ -19,12 +19,8 @@ function respondError(res, error) {
 }
 
 export default function memoryRoutes(router, db) {
-  router.get('/api/memory/:workspace_id', (req, res) => {
-    try {
-      json(res, 200, getMemorySnapshot(db, req.params.workspace_id));
-    } catch (error) {
-      respondError(res, error);
-    }
+  router.get('/api/memory/types', (req, res) => {
+    json(res, 200, { types: MEMORY_ENTITY_TYPES });
   });
 
   router.get('/api/memory/:workspace_id/context', (req, res) => {
@@ -46,6 +42,14 @@ export default function memoryRoutes(router, db) {
   router.get('/api/memory/:workspace_id/:type', (req, res) => {
     try {
       json(res, 200, listMemoryEntities(db, req.params.workspace_id, req.params.type));
+    } catch (error) {
+      respondError(res, error);
+    }
+  });
+
+  router.get('/api/memory/:workspace_id', (req, res) => {
+    try {
+      json(res, 200, getMemorySnapshot(db, req.params.workspace_id));
     } catch (error) {
       respondError(res, error);
     }
@@ -89,9 +93,5 @@ export default function memoryRoutes(router, db) {
     } catch (error) {
       respondError(res, error);
     }
-  });
-
-  router.get('/api/memory/types', (req, res) => {
-    json(res, 200, { types: MEMORY_ENTITY_TYPES });
   });
 }
