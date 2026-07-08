@@ -27,6 +27,7 @@ import runtimeRoutes from './routes/runtime.js';
 import missionControlRoutes from './routes/missionControl.js';
 import eventRetentionRoutes from './routes/eventRetention.js';
 import releaseGateRoutes from './routes/releaseGate.js';
+import releaseAttemptRoutes from './routes/releaseAttempts.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -55,6 +56,7 @@ runtimeRoutes(router, db);
 missionControlRoutes(router, db);
 eventRetentionRoutes(router, db);
 releaseGateRoutes(router, db);
+releaseAttemptRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -117,5 +119,5 @@ startRuntimeScheduler(db, {
 server.listen(PORT, () => {
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
   console.log('OODA SSE: GET /api/ooda/incidents for live incidents.');
-  console.log('Mission Control, retention, Release Gate, and autonomous runtime scheduler registered.');
+  console.log('Mission Control, retention, Release Gate, Release Attempts, and runtime scheduler registered.');
 });
