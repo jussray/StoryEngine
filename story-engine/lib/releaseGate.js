@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { evaluateWorkspace } from './decisionEngine.js';
+import { checkGenomeConsistency } from './memoryEngine.js';
 import { log } from '../models/eventModel.js';
 
 const SUPPORTED_SCHEMA_VERSIONS = new Set(['1.0.0']);
@@ -72,6 +73,7 @@ export function evaluateReleaseGate(db, workspaceId, options = {}) {
   const runtime = latestRuntime(db, workspaceId);
   const recovery = latestRecovery(db, workspaceId);
   const incidents = activeIncidents(db, workspaceId);
+  const genome = checkGenomeConsistency(db, workspaceId, options.chapterId ?? null);
   const blockers = [];
   const warnings = [];
   const actions = [];
@@ -84,6 +86,7 @@ export function evaluateReleaseGate(db, workspaceId, options = {}) {
 
   if (sev3.length) blockers.push(`${sev3.length} active Sev3 incident(s).`);
   if (continuity.length) blockers.push(`${continuity.length} unresolved continuity conflict(s).`);
+  if (!genome.passed) blockers.push(`${genome.conflicts.length} unresolved Story Memory conflict(s).`);
   if (runtime?.status === 'failed') blockers.push('Latest autonomous runtime failed.');
   if (!supportedSchema) blockers.push(`Unsupported schema version: ${story.schema_version}.`);
   if (migrationFailed) blockers.push('A schema migration failed within the last 24 hours.');
@@ -101,6 +104,7 @@ export function evaluateReleaseGate(db, workspaceId, options = {}) {
   }
 
   if (sev3.length || continuity.length) actions.push('Resolve active Lindymode incidents and re-run the autonomous runtime.');
+  if (!genome.passed) actions.push('Resolve Story Memory conflicts before continuing.');
   if (runtime?.status === 'failed') actions.push('Open the runtime ledger, fix the failed step, and run again.');
   if (!supportedSchema || migrationFailed) actions.push('Repair or migrate the workspace schema before release.');
   if (rollbackLoop) actions.push('Stop automatic recovery and require author review.');
@@ -115,10 +119,12 @@ export function evaluateReleaseGate(db, workspaceId, options = {}) {
     blockers,
     warnings,
     recommended_actions: actions,
+    genome_conflicts: genome.conflicts,
     metrics: {
       active_incidents: incidents.length,
       sev3_incidents: sev3.length,
       unresolved_continuity_conflicts: continuity.length,
+      unresolved_genome_conflicts: genome.conflicts.length,
       p99: decision.evidence.runtime.p99,
       rollback_rate: decision.evidence.runtime.rollback_rate,
       max_drift: decision.evidence.max_drift,
@@ -140,6 +146,7 @@ export function persistReleaseGate(db, workspaceId, operation = 'release_check',
   const checks = [
     { name: 'sev3_incidents', passed: gate.metrics.sev3_incidents === 0 },
     { name: 'continuity_conflicts', passed: gate.metrics.unresolved_continuity_conflicts === 0 },
+    { name: 'genome_conflicts', passed: gate.metrics.unresolved_genome_conflicts === 0 },
     { name: 'runtime', passed: gate.metrics.runtime_status !== 'failed' },
     { name: 'schema', passed: SUPPORTED_SCHEMA_VERSIONS.has(gate.metrics.schema_version || '1.0.0') },
     { name: 'migration', passed: !gate.metrics.migration_failed },
@@ -174,7 +181,8 @@ export function persistReleaseGate(db, workspaceId, operation = 'release_check',
       status: gate.status,
       confidence: gate.confidence,
       blockers: gate.blockers,
-      warnings: gate.warnings
+      warnings: gate.warnings,
+      genome_conflict_ids: gate.genome_conflicts.map(item => item.diff_id || item.id)
     },
     rollback: gate.status === 'BLOCKED' ? 1 : 0
   });
