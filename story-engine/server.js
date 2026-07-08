@@ -42,6 +42,8 @@ import audienceLensRoutes from './routes/audienceLens.js';
 import blueprintRoutes from './routes/blueprint.js';
 import validationSeedRoutes from './routes/validationSeed.js';
 import ipGrowthRoutes from './routes/ipGrowth.js';
+import ipStudioRoutes from './routes/ipStudio.js';
+import campaignStudioRoutes from './routes/campaignStudio.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -85,6 +87,8 @@ audienceLensRoutes(router, db);
 blueprintRoutes(router, db);
 validationSeedRoutes(router, db);
 ipGrowthRoutes(router, db);
+ipStudioRoutes(router, db);
+campaignStudioRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -173,11 +177,15 @@ server.listen(PORT, () => {
   console.log('Control Room: http://localhost:' + PORT + '/control_room.html');
   console.log('Performance Dashboard: http://localhost:' + PORT + '/performance_dashboard.html');
   console.log('L99 Studio: http://localhost:' + PORT + '/studio.html');
+  console.log('IP Studio: http://localhost:' + PORT + '/ip_studio.html');
+  console.log('Campaign Studio: http://localhost:' + PORT + '/campaign_studio.html');
   console.log('Story Memory API: GET /api/memory/:workspace_id');
   console.log('Assist Mode: GET /api/assist/options');
   console.log('Audience lenses: GET /api/audience-lenses');
   console.log('Story Blueprint conversions: GET /api/blueprints/options');
   console.log('Validation Seed Assets: GET /api/validation-seeds/options');
   console.log('IP Growth Engine: GET /api/ip-growth/overview');
-  console.log('Unified Story Engine, IP Growth Engine, Validation Seed Assets, Story Blueprints, Assist Mode, Audience Lenses, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
+  console.log('IP Studio: GET /api/ip-studio/options');
+  console.log('Campaign Studio: GET /api/campaign-studio/options');
+  console.log('Unified Story Engine, IP Growth Engine, IP Studio, Campaign Studio, Validation Seed Assets, Story Blueprints, Assist Mode, Audience Lenses, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
 });
