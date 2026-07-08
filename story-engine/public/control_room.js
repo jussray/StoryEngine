@@ -30,6 +30,10 @@ function statusClass(value) {
   return 'green';
 }
 
+function money(value) {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(Number(value || 0));
+}
+
 function renderStats(data) {
   const memory = data.memory || {};
   const overview = data.overview || {};
@@ -58,6 +62,35 @@ function renderStats(data) {
       <div class="value ${cls}">${esc(value)}</div>
       <div class="sub">${esc(sub)}</div>
     </article>`).join('');
+}
+
+function renderFounder(data) {
+  const founder = data.founder || {};
+  const profile = founder.profile || {};
+  $('founderName').value = profile.founder_name || 'Raylene';
+  $('founderMode').value = profile.mode || 'bootstrap';
+  $('monthlyBudget').value = Number(profile.monthly_budget || 0);
+  $('recurringBudget').value = Number(profile.recurring_budget || 0);
+  $('approvalThreshold').value = Number(profile.approval_threshold || 0);
+  $('cashAvailable').value = Number(profile.cash_available || 0);
+  $('monthlyRevenue').value = Number(profile.monthly_revenue || 0);
+  $('preferFree').checked = profile.prefer_free !== false;
+  $('requireRecurringApproval').checked = profile.require_recurring_approval !== false;
+  $('founderNotes').value = profile.notes || '';
+  $('founderStatus').textContent = `${String(profile.mode || 'bootstrap').toUpperCase()} · v${profile.version || 1}`;
+
+  const cards = [
+    ['Revenue', money(founder.monthly_revenue), founder.monthly_revenue > 0 ? 'green' : 'muted'],
+    ['Spend', money(founder.monthly_spend), founder.monthly_spend > founder.monthly_revenue ? 'red' : 'teal'],
+    ['Profit', money(founder.monthly_profit), founder.monthly_profit >= 0 ? 'green' : 'red'],
+    ['Burn', money(founder.burn_rate), founder.burn_rate > 0 ? 'gold' : 'green'],
+    ['Budget Left', money(founder.budget_remaining), founder.budget_remaining > 0 ? 'blue' : 'gold'],
+    ['Runway', founder.runway == null ? '∞' : `${founder.runway.toFixed(1)} mo`, founder.runway == null || founder.runway >= 6 ? 'green' : 'gold']
+  ];
+  $('founderStats').innerHTML = cards.map(([label, value, cls]) => `
+    <article class="card"><div class="label">${esc(label)}</div><div class="value ${cls}">${esc(value)}</div></article>
+  `).join('');
+  $('founderRecommendation').textContent = founder.recommendation || 'Stay lean and ship.';
 }
 
 function incidentRows(data) {
@@ -133,6 +166,7 @@ function renderConfidence(data) {
 function render(data) {
   latest = data;
   renderStats(data);
+  renderFounder(data);
   renderIncidents(data);
   renderPipeline(data);
   renderWorkspaces(data);
@@ -168,6 +202,32 @@ function connectStream() {
 }
 
 $('refresh').addEventListener('click', load);
+$('founderForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  $('founderStatus').textContent = 'Saving…';
+  try {
+    await api('/api/control-room/founder', {
+      method: 'PUT',
+      body: JSON.stringify({
+        founder_name: $('founderName').value,
+        mode: $('founderMode').value,
+        monthly_budget: Number($('monthlyBudget').value || 0),
+        recurring_budget: Number($('recurringBudget').value || 0),
+        approval_threshold: Number($('approvalThreshold').value || 0),
+        cash_available: Number($('cashAvailable').value || 0),
+        monthly_revenue: Number($('monthlyRevenue').value || 0),
+        prefer_free: $('preferFree').checked,
+        require_recurring_approval: $('requireRecurringApproval').checked,
+        notes: $('founderNotes').value
+      })
+    });
+    await load();
+    $('founderStatus').textContent = 'Saved';
+  } catch (error) {
+    $('founderStatus').textContent = error.message;
+  }
+});
+
 $('confirmResolve').addEventListener('click', async event => {
   event.preventDefault();
   const kind = $('resolveType').value;
