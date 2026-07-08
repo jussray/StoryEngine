@@ -35,6 +35,23 @@ test('security context caches scoped registry and resolves actor identity', () =
   }
 });
 
+test('security context refreshes cached registry when env source changes', () => {
+  const prior = process.env.L99_API_KEYS_JSON;
+  try {
+    process.env.L99_API_KEYS_JSON = JSON.stringify([{ key: 'secret-one', actor_id: 'actor-one', tenant_id: 'tenant-one', role: 'viewer', workspace_ids: ['one'] }]);
+    assert.equal(securitySnapshot().scoped_key_count, 1);
+
+    process.env.L99_API_KEYS_JSON = JSON.stringify([
+      { key: 'secret-one', actor_id: 'actor-one', tenant_id: 'tenant-one', role: 'viewer', workspace_ids: ['one'] },
+      { key: 'secret-two', actor_id: 'actor-two', tenant_id: 'tenant-two', role: 'editor', workspace_ids: ['two'] }
+    ]);
+    assert.equal(securitySnapshot().scoped_key_count, 2);
+  } finally {
+    if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
+    else process.env.L99_API_KEYS_JSON = prior;
+  }
+});
+
 test('workspace access uses params/query helper instead of trusting unparsed body middleware', () => {
   const req = { auth: { workspace_ids: ['workspace_allowed'] }, request_id: 'req_2' };
   assert.equal(assertWorkspaceAccess(req, 'workspace_allowed'), true);
