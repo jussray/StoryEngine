@@ -179,6 +179,47 @@ CREATE TABLE IF NOT EXISTS story_genomes (
   updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS memory_diffs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  chapter_id INTEGER,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  conflict INTEGER NOT NULL DEFAULT 0,
+  resolved INTEGER NOT NULL DEFAULT 0,
+  resolution TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  resolved_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS engine_memory_episodes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT NOT NULL,
+  chapter_id INTEGER,
+  prompt_hash TEXT,
+  prompt_summary TEXT,
+  lindy_classification TEXT,
+  lindy_score REAL,
+  ooda_action TEXT,
+  ooda_confidence INTEGER,
+  redteam_passed INTEGER NOT NULL DEFAULT 0,
+  redteam_issues_json TEXT NOT NULL DEFAULT '[]',
+  runtime_steps_json TEXT NOT NULL DEFAULT '[]',
+  gate_result TEXT,
+  gate_blockers_json TEXT NOT NULL DEFAULT '[]',
+  user_accepted INTEGER,
+  confidence_before REAL,
+  confidence_after REAL,
+  lessons_json TEXT NOT NULL DEFAULT '[]',
+  repeated_mistake INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  completed_at INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS autonomous_runtime_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id TEXT NOT NULL UNIQUE,
@@ -236,6 +277,11 @@ CREATE INDEX IF NOT EXISTS idx_ooda_episodes_workspace ON ooda_episodes(workspac
 CREATE INDEX IF NOT EXISTS idx_ooda_episodes_trigger ON ooda_episodes(trigger_type, outcome);
 CREATE INDEX IF NOT EXISTS idx_ooda_risk_workspace ON ooda_risk_snapshots(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ooda_recovery_workspace ON ooda_recovery_runs(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_memory_diffs_workspace ON memory_diffs(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_memory_diffs_conflict ON memory_diffs(conflict, resolved);
+CREATE INDEX IF NOT EXISTS idx_engine_memory_workspace ON engine_memory_episodes(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_engine_memory_gate ON engine_memory_episodes(gate_result, created_at);
+CREATE INDEX IF NOT EXISTS idx_engine_memory_mistakes ON engine_memory_episodes(repeated_mistake, created_at);
 CREATE INDEX IF NOT EXISTS idx_runtime_runs_workspace ON autonomous_runtime_runs(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_runtime_runs_correlation ON autonomous_runtime_runs(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_compacted_events_correlation ON compacted_event_episodes(correlation_id);
