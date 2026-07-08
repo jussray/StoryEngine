@@ -179,6 +179,33 @@ CREATE TABLE IF NOT EXISTS autonomous_runtime_runs (
   completed_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS event_compaction_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  compaction_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL,
+  cutoff_at INTEGER NOT NULL,
+  keep_ms INTEGER NOT NULL,
+  compacted_groups INTEGER NOT NULL DEFAULT 0,
+  deleted_events INTEGER NOT NULL DEFAULT 0,
+  skipped_groups INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  completed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS compacted_event_episodes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  compaction_id TEXT NOT NULL,
+  correlation_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  event_count INTEGER NOT NULL,
+  first_event_at INTEGER NOT NULL,
+  last_event_at INTEGER NOT NULL,
+  summary_json TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  UNIQUE(correlation_id, first_event_at, last_event_at)
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_mode_created ON events(mode, created_at);
@@ -195,3 +222,5 @@ CREATE INDEX IF NOT EXISTS idx_ooda_risk_workspace ON ooda_risk_snapshots(worksp
 CREATE INDEX IF NOT EXISTS idx_ooda_recovery_workspace ON ooda_recovery_runs(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_runtime_runs_workspace ON autonomous_runtime_runs(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_runtime_runs_correlation ON autonomous_runtime_runs(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_compacted_events_correlation ON compacted_event_episodes(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_compaction_runs_created ON event_compaction_runs(created_at);
