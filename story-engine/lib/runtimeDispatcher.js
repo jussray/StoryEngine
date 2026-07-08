@@ -141,7 +141,7 @@ export function scanChangedWorkspaces(db) {
         SELECT s.workspace_id
         FROM stories s
         LEFT JOIN workspace_assist_profiles ap ON ap.workspace_id=s.workspace_id
-        WHERE COALESCE(ap.assist_mode, 'system_first') <> 'human_first'
+        WHERE COALESCE(ap.assist_mode, 'director') IN ('director', 'autonomous_studio', 'system_first')
         ORDER BY s.updated_at DESC
       `).all()
     : db.prepare('SELECT workspace_id FROM stories ORDER BY updated_at DESC').all();
