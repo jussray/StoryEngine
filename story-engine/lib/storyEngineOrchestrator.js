@@ -8,6 +8,7 @@ import { evaluateWorkspace, persistDecision, runReleaseAudit } from './decisionE
 import { enqueueRuntime } from './runtimeDispatcher.js';
 import { evaluateOperatorConstraint } from './operatorProfile.js';
 import { generateStoryArtifact, validateArtifactWithPlaywright } from './artifactValidation.js';
+import { writeRunSummary } from './runSummary.js';
 
 export const PIPELINE_STAGES = Object.freeze([
   'story_engine',
@@ -24,6 +25,7 @@ export const PIPELINE_STAGES = Object.freeze([
   'redteam_pre_release',
   'artifacts',
   'release_gate',
+  'control_room',
   'complete'
 ]);
 
@@ -153,6 +155,7 @@ function stageAgent(stage) {
     redteam_pre_release: 'Redteam',
     artifacts: 'Artifact Builder',
     release_gate: 'Release Gate',
+    control_room: 'Control Room',
     complete: 'Story Engine'
   }[stage] || 'L99';
 }
@@ -220,6 +223,7 @@ function buildGhostPlan(runId, intent) {
       'Validate continuity, audience fit, and operator constraints.',
       'Run browser validation before pre-release Redteam.',
       'Finalize the release artifact after pre-release Redteam.',
+      'Write a permanent Control Room run summary.',
       'Prepare the work for human review.'
     ],
     human_decisions: ['Approve paid execution when required.', 'Approve final release.']
@@ -371,6 +375,22 @@ export async function resumeStoryEngineRun(db, runId) {
   setStage(db, runId, run.workspace_id, 'release_gate', audit.result === 'READY' ? 'completed' : 'blocked', `Release Gate result: ${audit.result}.`, { audit_id: audit.audit_id, blockers: audit.blockers });
 
   const finalStatus = audit.result === 'READY' && !critical ? 'complete' : 'needs_review';
+  const summary = writeRunSummary(db, runId, {
+    final_status: finalStatus,
+    release_result: audit.result,
+    confidence_before: run.ooda_decision?.confidence_score,
+    confidence_after: audit.confidence_score,
+    estimated_cost: 0
+  });
+  setStage(db, runId, run.workspace_id, 'control_room', 'completed', 'Control Room recorded the permanent run history.', {
+    summary_id: summary.summary_id,
+    final_status: finalStatus,
+    release_result: audit.result,
+    blockers: summary.blockers,
+    confidence_before: summary.confidence_before,
+    confidence_after: summary.confidence_after
+  });
+
   db.prepare('UPDATE story_engine_runs SET status=?, current_stage=?, active_agent=?, updated_at=?, completed_at=? WHERE run_id=?')
     .run(finalStatus, finalStatus === 'complete' ? 'complete' : 'release_gate', finalStatus === 'complete' ? 'Story Engine' : 'Release Gate', Date.now(), finalStatus === 'complete' ? Date.now() : null, runId);
   if (finalStatus === 'complete') setStage(db, runId, run.workspace_id, 'complete', 'completed', 'L99 OS Alpha pipeline completed and is ready for human review.');
