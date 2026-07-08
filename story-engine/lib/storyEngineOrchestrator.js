@@ -7,6 +7,7 @@ import { upsertCreativeProfile } from './creativeProfile.js';
 import { evaluateWorkspace, persistDecision, runReleaseAudit } from './decisionEngine.js';
 import { enqueueRuntime } from './runtimeDispatcher.js';
 import { evaluateOperatorConstraint } from './operatorProfile.js';
+import { generateStoryArtifact, validateArtifactWithPlaywright } from './artifactValidation.js';
 
 export const PIPELINE_STAGES = Object.freeze([
   'story_engine',
@@ -19,6 +20,8 @@ export const PIPELINE_STAGES = Object.freeze([
   'runtime',
   'story_memory',
   'learning_engine',
+  'artifacts',
+  'playwright_validation',
   'redteam_pre_release',
   'release_gate',
   'complete'
@@ -108,6 +111,7 @@ export function ensureStoryEngineSchema(db) {
       pre_release_findings_json TEXT NOT NULL DEFAULT '[]',
       memory_changes_json TEXT NOT NULL DEFAULT '[]',
       learning_json TEXT NOT NULL DEFAULT '[]',
+      artifact_json TEXT NOT NULL DEFAULT '{}',
       dispatch_id TEXT,
       release_audit_id TEXT,
       error TEXT,
@@ -129,6 +133,8 @@ export function ensureStoryEngineSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_story_engine_runs_status ON story_engine_runs(status, updated_at);
     CREATE INDEX IF NOT EXISTS idx_story_engine_stage_run ON story_engine_stage_events(run_id, created_at);
   `);
+  const columns = db.prepare('PRAGMA table_info(story_engine_runs)').all().map(row => row.name);
+  if (!columns.includes('artifact_json')) db.exec(`ALTER TABLE story_engine_runs ADD COLUMN artifact_json TEXT NOT NULL DEFAULT '{}';`);
 }
 
 function stageAgent(stage) {
@@ -143,6 +149,8 @@ function stageAgent(stage) {
     runtime: 'Runtime',
     story_memory: 'Story Memory',
     learning_engine: 'Learning Engine',
+    artifacts: 'Artifact Builder',
+    playwright_validation: 'Playwright',
     redteam_pre_release: 'Redteam',
     release_gate: 'Release Gate',
     complete: 'Story Engine'
@@ -210,6 +218,7 @@ function buildGhostPlan(runId, intent) {
       'Build structure and canon.',
       'Draft the first executable story unit.',
       'Validate continuity, audience fit, and operator constraints.',
+      'Generate a reviewable artifact before release validation.',
       'Prepare the work for human review.'
     ],
     human_decisions: ['Approve paid execution when required.', 'Approve final release.']
@@ -224,8 +233,9 @@ function runRedteamPreRuntime(intent, decision, operatorCheck) {
   return findings;
 }
 
-function runRedteamPreRelease(decision) {
+function runRedteamPreRelease(decision, artifactValidation) {
   const findings = [];
+  if (!artifactValidation?.passed) findings.push({ severity: 'critical', code: 'artifact_validation_failed', message: 'Artifact Playwright validation must pass before release.' });
   if (decision.evidence?.critical_incidents > 0) findings.push({ severity: 'critical', code: 'continuity_conflict', message: 'Critical continuity incidents remain.' });
   if (decision.evidence?.chapters?.empty_count > 0) findings.push({ severity: 'warning', code: 'empty_units', message: 'One or more story units are empty.' });
   if (decision.confidence_score < 75) findings.push({ severity: 'warning', code: 'low_confidence', message: `Confidence is ${decision.confidence_score}%.` });
@@ -245,6 +255,7 @@ function hydrateRun(db, runId) {
     pre_release_findings: parse(row.pre_release_findings_json),
     memory_changes: parse(row.memory_changes_json),
     learning: parse(row.learning_json),
+    artifact: parse(row.artifact_json),
     stages: db.prepare('SELECT * FROM story_engine_stage_events WHERE run_id=? ORDER BY created_at ASC, id ASC').all(runId).map(event => ({ ...event, details: parse(event.details_json) }))
   };
 }
@@ -315,7 +326,7 @@ export function approveStoryEngineRun(db, runId) {
   return hydrateRun(db, runId);
 }
 
-export function resumeStoryEngineRun(db, runId) {
+export async function resumeStoryEngineRun(db, runId) {
   ensureStoryEngineSchema(db);
   const run = hydrateRun(db, runId);
   if (!run) throw new Error('Story Engine run not found.');
@@ -339,8 +350,16 @@ export function resumeStoryEngineRun(db, runId) {
   db.prepare('UPDATE story_engine_runs SET learning_json=? WHERE run_id=?').run(JSON.stringify(learning), runId);
   setStage(db, runId, run.workspace_id, 'learning_engine', 'completed', 'Learning Engine recorded the execution lesson.', { learning });
 
+  const artifact = generateStoryArtifact(db, { runId, workspaceId: run.workspace_id, intent: run.intent });
+  db.prepare('UPDATE story_engine_runs SET artifact_json=? WHERE run_id=?').run(JSON.stringify({ artifact_id: artifact.artifact_id, status: artifact.status, title: artifact.title }), runId);
+  setStage(db, runId, run.workspace_id, 'artifacts', 'completed', 'Generated reviewable HTML artifact.', { artifact_id: artifact.artifact_id, title: artifact.title, status: artifact.status });
+
+  const validatedArtifact = await validateArtifactWithPlaywright(db, artifact.artifact_id);
+  db.prepare('UPDATE story_engine_runs SET artifact_json=? WHERE run_id=?').run(JSON.stringify({ artifact_id: validatedArtifact.artifact_id, status: validatedArtifact.status, title: validatedArtifact.title, validation: validatedArtifact.validation }), runId);
+  setStage(db, runId, run.workspace_id, 'playwright_validation', validatedArtifact.validation.passed ? 'completed' : 'blocked', validatedArtifact.validation.passed ? 'Artifact passed Playwright validation.' : 'Artifact failed Playwright validation.', { artifact_id: validatedArtifact.artifact_id, validation: validatedArtifact.validation });
+
   const decision = evaluateWorkspace(db, run.workspace_id);
-  const findings = runRedteamPreRelease(decision);
+  const findings = runRedteamPreRelease(decision, validatedArtifact.validation);
   db.prepare('UPDATE story_engine_runs SET pre_release_findings_json=? WHERE run_id=?').run(JSON.stringify(findings), runId);
   const critical = findings.some(finding => finding.severity === 'critical');
   setStage(db, runId, run.workspace_id, 'redteam_pre_release', critical ? 'blocked' : 'completed', critical ? 'Pre-release validation blocked release.' : 'Pre-release validation completed.', { findings });
@@ -356,9 +375,9 @@ export function resumeStoryEngineRun(db, runId) {
   return hydrateRun(db, runId);
 }
 
-export function getStoryEngineRun(db, runId, { resume = true } = {}) {
+export async function getStoryEngineRun(db, runId, { resume = true } = {}) {
   ensureStoryEngineSchema(db);
-  return resume ? resumeStoryEngineRun(db, runId) : hydrateRun(db, runId);
+  return resume ? await resumeStoryEngineRun(db, runId) : hydrateRun(db, runId);
 }
 
 export function listStoryEngineRuns(db, limit = 50) {
