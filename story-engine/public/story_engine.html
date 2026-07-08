@@ -6,13 +6,13 @@
   <title>L99 Story Engine</title>
   <style>
     :root{--bg:#0d0d0f;--surface:#17171b;--surface2:#212126;--border:#34343b;--text:#f2f2f4;--muted:#9999a3;--green:#72b94f;--gold:#e3b04d;--red:#df6975;--teal:#58a6b2;--purple:#aa76dd}
-    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1d1730 0,#0d0d0f 42%);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh}button,input,textarea,select{font:inherit}.shell{max-width:1080px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:34px}.brand{font-size:20px;font-weight:900}.links{display:flex;gap:12px}.links a{color:var(--teal);text-decoration:none}.hero{text-align:center;max-width:760px;margin:0 auto 26px}.hero h1{font-size:clamp(34px,7vw,68px);margin:0 0 10px}.hero p{color:var(--muted);font-size:18px}.card{background:#17171be8;border:1px solid var(--border);border-radius:18px;padding:18px}.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}.type{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:12px;padding:14px;cursor:pointer;text-align:center}.type.active,.type:hover{border-color:var(--purple);background:#292139}.type span{display:block;font-size:25px;margin-bottom:6px}.assist{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}.assist-option{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:14px;padding:14px;text-align:left;cursor:pointer}.assist-option.active{border-color:var(--teal);background:#193034}.assist-option strong{display:block;margin-bottom:4px}.assist-option small{color:var(--muted);line-height:1.4}.field{margin:12px 0}.field label{display:block;font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}.field textarea,.field input,.field select{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.actions{display:flex;justify-content:flex-end;margin-top:14px}.btn{padding:11px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);cursor:pointer}.btn.primary{background:#39295a;border-color:#7754ad}.btn:disabled{opacity:.5;cursor:not-allowed}.hidden{display:none}.run{margin-top:22px}.run-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.pill{padding:5px 9px;border-radius:999px;background:var(--surface2);font-size:12px}.pipeline{display:grid;gap:8px;margin-top:16px}.stage{display:grid;grid-template-columns:28px 190px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)}.stage .dot{width:12px;height:12px;border-radius:50%;background:#555}.stage.completed .dot{background:var(--green)}.stage.running .dot,.stage.queued .dot{background:var(--gold)}.stage.blocked .dot,.stage.failed .dot{background:var(--red)}.stage .agent{color:var(--purple);font-size:12px}.stage .summary{color:var(--muted);font-size:13px}.empty{color:var(--muted);padding:18px;text-align:center}@media(max-width:760px){.grid,.assist{grid-template-columns:1fr}.stage{grid-template-columns:24px 1fr}.stage .summary,.stage .agent{grid-column:2}.top{align-items:flex-start}.links{flex-direction:column}}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1d1730 0,#0d0d0f 42%);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh}button,input,textarea,select{font:inherit}.shell{max-width:1080px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:34px}.brand{font-size:20px;font-weight:900}.links{display:flex;gap:12px}.links a{color:var(--teal);text-decoration:none}.hero{text-align:center;max-width:760px;margin:0 auto 26px}.hero h1{font-size:clamp(34px,7vw,68px);margin:0 0 10px}.hero p{color:var(--muted);font-size:18px}.card{background:#17171be8;border:1px solid var(--border);border-radius:18px;padding:18px}.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}.type{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:12px;padding:14px;cursor:pointer;text-align:center}.type.active,.type:hover{border-color:var(--purple);background:#292139}.type span{display:block;font-size:25px;margin-bottom:6px}.assist{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.assist-option{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:14px;padding:16px;text-align:left;cursor:pointer;min-height:150px}.assist-option.active{border-color:var(--teal);background:#193034;box-shadow:0 0 0 1px #58a6b244}.assist-option .icon{display:block;font-size:26px;margin-bottom:8px}.assist-option strong{display:block;margin-bottom:6px}.assist-option small{color:var(--muted);line-height:1.45}.assist-option em{display:block;color:var(--teal);font-size:11px;margin-top:10px;font-style:normal;text-transform:uppercase;letter-spacing:.06em}.field{margin:12px 0}.field label{display:block;font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}.field textarea,.field input,.field select{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.actions{display:flex;justify-content:flex-end;margin-top:14px}.btn{padding:11px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);cursor:pointer}.btn.primary{background:#39295a;border-color:#7754ad}.btn:disabled{opacity:.5;cursor:not-allowed}.hidden{display:none}.run{margin-top:22px}.run-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.pill{padding:5px 9px;border-radius:999px;background:var(--surface2);font-size:12px}.pipeline{display:grid;gap:8px;margin-top:16px}.stage{display:grid;grid-template-columns:28px 190px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)}.stage .dot{width:12px;height:12px;border-radius:50%;background:#555}.stage.completed .dot{background:var(--green)}.stage.running .dot,.stage.queued .dot{background:var(--gold)}.stage.blocked .dot,.stage.failed .dot{background:var(--red)}.stage .agent{color:var(--purple);font-size:12px}.stage .summary{color:var(--muted);font-size:13px}.empty{color:var(--muted);padding:18px;text-align:center}@media(max-width:900px){.assist{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.grid,.assist{grid-template-columns:1fr}.stage{grid-template-columns:24px 1fr}.stage .summary,.stage .agent{grid-column:2}.top{align-items:flex-start}.links{flex-direction:column}}
   </style>
 </head>
 <body>
   <main class="shell">
     <div class="top"><div class="brand">L99 Story Engine</div><div class="links"><a href="/control_room.html">Control Room</a><a href="/front_door.html">Workspaces</a></div></div>
-    <section class="hero"><h1>What story do you want to tell?</h1><p>Choose how much of the writing you want L99 to do.</p></section>
+    <section class="hero"><h1>How do you want to create?</h1><p>You remain the operator in every role. Choose who leads the writing.</p></section>
 
     <section class="card">
       <div class="types" id="types">
@@ -27,13 +27,29 @@
       </div>
 
       <div class="assist" id="assistModes">
-        <button class="assist-option active" type="button" data-assist="human_first">
-          <strong>Write it myself</strong>
-          <small>L99 watches continuity, offers suggestions when asked, and never overwrites your text.</small>
+        <button class="assist-option active" type="button" data-assist="writer">
+          <span class="icon">👤</span>
+          <strong>Writer</strong>
+          <small>I write everything. L99 supports me when I ask.</small>
+          <em>Human leads</em>
         </button>
-        <button class="assist-option" type="button" data-assist="system_first">
-          <strong>Have L99 draft it</strong>
-          <small>L99 creates the draft; you edit, direct, approve, or reject the result.</small>
+        <button class="assist-option" type="button" data-assist="co_writer">
+          <span class="icon">✍️</span>
+          <strong>Co-Writer</strong>
+          <small>We write together. Every L99 change still needs my acceptance.</small>
+          <em>Shared drafting</em>
+        </button>
+        <button class="assist-option" type="button" data-assist="director">
+          <span class="icon">🤖</span>
+          <strong>Director</strong>
+          <small>L99 drafts. I shape, redirect, and approve the work.</small>
+          <em>L99 drafts</em>
+        </button>
+        <button class="assist-option" type="button" data-assist="autonomous_studio">
+          <span class="icon">🚀</span>
+          <strong>Autonomous Studio</strong>
+          <small>L99 runs the full pipeline until Release Gate. I make the final decision.</small>
+          <em>Full pipeline</em>
         </button>
       </div>
 
@@ -44,7 +60,7 @@
           <div class="field"><label>Story kind</label><select id="kind"><option value="other">Let L99 infer it</option><option value="fantasy">Fantasy</option><option value="adventure">Adventure</option><option value="mystery">Mystery</option><option value="science_fiction">Science Fiction</option><option value="romance">Romance</option><option value="comedy">Comedy</option><option value="drama">Drama</option></select></div>
           <div class="field"><label>How should it feel?</label><select id="emotion"><option value="mixed">Mixed</option><option value="wonder">Wonder</option><option value="joy">Joy</option><option value="comfort">Comfort</option><option value="excitement">Excitement</option><option value="hope">Hope</option><option value="reflection">Reflection</option></select></div>
         </div>
-        <div class="actions"><button id="start" class="btn primary" type="submit">Start Story Workspace</button></div>
+        <div class="actions"><button id="start" class="btn primary" type="submit">Start as Writer</button></div>
       </form>
     </section>
 
