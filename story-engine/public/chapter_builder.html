@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L99 Chapter Builder</title>
+  <style>
+    :root{--bg:#0f0f10;--surface:#171719;--surface2:#202024;--border:#34343a;--text:#e8e8ea;--muted:#8c8c93;--green:#6daa45;--gold:#e8af34;--red:#dd6974;--teal:#4f98a3;--blue:#5591c7}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif}a{color:var(--teal);text-decoration:none}button,input,select,textarea{font:inherit}
+    header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0}.brand{font-weight:800}.pill{border:1px solid var(--border);border-radius:999px;padding:4px 9px;font-size:12px;background:var(--surface2)}
+    main{max-width:1180px;margin:auto;padding:22px}.grid{display:grid;grid-template-columns:320px 1fr;gap:14px}.card,.chapter{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px}.label{font-size:12px;color:var(--muted);display:block;margin:10px 0 5px}input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px}.btn{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;padding:8px 12px;cursor:pointer}.btn.primary{background:#1e3336;color:var(--teal);border-color:#315b61;width:100%;margin-top:12px}.btn.secondary{width:100%;margin-top:8px}
+    h1{font-size:22px;margin:0 0 5px}h2{font-size:16px;margin:0 0 10px}h3{font-size:15px;margin:0 0 8px}.sub{font-size:13px;color:var(--muted);line-height:1.5}.chapters{display:grid;gap:10px}.meta{font-size:12px;color:var(--muted)}pre{white-space:pre-wrap;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;max-height:380px;overflow:auto}
+    @media(max-width:760px){main{padding:14px}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header><div class="brand">✍️ L99 Chapter Builder</div><div><a class="pill" href="/story_architect.html">Story Architect</a> <a class="pill" href="/control_room.html">Control Room</a></div></header>
+  <main>
+    <section class="grid">
+      <form id="builderForm" class="card">
+        <h1>Draft Chapters</h1>
+        <p class="sub">Generate chapter drafts from the validated Story Architect plan.</p>
+        <label class="label">Workspace</label><select id="workspace" required></select>
+        <label class="label">Chapter number</label><input id="chapterNumber" type="number" min="1" value="1">
+        <label class="label">Word target</label><input id="wordTarget" type="number" min="300" max="5000" value="1200">
+        <button class="btn primary" type="submit">Build Chapter</button>
+        <button class="btn secondary" id="buildAll" type="button">Build All Planned Chapters</button>
+        <p id="status" class="sub"></p>
+      </form>
+      <div>
+        <div id="summary" class="card" style="margin-bottom:12px"><h2>Chapter Preview</h2><p class="sub">Choose a workspace with a Story Architecture.</p></div>
+        <div id="chapters" class="chapters"></div>
+      </div>
+    </section>
+  </main>
+  <script src="/chapter_builder.js"></script>
+</body>
+</html>
