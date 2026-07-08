@@ -41,20 +41,25 @@ test('Ghost draft falls back safely when no provider key is configured', async (
   const priorAnthropic = process.env.ANTHROPIC_API_KEY;
   const priorOpenAI = process.env.OPENAI_API_KEY;
   const priorOpenRouter = process.env.OPENROUTER_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  delete process.env.OPENAI_API_KEY;
-  delete process.env.OPENROUTER_API_KEY;
+  try {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
-  const draft = await draftStoryUnit(
-    { title: 'Little Cloud Garden', story_vision: 'A cloud learns rain helps flowers grow.', audience: 'eli5', medium: 'picture_book', story_kind: 'educational' },
-    { audience: 'eli5', medium: 'picture_book', tone: 'gentle' }
-  );
+    const draft = await draftStoryUnit(
+      { title: 'Little Cloud Garden', story_vision: 'A cloud learns rain helps flowers grow.', audience: 'eli5', medium: 'picture_book', story_kind: 'educational' },
+      { audience: 'eli5', medium: 'picture_book', tone: 'gentle' }
+    );
 
-  assert.equal(draft.status, 'fallback_stub');
-  assert.match(draft.draft_unit, /Little Cloud Garden/);
-  assert.match(draft.draft_unit, /Human decision needed/);
-
-  if (priorAnthropic) process.env.ANTHROPIC_API_KEY = priorAnthropic;
-  if (priorOpenAI) process.env.OPENAI_API_KEY = priorOpenAI;
-  if (priorOpenRouter) process.env.OPENROUTER_API_KEY = priorOpenRouter;
+    assert.equal(draft.status, 'fallback_stub');
+    assert.match(draft.draft_unit, /Little Cloud Garden/);
+    assert.match(draft.draft_unit, /Human decision needed/);
+  } finally {
+    if (priorAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = priorAnthropic;
+    if (priorOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = priorOpenAI;
+    if (priorOpenRouter === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = priorOpenRouter;
+  }
 });
