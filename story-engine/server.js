@@ -29,6 +29,7 @@ import eventRetentionRoutes from './routes/eventRetention.js';
 import releaseGateRoutes from './routes/releaseGate.js';
 import releaseAttemptRoutes from './routes/releaseAttempts.js';
 import controlRoomRoutes from './routes/controlRoom.js';
+import memoryRoutes from './routes/memory.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -59,6 +60,7 @@ eventRetentionRoutes(router, db);
 releaseGateRoutes(router, db);
 releaseAttemptRoutes(router, db);
 controlRoomRoutes(router, db);
+memoryRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -122,5 +124,6 @@ server.listen(PORT, () => {
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
   console.log('OODA SSE: GET /api/ooda/incidents for live incidents.');
   console.log('Control Room: http://localhost:' + PORT + '/control_room.html');
-  console.log('Mission Control, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
+  console.log('Story Memory API: GET /api/memory/:workspace_id');
+  console.log('Mission Control, Memory Engine, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
 });
