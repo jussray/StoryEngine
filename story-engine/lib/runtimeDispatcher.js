@@ -127,9 +127,24 @@ export function drainRuntimeQueue(db, limit = 5) {
   return results;
 }
 
+function assistTableExists(db) {
+  return Boolean(db.prepare(`
+    SELECT 1 FROM sqlite_master
+    WHERE type='table' AND name='workspace_assist_profiles'
+  `).get());
+}
+
 export function scanChangedWorkspaces(db) {
   ensureSchema(db);
-  const workspaces = db.prepare('SELECT workspace_id FROM stories ORDER BY updated_at DESC').all();
+  const workspaces = assistTableExists(db)
+    ? db.prepare(`
+        SELECT s.workspace_id
+        FROM stories s
+        LEFT JOIN workspace_assist_profiles ap ON ap.workspace_id=s.workspace_id
+        WHERE COALESCE(ap.assist_mode, 'system_first') <> 'human_first'
+        ORDER BY s.updated_at DESC
+      `).all()
+    : db.prepare('SELECT workspace_id FROM stories ORDER BY updated_at DESC').all();
   const enqueued = [];
   for (const { workspace_id } of workspaces) {
     const item = enqueueRuntime(db, workspace_id, 'scheduled_health_scan');
