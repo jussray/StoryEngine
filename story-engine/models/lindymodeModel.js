@@ -118,3 +118,38 @@ export function resolveIncident(db, incident_id, recovery_action) {
   `).run(recovery_action, Date.now(), incident_id);
   return getIncident(db, incident_id);
 }
+
+export function reconcileChapterIncidents(db, workspace_id, chapter_id, current = null) {
+  const active = db.prepare(`
+    SELECT * FROM lindymode_incidents
+    WHERE workspace_id = ? AND chapter_id IS ? AND status = 'active'
+    ORDER BY created_at DESC
+  `).all(workspace_id, chapter_id ?? null);
+
+  const stale = active.filter(incident => {
+    if (!current) return true;
+    return incident.event_type !== current.event_type || incident.reason !== current.reason;
+  });
+
+  if (!stale.length) return [];
+
+  const resolvedAt = Date.now();
+  const resolve = db.prepare(`
+    UPDATE lindymode_incidents
+    SET status = 'resolved', recovery_action = 'author_fix_validated', resolved_at = ?
+    WHERE incident_id = ? AND status = 'active'
+  `);
+
+  const apply = db.transaction(items => {
+    for (const incident of items) resolve.run(resolvedAt, incident.incident_id);
+  });
+  apply(stale);
+
+  return stale.map(incident => ({
+    ...incident,
+    status: 'resolved',
+    recovery_action: 'author_fix_validated',
+    resolved_at: resolvedAt,
+    details: JSON.parse(incident.details_json || '{}')
+  }));
+}
