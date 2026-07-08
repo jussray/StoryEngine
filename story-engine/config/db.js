@@ -36,6 +36,31 @@ ensureColumn('memory_diffs', 'source', "TEXT NOT NULL DEFAULT 'system'");
 ensureColumn('memory_diffs', 'resolved_at', 'INTEGER');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_diffs_diff_id ON memory_diffs(diff_id) WHERE diff_id IS NOT NULL;');
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS studio_ideas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idea_id TEXT NOT NULL UNIQUE,
+    workspace_id TEXT,
+    niche TEXT NOT NULL,
+    audience TEXT,
+    title TEXT NOT NULL,
+    premise TEXT NOT NULL,
+    target_audience TEXT NOT NULL,
+    problem_solved TEXT NOT NULL,
+    why_it_sells TEXT NOT NULL,
+    market_score INTEGER NOT NULL,
+    originality_score INTEGER NOT NULL,
+    series_potential INTEGER NOT NULL,
+    movie_potential INTEGER NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    selected INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+  );
+  CREATE INDEX IF NOT EXISTS idx_studio_ideas_workspace ON studio_ideas(workspace_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_studio_ideas_niche ON studio_ideas(niche, market_score);
+  CREATE INDEX IF NOT EXISTS idx_studio_ideas_selected ON studio_ideas(selected, created_at);
+`);
+
 db.exec('PRAGMA optimize;');
 
 export default db;
