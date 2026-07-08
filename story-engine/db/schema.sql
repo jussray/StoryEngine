@@ -172,6 +172,26 @@ CREATE TABLE IF NOT EXISTS ooda_recovery_runs (
   completed_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS studio_ideas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  idea_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT,
+  niche TEXT NOT NULL,
+  audience TEXT,
+  title TEXT NOT NULL,
+  premise TEXT NOT NULL,
+  target_audience TEXT NOT NULL,
+  problem_solved TEXT NOT NULL,
+  why_it_sells TEXT NOT NULL,
+  market_score INTEGER NOT NULL,
+  originality_score INTEGER NOT NULL,
+  series_potential INTEGER NOT NULL,
+  movie_potential INTEGER NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  selected INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+);
+
 CREATE TABLE IF NOT EXISTS story_genomes (
   workspace_id TEXT PRIMARY KEY,
   genome_json TEXT NOT NULL DEFAULT '{}',
@@ -365,6 +385,9 @@ CREATE INDEX IF NOT EXISTS idx_ooda_episodes_workspace ON ooda_episodes(workspac
 CREATE INDEX IF NOT EXISTS idx_ooda_episodes_trigger ON ooda_episodes(trigger_type, outcome);
 CREATE INDEX IF NOT EXISTS idx_ooda_risk_workspace ON ooda_risk_snapshots(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ooda_recovery_workspace ON ooda_recovery_runs(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_studio_ideas_workspace ON studio_ideas(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_studio_ideas_niche ON studio_ideas(niche, market_score);
+CREATE INDEX IF NOT EXISTS idx_studio_ideas_selected ON studio_ideas(selected, created_at);
 CREATE INDEX IF NOT EXISTS idx_memory_characters_workspace ON memory_characters(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_memory_locations_workspace ON memory_locations(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_memory_relationships_workspace ON memory_relationships(workspace_id);
