@@ -14,6 +14,7 @@ import {
   storyEngineBrainSnapshot
 } from '../lib/storyEngineOrchestrator.js';
 import { updateOperatorProfile } from '../lib/operatorProfile.js';
+import { writeRunSummary, getRunSummary } from '../lib/runSummary.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
@@ -38,7 +39,8 @@ test('all required L99 OS Alpha stages have one canonical order', () => {
   assert.deepEqual(PIPELINE_STAGES, [
     'story_engine','intent_parser','creative_profile','ghost','lindymode','ooda',
     'redteam_pre_runtime','runtime','story_memory','learning_engine',
-    'redteam_pre_release','release_gate','complete'
+    'playwright_validation','redteam_pre_release','artifacts','release_gate',
+    'control_room','complete'
   ]);
 });
 
@@ -56,7 +58,7 @@ test('one Story Engine request creates workspace, profile, Ghost plan, Lindymode
   assert.equal(run.status, 'runtime_queued');
   assert.equal(run.current_stage, 'runtime');
   assert.equal(run.intent.medium, 'book');
-  assert.equal(run.ghost_plan.tasks.length, 5);
+  assert.equal(run.ghost_plan.tasks.length, 8);
   assert.ok(run.ooda_decision.decision_id);
   assert.ok(run.dispatch_id);
   assert.ok(run.stages.some(stage => stage.stage === 'redteam_pre_runtime' && stage.status === 'completed'));
@@ -99,7 +101,7 @@ test('paid Story Engine work pauses for human operator approval', () => {
   db.close();
 });
 
-test('run retrieval exposes the full operating-system trace', () => {
+test('run retrieval exposes the full operating-system trace', async () => {
   const db = createDb();
   const started = startStoryEngineRun(db, {
     story_vision: 'Write a mystery podcast for teens.',
@@ -109,12 +111,47 @@ test('run retrieval exposes the full operating-system trace', () => {
     emotional_effect: 'excitement',
     estimated_cost: 0
   });
-  const run = getStoryEngineRun(db, started.run_id, { resume: false });
+  const run = await getStoryEngineRun(db, started.run_id, { resume: false });
   const stages = run.stages.map(stage => stage.stage);
   assert.deepEqual(stages.slice(0, 8), [
     'story_engine','intent_parser','creative_profile','ghost',
     'lindymode','ooda','redteam_pre_runtime','runtime'
   ]);
   assert.equal(run.active_agent, 'Runtime');
+  db.close();
+});
+
+test('Control Room historian writes a searchable permanent run summary', () => {
+  const db = createDb();
+  const run = startStoryEngineRun(db, {
+    story_vision: 'Write an ELI10 adventure about a small robot learning courage.',
+    medium: 'book',
+    audience: 'eli10',
+    story_kind: 'adventure',
+    emotional_effect: 'hope',
+    estimated_cost: 0
+  });
+
+  db.prepare(`
+    INSERT INTO release_audits (
+      audit_id, workspace_id, result, confidence_score,
+      checks_json, blockers_json, created_at
+    ) VALUES ('audit-test', ?, 'READY', 91, '[]', '[]', ?)
+  `).run(run.workspace_id, Date.now());
+  db.prepare('UPDATE story_engine_runs SET release_audit_id=? WHERE run_id=?').run('audit-test', run.run_id);
+
+  const summary = writeRunSummary(db, run.run_id, {
+    final_status: 'complete',
+    release_result: 'READY',
+    confidence_before: 82,
+    confidence_after: 91
+  });
+  assert.equal(summary.final_status, 'complete');
+  assert.equal(summary.release_result, 'READY');
+  assert.equal(summary.confidence_before, 82);
+  assert.equal(summary.confidence_after, 91);
+  assert.equal(summary.summary.request, run.request_text);
+  assert.ok(summary.stage_timings.length >= 8);
+  assert.equal(getRunSummary(db, run.run_id).summary_id, summary.summary_id);
   db.close();
 });
