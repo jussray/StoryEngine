@@ -6,14 +6,15 @@ import {
   buildStoryBlueprint,
   getStoryBlueprint,
   convertBlueprint,
-  listBlueprintConversions
+  listBlueprintConversions,
+  getBlueprintContinuationOptions
 } from '../lib/storyBlueprint.js';
 
 export default function blueprintRoutes(router, db) {
   router.get('/api/blueprints/options', (req, res) => {
     json(res, 200, {
       targets: BLUEPRINT_TARGETS,
-      principle: 'The validated book becomes the source blueprint for every later adaptation.'
+      principle: 'A source work must pass Book → Lindymode Validation → OODA → Redteam Seed Check before conversions unlock.'
     });
   });
 
@@ -30,6 +31,15 @@ export default function blueprintRoutes(router, db) {
   router.post('/api/blueprints/:workspace_id/build', (req, res) => {
     try {
       json(res, 201, buildStoryBlueprint(db, req.params.workspace_id));
+    } catch (error) {
+      const status = /not found/i.test(error.message) ? 404 : 400;
+      json(res, status, { error: error.message });
+    }
+  });
+
+  router.get('/api/blueprints/:workspace_id/continuation-options', (req, res) => {
+    try {
+      json(res, 200, getBlueprintContinuationOptions(db, req.params.workspace_id));
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
