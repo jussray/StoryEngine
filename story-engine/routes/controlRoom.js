@@ -3,6 +3,13 @@
 import { randomUUID } from 'node:crypto';
 import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
+import {
+  FOUNDER_PROFILE_OPTIONS,
+  getFounderSummary,
+  updateFounderProfile,
+  recordFounderEvent,
+  evaluateFounderConstraint
+} from '../lib/founderProfile.js';
 import { log } from '../models/eventModel.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -120,11 +127,13 @@ export function buildControlRoomOverview(db, now = Date.now()) {
   const story = storyMemorySignals(db);
   const engine = engineMemorySignals(db, now);
   const memory = { ...story, ...engine };
+  const founder = getFounderSummary(db, now);
 
   return {
     ...snapshot,
     control_room_generated_at: now,
     memory,
+    founder,
     pipeline_health: pipelineHealth(snapshot, memory)
   };
 }
@@ -239,6 +248,44 @@ export default function controlRoomRoutes(router, db) {
       json(res, 200, buildControlRoomOverview(db));
     } catch (error) {
       json(res, 500, { error: error.message });
+    }
+  });
+
+  router.get('/api/control-room/founder/options', (req, res) => {
+    json(res, 200, FOUNDER_PROFILE_OPTIONS);
+  });
+
+  router.get('/api/control-room/founder', (req, res) => {
+    try {
+      json(res, 200, getFounderSummary(db));
+    } catch (error) {
+      json(res, 500, { error: error.message });
+    }
+  });
+
+  router.put('/api/control-room/founder', (req, res) => {
+    try {
+      const profile = updateFounderProfile(db, req.body || {});
+      json(res, 200, { profile, summary: getFounderSummary(db) });
+    } catch (error) {
+      json(res, 400, { error: error.message });
+    }
+  });
+
+  router.post('/api/control-room/founder/event', (req, res) => {
+    try {
+      const event = recordFounderEvent(db, req.body || {});
+      json(res, 201, { event, summary: getFounderSummary(db) });
+    } catch (error) {
+      json(res, 400, { error: error.message });
+    }
+  });
+
+  router.post('/api/control-room/founder/evaluate-cost', (req, res) => {
+    try {
+      json(res, 200, evaluateFounderConstraint(db, req.body || {}));
+    } catch (error) {
+      json(res, 400, { error: error.message });
     }
   });
 
