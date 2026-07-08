@@ -20,6 +20,7 @@ const DEFAULT_MODELS = Object.freeze({
   openrouter: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
 });
 
+const LLM_CLIENT_STARTED_AT = Date.now();
 const providerState = new Map();
 const DEFAULT_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60_000);
 const DEFAULT_MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 2);
@@ -51,7 +52,7 @@ function headers(extra = {}) {
 }
 
 function stateFor(provider) {
-  if (!providerState.has(provider)) providerState.set(provider, { failures: 0, opened_at: null, last_error: null, calls: 0, successes: 0 });
+  if (!providerState.has(provider)) providerState.set(provider, { failures: 0, opened_at: null, last_error: null, calls: 0, successes: 0, created_at: Date.now() });
   return providerState.get(provider);
 }
 
@@ -204,6 +205,10 @@ export function llmRoutingSnapshot() {
     timeout_ms: DEFAULT_TIMEOUT_MS,
     max_retries: DEFAULT_MAX_RETRIES,
     max_tokens_cap: MAX_TOKENS_CAP,
+    circuit_failure_threshold: CIRCUIT_FAILURE_THRESHOLD,
+    circuit_reset_ms: CIRCUIT_RESET_MS,
+    client_started_at: LLM_CLIENT_STARTED_AT,
+    circuit_state_scope: 'process_memory_resets_on_restart',
     circuits: Object.fromEntries([...providerState.entries()].map(([provider, state]) => [provider, { ...state, open: Boolean(state.opened_at) }]))
   };
 }
