@@ -8,32 +8,38 @@
     :root{--bg:#0f0f10;--surface:#171719;--surface2:#202024;--border:#34343a;--text:#e8e8ea;--muted:#8c8c93;--green:#6daa45;--gold:#e8af34;--red:#dd6974;--teal:#4f98a3}
     *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif}a{color:var(--teal);text-decoration:none}button,input,select,textarea{font:inherit}
     header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--surface);border-bottom:1px solid var(--border)}.brand{font-weight:800}.pill{border:1px solid var(--border);border-radius:999px;padding:4px 9px;font-size:12px;background:var(--surface2)}
-    main{max-width:1100px;margin:auto;padding:22px}.grid{display:grid;grid-template-columns:360px 1fr;gap:14px}.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px}.label{font-size:12px;color:var(--muted);display:block;margin:10px 0 5px}input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px}.btn{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;padding:8px 12px;cursor:pointer}.btn.primary{background:#1e3336;color:var(--teal);border-color:#315b61;width:100%;margin-top:12px}
+    main{max-width:1100px;margin:auto;padding:22px}.grid{display:grid;grid-template-columns:390px 1fr;gap:14px}.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px}.label{font-size:12px;color:var(--muted);display:block;margin:10px 0 5px}input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px}.hero{border-color:#3a5960;background:linear-gradient(180deg,#192326,#171719)}.hero textarea{min-height:110px;font-size:16px;line-height:1.5}.btn{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;padding:8px 12px;cursor:pointer}.btn.primary{background:#1e3336;color:var(--teal);border-color:#315b61;width:100%;margin-top:12px}
     h1{font-size:22px;margin:0 0 5px}h2{font-size:16px;margin:0 0 10px}.sub{font-size:13px;color:var(--muted);line-height:1.5}.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}.rule{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px}.rule b{display:block;color:var(--gold);font-size:12px;margin-bottom:4px}.ok{color:var(--green)}
     @media(max-width:760px){main{padding:14px}.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-  <header><div class="brand">🎛 L99 Creative Profile</div><div><a class="pill" href="/studio.html">Studio</a> <a class="pill" href="/control_room.html">Control Room</a></div></header>
+  <header><div class="brand">✨ L99 Story Engine</div><div><a class="pill" href="/studio.html">Studio</a> <a class="pill" href="/control_room.html">Control Room</a></div></header>
   <main>
     <section class="grid">
       <form id="profileForm" class="card">
-        <h1>Who are we creating for?</h1>
-        <p class="sub">This profile configures OODA and every downstream subsystem.</p>
+        <h1>What story do you want to tell?</h1>
+        <p class="sub">The story comes first. L99 uses the answers below to align OODA and every downstream subsystem.</p>
         <label class="label">Workspace</label><select id="workspace" required></select>
+        <div class="card hero" style="margin-top:12px">
+          <label class="label" for="storyVision">Your story</label>
+          <textarea id="storyVision" required placeholder="A lonely dragon discovers that the village afraid of him is the family he has been searching for..."></textarea>
+          <label class="label">What kind of story?</label><select id="storyKind" required></select>
+          <label class="label">How should people feel?</label><select id="emotionalEffect" required></select>
+        </div>
         <label class="label">Medium</label><select id="medium"></select>
-        <label class="label">Audience</label><select id="audience"></select>
+        <label class="label">Who is it for?</label><select id="audience"></select>
         <label class="label">ELI level</label><select id="eli"><option value="">Automatic</option><option value="eli5">ELI5</option><option value="eli10">ELI10</option></select>
-        <label class="label">Genre</label><input id="genre" placeholder="fantasy, educational, comedy...">
+        <label class="label">Genre or blend</label><input id="genre" placeholder="bedtime fantasy, educational hip-hop...">
         <label class="label">Tone</label><input id="tone" placeholder="gentle, adventurous, cinematic...">
         <label class="label">Goal</label><select id="goal"></select>
         <label class="label">Constraints</label><textarea id="constraints" rows="3" placeholder="age appropriate, optimistic ending, 10 chapters"></textarea>
         <label class="label">Outputs</label><textarea id="outputs" rows="2" placeholder="book, audiobook, screenplay"></textarea>
-        <button class="btn primary" type="submit">Save Creative Profile</button>
+        <button class="btn primary" type="submit">Give this story to OODA</button>
         <p id="status" class="sub"></p>
       </form>
       <div>
-        <div id="summary" class="card" style="margin-bottom:12px"><h2>Resolved Strategy</h2><p class="sub">Save a profile to see how L99 configures itself.</p></div>
+        <div id="summary" class="card" style="margin-bottom:12px"><h2>Resolved Story Strategy</h2><p class="sub">Tell L99 the story first, then it will configure the engine.</p></div>
         <div id="rules" class="rules"></div>
       </div>
     </section>
