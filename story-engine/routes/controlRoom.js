@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { storyEngineBrainSnapshot } from '../lib/storyEngineOrchestrator.js';
+import { getRunSummary, listRunSummaries } from '../lib/runSummary.js';
 import {
   OPERATOR_PROFILE_OPTIONS,
   getOperatorSummary,
@@ -80,6 +81,7 @@ function pipelineHealth(snapshot, memory, brain) {
     { key: 'redteam', label: 'Redteam', status: brain.current?.current_stage?.startsWith('redteam') ? 'running' : 'ok' },
     { key: 'runtime', label: 'Runtime', status: failed ? 'error' : running ? 'running' : 'ok' },
     { key: 'release_gate', label: 'Release Gate', status: gateBlocked ? 'blocked' : 'ok' },
+    { key: 'control_room', label: 'Control Room', status: brain.current?.current_stage === 'control_room' ? 'running' : 'ok' },
     { key: 'story_memory', label: 'Story Memory', status: memory.story_drift_count ? 'watch' : 'ok' },
     { key: 'engine_memory', label: 'Engine Memory', status: memory.engine_drift_count ? 'watch' : 'ok' }
   ];
@@ -91,6 +93,7 @@ export function buildControlRoomOverview(db, now = Date.now()) {
   const operator = getOperatorSummary(db, now);
   const operatorAlerts = getOperatorAlerts(db, snapshot.overview || {});
   const brain = storyEngineBrainSnapshot(db);
+  const runSummaries = listRunSummaries(db, 10);
   return {
     ...snapshot,
     control_room_generated_at: now,
@@ -98,6 +101,7 @@ export function buildControlRoomOverview(db, now = Date.now()) {
     operator,
     operator_alerts: operatorAlerts,
     story_engine_brain: brain,
+    recent_run_summaries: runSummaries,
     pipeline_health: pipelineHealth(snapshot, memory, brain)
   };
 }
@@ -161,6 +165,23 @@ function registerOperatorRoutes(router, db, basePath) {
 
 export default function controlRoomRoutes(router, db) {
   router.get('/api/control-room/overview', (req, res) => { try { json(res, 200, buildControlRoomOverview(db)); } catch (error) { json(res, 500, { error: error.message }); } });
+  router.get('/api/control-room/run-summaries', (req, res) => {
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      json(res, 200, listRunSummaries(db, Number(url.searchParams.get('limit') || 25)));
+    } catch (error) {
+      json(res, 500, { error: error.message });
+    }
+  });
+  router.get('/api/control-room/run-summaries/:run_id', (req, res) => {
+    try {
+      const summary = getRunSummary(db, req.params.run_id);
+      if (!summary) return json(res, 404, { error: 'Run summary not found.' });
+      json(res, 200, summary);
+    } catch (error) {
+      json(res, 500, { error: error.message });
+    }
+  });
   registerOperatorRoutes(router, db, '/api/control-room/operator');
   registerOperatorRoutes(router, db, '/api/control-room/founder');
   router.get('/api/control-room/stream', (req, res) => {
