@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import {
-  getFounderProfile,
-  updateFounderProfile,
-  recordFounderEvent,
-  getFounderSummary,
-  evaluateFounderConstraint
-} from '../lib/founderProfile.js';
+  getOperatorProfile,
+  updateOperatorProfile,
+  recordOperatorEvent,
+  getOperatorSummary,
+  evaluateOperatorConstraint,
+  getOperatorAlerts
+} from '../lib/operatorProfile.js';
 import { buildControlRoomOverview } from '../routes/controlRoom.js';
 import { evaluateWorkspace } from '../lib/decisionEngine.js';
 import { upsertCreativeProfile } from '../lib/creativeProfile.js';
@@ -25,11 +26,11 @@ function createDb() {
   return db;
 }
 
-function seedWorkspace(db, workspaceId = 'founder-workspace') {
+function seedWorkspace(db, workspaceId = 'operator-workspace') {
   const now = Date.now();
   db.prepare(`
     INSERT INTO stories (workspace_id, title, genre, pitch, schema_version, created_at, updated_at)
-    VALUES (?, 'Founder Story', 'fantasy', 'A child finds a sleeping star.', '1.0.0', ?, ?)
+    VALUES (?, 'Operator Story', 'fantasy', 'A child finds a sleeping star.', '1.0.0', ?, ?)
   `).run(workspaceId, now, now);
   db.prepare(`
     INSERT INTO lindymode_state (
@@ -48,10 +49,10 @@ function seedWorkspace(db, workspaceId = 'founder-workspace') {
   return workspaceId;
 }
 
-test('Founder Profile defaults to Bootstrap with zero-cost controls', () => {
+test('Operator Profile defaults to Bootstrap with zero-cost controls', () => {
   const db = createDb();
-  const profile = getFounderProfile(db);
-  assert.equal(profile.founder_name, 'Raylene');
+  const profile = getOperatorProfile(db);
+  assert.equal(profile.operator_name, 'Operator');
   assert.equal(profile.mode, 'bootstrap');
   assert.equal(profile.monthly_budget, 0);
   assert.equal(profile.approval_threshold, 0);
@@ -60,9 +61,10 @@ test('Founder Profile defaults to Bootstrap with zero-cost controls', () => {
   db.close();
 });
 
-test('Founder Profile updates while preserving human control', () => {
+test('Operator Profile updates while preserving human control', () => {
   const db = createDb();
-  const profile = updateFounderProfile(db, {
+  const profile = updateOperatorProfile(db, {
+    operator_name: 'Studio Operator',
     mode: 'bootstrap',
     monthly_budget: 25,
     approval_threshold: 1,
@@ -72,6 +74,7 @@ test('Founder Profile updates while preserving human control', () => {
     require_recurring_approval: true
   });
   assert.equal(profile.version, 2);
+  assert.equal(profile.operator_name, 'Studio Operator');
   assert.equal(profile.monthly_budget, 25);
   assert.equal(profile.monthly_revenue, 29);
   assert.equal(profile.require_recurring_approval, true);
@@ -80,11 +83,11 @@ test('Founder Profile updates while preserving human control', () => {
 
 test('Cost ledger calculates revenue, spend, profit, burn, and runway', () => {
   const db = createDb();
-  updateFounderProfile(db, { monthly_budget: 10, cash_available: 20 });
-  recordFounderEvent(db, { category: 'sale', description: 'Continuity Audit', amount: 29, revenue: true });
-  recordFounderEvent(db, { category: 'ai', provider: 'OpenRouter', description: 'Audit inference', amount: 0.45 });
-  recordFounderEvent(db, { category: 'hosting', description: 'Paid host', amount: 2, recurring: true });
-  const summary = getFounderSummary(db);
+  updateOperatorProfile(db, { monthly_budget: 10, cash_available: 20 });
+  recordOperatorEvent(db, { category: 'sale', description: 'Continuity Audit', amount: 29, revenue: true });
+  recordOperatorEvent(db, { category: 'ai', provider: 'OpenRouter', description: 'Audit inference', amount: 0.45 });
+  recordOperatorEvent(db, { category: 'hosting', description: 'Paid host', amount: 2, recurring: true });
+  const summary = getOperatorSummary(db);
   assert.equal(summary.monthly_revenue, 29);
   assert.equal(summary.monthly_spend, 2.45);
   assert.equal(summary.monthly_recurring_spend, 2);
@@ -93,11 +96,11 @@ test('Cost ledger calculates revenue, spend, profit, burn, and runway', () => {
   db.close();
 });
 
-test('Bootstrap Founder Profile requires approval for paid work', () => {
+test('Bootstrap Operator Profile requires approval for paid work', () => {
   const db = createDb();
-  const free = evaluateFounderConstraint(db, { estimated_cost: 0 });
-  const paid = evaluateFounderConstraint(db, { estimated_cost: 0.45 });
-  const recurring = evaluateFounderConstraint(db, { estimated_cost: 1, recurring: true });
+  const free = evaluateOperatorConstraint(db, { estimated_cost: 0 });
+  const paid = evaluateOperatorConstraint(db, { estimated_cost: 0.45 });
+  const recurring = evaluateOperatorConstraint(db, { estimated_cost: 1, recurring: true });
   assert.equal(free.allowed_without_approval, true);
   assert.equal(paid.requires_approval, true);
   assert.ok(paid.reasons.some(reason => /free alternative/i.test(reason)));
@@ -106,25 +109,40 @@ test('Bootstrap Founder Profile requires approval for paid work', () => {
   db.close();
 });
 
-test('Control Room overview includes Founder Profile', () => {
+test('Operator Alerts surface budget, recurring, growth, and operations signals', () => {
   const db = createDb();
-  seedWorkspace(db);
-  const overview = buildControlRoomOverview(db);
-  assert.equal(overview.founder.profile.mode, 'bootstrap');
-  assert.equal(overview.founder.monthly_spend, 0);
-  assert.match(overview.founder.recommendation, /Bootstrap/i);
+  updateOperatorProfile(db, { monthly_budget: 1, recurring_budget: 0, monthly_revenue: 5 });
+  recordOperatorEvent(db, { category: 'hosting', description: 'Paid host', amount: 2, recurring: true });
+  const alerts = getOperatorAlerts(db, { runtime_failures: 1, release_gate_blocked_count: 2, active_incidents: 3 });
+  assert.ok(alerts.some(alert => alert.code === 'budget_exceeded'));
+  assert.ok(alerts.some(alert => alert.code === 'recurring_budget_exceeded'));
+  assert.ok(alerts.some(alert => alert.code === 'runtime_failures'));
+  assert.ok(alerts.some(alert => alert.code === 'release_blocked'));
+  assert.ok(alerts.some(alert => alert.code === 'active_incidents'));
   db.close();
 });
 
-test('OODA includes Founder Profile constraints in every decision', () => {
+test('Control Room overview includes Operator Profile and alerts', () => {
+  const db = createDb();
+  seedWorkspace(db);
+  const overview = buildControlRoomOverview(db);
+  assert.equal(overview.operator.profile.mode, 'bootstrap');
+  assert.equal(overview.operator.monthly_spend, 0);
+  assert.match(overview.operator.recommendation, /Bootstrap/i);
+  assert.ok(Array.isArray(overview.operator_alerts));
+  assert.ok(overview.operator_alerts.some(alert => alert.code === 'bootstrap_active'));
+  db.close();
+});
+
+test('OODA includes Operator Profile constraints in every decision', () => {
   const db = createDb();
   const workspaceId = seedWorkspace(db);
   const decision = evaluateWorkspace(db, workspaceId);
-  assert.equal(decision.founder_constraints.mode, 'bootstrap');
-  assert.equal(decision.founder_constraints.monthly_budget, 0);
-  assert.equal(decision.founder_constraints.prefer_free, true);
-  assert.equal(decision.founder_constraints.require_recurring_approval, true);
-  assert.equal(decision.founder_constraints.zero_cost_evaluation.allowed_without_approval, true);
-  assert.equal(decision.evidence.founder_profile.founder_name, 'Raylene');
+  assert.equal(decision.operator_constraints.mode, 'bootstrap');
+  assert.equal(decision.operator_constraints.monthly_budget, 0);
+  assert.equal(decision.operator_constraints.prefer_free, true);
+  assert.equal(decision.operator_constraints.require_recurring_approval, true);
+  assert.equal(decision.operator_constraints.zero_cost_evaluation.allowed_without_approval, true);
+  assert.equal(decision.evidence.operator_profile.operator_name, 'Operator');
   db.close();
 });
