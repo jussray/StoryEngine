@@ -29,17 +29,21 @@ function render(data) {
   const r = data.retention || {};
   overviewEl.innerHTML = `
     <div><span class="health-label">Workspaces</span><strong>${o.workspaces}</strong></div>
-    <div><span class="health-label">Incidents</span><strong>${o.active_incidents}</strong></div>
+    <div><span class="health-label">Gate Ready</span><strong>${o.release_gate_ready ?? 0}</strong></div>
+    <div><span class="health-label">Gate Warning</span><strong>${o.release_gate_warning ?? 0}</strong></div>
+    <div><span class="health-label">Gate Stopped</span><strong>${o.release_gate_blocked_count ?? 0}</strong></div>
     <div><span class="health-label">Queue</span><strong>${o.queue_depth}</strong></div>
     <div><span class="health-label">Live Events</span><strong>${o.live_event_count ?? 0}</strong></div>
-    <div><span class="health-label">Compacted</span><strong>${o.compacted_episode_count ?? 0}</strong></div>
-    <div><span class="health-label">Recovery</span><strong>${o.recovery_success_rate == null ? '—' : Math.round(o.recovery_success_rate * 100) + '%'}</strong></div>`;
+    <div><span class="health-label">Compacted</span><strong>${o.compacted_episode_count ?? 0}</strong></div>`;
 
   workspaceListEl.innerHTML = data.workspaces.length ? data.workspaces.map(item => `
     <article class="beat-card incident-card">
       <strong>${esc(item.title)}</strong>
-      <p>${esc(item.release_result)} · ${esc(item.predicted_risk)}</p>
+      <p>Release Gate: ${esc(item.release_gate_status || 'UNKNOWN')} · Risk: ${esc(item.predicted_risk)}</p>
       <p class="subtitle">Confidence ${item.confidence_score}% · ${item.chapter_count} chapters · ${item.active_incidents} incidents</p>
+      ${item.release_gate_reasons?.length ? `<p class="subtitle">${esc(item.release_gate_reasons[0])}</p>` : ''}
+      <a href="/release_gate.html?workspace_id=${encodeURIComponent(item.workspace_id)}">Open Release Gate</a>
+      <span> · </span>
       <a href="/runtime_dashboard.html?workspace_id=${encodeURIComponent(item.workspace_id)}">Open runtime ledger</a>
     </article>`).join('') : '<p class="subtitle">No workspaces.</p>';
 
