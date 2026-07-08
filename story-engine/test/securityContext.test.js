@@ -17,20 +17,22 @@ function mockRes() {
 
 test('security context caches scoped registry and resolves actor identity', () => {
   const prior = process.env.L99_API_KEYS_JSON;
-  process.env.L99_API_KEYS_JSON = JSON.stringify([{ key: 'secret-a', actor_id: 'actor-a', tenant_id: 'tenant-a', role: 'editor', workspace_ids: ['workspace_1'] }]);
-  const req = { method: 'GET', headers: { 'x-api-key': 'secret-a' }, request_id: 'req_1' };
-  const res = mockRes();
-  let nextCalled = false;
+  try {
+    process.env.L99_API_KEYS_JSON = JSON.stringify([{ key: 'secret-a', actor_id: 'actor-a', tenant_id: 'tenant-a', role: 'editor', workspace_ids: ['workspace_1'] }]);
+    const req = { method: 'GET', headers: { 'x-api-key': 'secret-a' }, request_id: 'req_1' };
+    const res = mockRes();
+    let nextCalled = false;
 
-  requireAuth(req, res, () => { nextCalled = true; });
+    requireAuth(req, res, () => { nextCalled = true; });
 
-  assert.equal(nextCalled, true);
-  assert.equal(req.auth.actor_id, 'actor-a');
-  assert.equal(req.auth.tenant_id, 'tenant-a');
-  assert.equal(securitySnapshot().scoped_key_count, 1);
-
-  if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
-  else process.env.L99_API_KEYS_JSON = prior;
+    assert.equal(nextCalled, true);
+    assert.equal(req.auth.actor_id, 'actor-a');
+    assert.equal(req.auth.tenant_id, 'tenant-a');
+    assert.equal(securitySnapshot().scoped_key_count, 1);
+  } finally {
+    if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
+    else process.env.L99_API_KEYS_JSON = prior;
+  }
 });
 
 test('workspace access uses params/query helper instead of trusting unparsed body middleware', () => {
