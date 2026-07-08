@@ -6,6 +6,7 @@ import { evaluateWorkspace, persistDecision, runReleaseAudit } from './decisionE
 import { planRecovery, runRecovery } from './recoveryEngine.js';
 import { predictWorkspaceRisk } from './learningEngine.js';
 import { buildStoryGenome } from './storyGenome.js';
+import { evaluateAudienceFit, resolveAudienceLens } from './audienceLens.js';
 import { log } from '../models/eventModel.js';
 
 function step(name, status, data = {}) {
@@ -64,6 +65,21 @@ export function listRuntimeRuns(db, workspaceId, limit = 100) {
   }));
 }
 
+function workspaceAudience(db, workspaceId) {
+  const profile = db.prepare(`
+    SELECT audience FROM creative_profiles WHERE workspace_id=?
+  `).get(workspaceId);
+  return profile?.audience || null;
+}
+
+function workspaceText(db, workspaceId, chapter = null) {
+  if (chapter) return chapter.content || chapter.text || '';
+  return db.prepare(`
+    SELECT COALESCE(GROUP_CONCAT(COALESCE(content, text, ''), '\n\n'), '') AS text
+    FROM chapters WHERE workspace_id=?
+  `).get(workspaceId)?.text || '';
+}
+
 export function runAutonomousRuntime(db, {
   workspaceId,
   chapter = null,
@@ -99,6 +115,20 @@ export function runAutonomousRuntime(db, {
         state_missing: Boolean(analysis.state_missing)
       }));
       writeStepEvent(db, workspaceId, correlation, 'lindymode_analysis', 'completed', steps.at(-1).data);
+    }
+
+    const audience = workspaceAudience(db, workspaceId);
+    const audienceLens = resolveAudienceLens(audience);
+    const audienceFit = evaluateAudienceFit(workspaceText(db, workspaceId, chapter), audience);
+    if (audienceLens.active) {
+      steps.push(step('audience_lens', audienceFit.passed ? 'completed' : 'blocked', {
+        audience,
+        label: audienceLens.label,
+        score: audienceFit.score,
+        metrics: audienceFit.metrics,
+        findings: audienceFit.findings
+      }));
+      writeStepEvent(db, workspaceId, correlation, 'audience_lens', audienceFit.passed ? 'completed' : 'blocked', steps.at(-1).data);
     }
 
     let decision = persistDecision(db, evaluateWorkspace(db, workspaceId));
@@ -175,6 +205,17 @@ export function runAutonomousRuntime(db, {
     writeStepEvent(db, workspaceId, correlation, 'predictive_ooda', 'completed', steps.at(-1).data);
 
     const releaseAudit = runReleaseAudit(db, workspaceId);
+    if (audienceLens.active && !audienceFit.passed) {
+      releaseAudit.result = 'BLOCKED';
+      releaseAudit.blockers = [
+        ...(releaseAudit.blockers || []),
+        ...audienceFit.findings.map(finding => ({
+          code: finding.code,
+          message: finding.message,
+          source: audienceLens.label
+        }))
+      ];
+    }
     steps.push(step('release_gate', releaseAudit.result.toLowerCase(), {
       audit_id: releaseAudit.audit_id,
       result: releaseAudit.result,
@@ -189,6 +230,7 @@ export function runAutonomousRuntime(db, {
       chapter_id: chapter?.id ?? null,
       trigger_type: triggerType,
       analysis,
+      audience_lens: audienceLens.active ? audienceFit : null,
       decision,
       recoveries: recoveryRuns,
       genome: genome ? {
@@ -208,7 +250,8 @@ export function runAutonomousRuntime(db, {
     writeStepEvent(db, workspaceId, correlation, 'completed', 'completed', {
       run_id: runId,
       release_result: releaseAudit.result,
-      predicted_risk: prediction.predicted_risk
+      predicted_risk: prediction.predicted_risk,
+      audience_lens: audienceLens.active ? audienceLens.label : null
     });
     return getRuntimeRun(db, runId);
   } catch (error) {
