@@ -7,6 +7,15 @@ function configuredApiKey() {
   return String(process.env.API_KEY || '').trim();
 }
 
+function cookieValue(cookieHeader, name) {
+  if (typeof cookieHeader !== 'string') return '';
+  for (const pair of cookieHeader.split(';')) {
+    const [key, ...rest] = pair.trim().split('=');
+    if (key === name) return decodeURIComponent(rest.join('='));
+  }
+  return '';
+}
+
 function suppliedApiKey(req) {
   const direct = req.headers?.['x-api-key'];
   if (typeof direct === 'string' && direct.trim()) return direct.trim();
@@ -16,6 +25,10 @@ function suppliedApiKey(req) {
     const match = authorization.match(/^Bearer\s+(.+)$/i);
     if (match) return match[1].trim();
   }
+
+  const cookie = cookieValue(req.headers?.cookie, 'l99_api_key');
+  if (cookie) return cookie.trim();
+
   return '';
 }
 
