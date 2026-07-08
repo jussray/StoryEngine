@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Release Gate — L99</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/ooda.css">
+</head>
+<body>
+  <main class="container ooda-shell">
+    <nav class="back"><a id="homeLink" href="/front_door.html">← Workspace</a></nav>
+    <header class="writing-header">
+      <p class="eyebrow">Final Authority</p>
+      <h1>Release Gate</h1>
+      <p class="subtitle">Checks whether expensive operations are safe to run.</p>
+      <div class="workspace-actions">
+        <button id="refreshGate" type="button">Refresh Gate</button>
+        <button id="auditGate" class="quiet-button" type="button">Record Audit</button>
+      </div>
+    </header>
+
+    <p id="status" class="subtitle">Loading gate…</p>
+    <section id="overview" class="story-health-strip"></section>
+
+    <section class="ooda-layout">
+      <article class="beat-card">
+        <p class="eyebrow">Reasons</p>
+        <h2>Blockers and Warnings</h2>
+        <div id="reasonList"></div>
+      </article>
+      <aside class="correlation-panel">
+        <p class="eyebrow">Actions</p>
+        <h2>Recommended Next Steps</h2>
+        <div id="actionList"></div>
+        <p class="eyebrow">Metrics</p>
+        <div id="metricList"></div>
+      </aside>
+    </section>
+  </main>
+  <script src="/release_gate.js"></script>
+</body>
+</html>
