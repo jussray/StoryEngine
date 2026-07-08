@@ -1,8 +1,7 @@
 // lib/extractEntities.js
 
 import { createHash } from 'node:crypto';
-
-const DEFAULT_MODEL = process.env.OPENAI_ENTITY_MODEL || 'gpt-4o-mini';
+import { completeJson } from './llmClient.js';
 
 function text(value, fallback = '') {
   const normalized = String(value || '').trim();
@@ -20,10 +19,6 @@ function normalizeId(value, prefix = 'entity') {
     .replace(/^-|-$/g, '')
     .slice(0, 64);
   return slug || prefix;
-}
-
-function safeJson(value, fallback = {}) {
-  try { return JSON.parse(value); } catch { return fallback; }
 }
 
 function hashText(value) {
@@ -192,35 +187,19 @@ function normalizeExtraction(raw = {}) {
 }
 
 async function modelExtract(chapterText, options = {}) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
+  if (!process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY && !process.env.LLM_BASE_URL) return null;
 
   const prompt = `Extract story continuity entities from the chapter. Return ONLY valid JSON with keys: characters, locations, relationships, lore, objects, timeline, conflicts.\n\nEach conflict must include: entity_type, entity_id, field, old_value, new_value, summary, evidence.\n\nUse stable lowercase ids. Do not invent facts that are not present.\n\nChapter label: ${options.chapter_label || 'chapter'}\n\nChapter text:\n${String(chapterText || '').slice(0, Number(options.max_model_chars || 60000))}`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: options.model || DEFAULT_MODEL,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: 'You are L99 Canon Guardian. Extract precise continuity memory for fiction and never output prose outside JSON.' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.1
-    })
+  const raw = await completeJson(prompt, {
+    task: 'entity_extraction',
+    provider: options.provider,
+    model: options.model,
+    maxTokens: options.maxTokens || 4096,
+    temperature: 0.1,
+    system: 'You are L99 Canon Guardian. Extract precise continuity memory for fiction and never output prose outside JSON.'
   });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`OpenAI extraction failed: ${response.status} ${body.slice(0, 200)}`);
-  }
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '{}';
-  return normalizeExtraction({ ...safeJson(content, {}), source: 'openai', chapter_label: options.chapter_label || null });
+  return normalizeExtraction({ ...raw, source: options.provider || 'llm', chapter_label: options.chapter_label || null });
 }
 
 export async function extractEntities(chapterText, options = {}) {
