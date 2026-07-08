@@ -10,6 +10,10 @@ const esc = value => String(value ?? '')
   .replaceAll('<', '&lt;')
   .replaceAll('>', '&gt;');
 
+function fmtTime(value) {
+  return value ? new Date(Number(value)).toLocaleString() : '—';
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -22,11 +26,13 @@ async function api(path, options = {}) {
 
 function render(data) {
   const o = data.overview;
+  const r = data.retention || {};
   overviewEl.innerHTML = `
     <div><span class="health-label">Workspaces</span><strong>${o.workspaces}</strong></div>
     <div><span class="health-label">Incidents</span><strong>${o.active_incidents}</strong></div>
     <div><span class="health-label">Queue</span><strong>${o.queue_depth}</strong></div>
-    <div><span class="health-label">Failures</span><strong>${o.runtime_failures}</strong></div>
+    <div><span class="health-label">Live Events</span><strong>${o.live_event_count ?? 0}</strong></div>
+    <div><span class="health-label">Compacted</span><strong>${o.compacted_episode_count ?? 0}</strong></div>
     <div><span class="health-label">Recovery</span><strong>${o.recovery_success_rate == null ? '—' : Math.round(o.recovery_success_rate * 100) + '%'}</strong></div>`;
 
   workspaceListEl.innerHTML = data.workspaces.length ? data.workspaces.map(item => `
@@ -46,7 +52,13 @@ function render(data) {
   recoveryStatsEl.innerHTML = `
     <div class="release-check"><strong>Validated</strong><span>${data.recovery.validated}</span></div>
     <div class="release-check"><strong>Rolled back</strong><span>${data.recovery.rolled_back}</span></div>
-    <div class="release-check"><strong>Awaiting author</strong><span>${data.recovery.awaiting_author}</span></div>`;
+    <div class="release-check"><strong>Awaiting author</strong><span>${data.recovery.awaiting_author}</span></div>
+    <div class="release-check"><strong>Oldest live event</strong><span>${fmtTime(r.oldest_live_event_at)}</span></div>
+    <div class="release-check"><strong>Eligible events</strong><span>${r.eligible_event_count ?? 0}</span></div>
+    <div class="release-check"><strong>Last compaction</strong><span>${fmtTime(r.last_compacted_at)}</span></div>
+    <button id="runRetention" class="quiet-button" type="button">Run Retention</button>`;
+
+  document.getElementById('runRetention')?.addEventListener('click', runRetention);
 }
 
 async function load() {
@@ -67,6 +79,12 @@ async function scan() {
 
 async function drain() {
   await api('/api/runtime/drain', { method: 'POST', body: '{"limit":10}' });
+  await load();
+}
+
+async function runRetention() {
+  statusEl.textContent = 'Running event retention…';
+  await api('/api/events/retention/run', { method: 'POST', body: '{"limit":100}' });
   await load();
 }
 
