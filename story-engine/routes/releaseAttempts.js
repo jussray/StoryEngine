@@ -9,26 +9,36 @@ import {
   listReleaseAttempts
 } from '../lib/releaseAttempts.js';
 
+function transitionFailure(res, error) {
+  if (error?.code === 'INVALID_RELEASE_ATTEMPT_TRANSITION') {
+    return json(res, 409, { error: error.message, attempt: error.attempt });
+  }
+  throw error;
+}
+
 export default function releaseAttemptRoutes(router, db) {
   router.post('/api/release/attempt/:workspace_id', (req, res) => {
-    const result = createReleaseAttempt(
-      db,
-      req.params.workspace_id,
-      req.body?.operation || 'release',
-      {
-        allowWarning: req.body?.allow_warning === true,
-        confidenceThreshold: req.body?.confidence_threshold,
-        p99Limit: req.body?.p99_limit
-      }
-    );
+    try {
+      const result = createReleaseAttempt(
+        db,
+        req.params.workspace_id,
+        req.body?.operation || 'release',
+        {
+          allowWarning: req.body?.allow_warning === true,
+          confidenceThreshold: req.body?.confidence_threshold,
+          p99Limit: req.body?.p99_limit
+        }
+      );
 
-    if (!result) return json(res, 404, { error: 'Workspace not found' });
-    json(res, result.allowed ? 201 : 409, result);
+      if (!result) return json(res, 404, { error: 'Workspace not found' });
+      json(res, result.allowed ? 201 : 409, result);
+    } catch (error) {
+      json(res, 400, { error: error.message });
+    }
   });
 
   router.get('/api/release/attempts/:workspace_id', (req, res) => {
-    const limit = Math.min(Number(req.query.limit) || 100, 500);
-    json(res, 200, listReleaseAttempts(db, req.params.workspace_id, limit));
+    json(res, 200, listReleaseAttempts(db, req.params.workspace_id, req.query.limit));
   });
 
   router.get('/api/release/attempt/:attempt_id', (req, res) => {
@@ -38,14 +48,22 @@ export default function releaseAttemptRoutes(router, db) {
   });
 
   router.post('/api/release/attempt/:attempt_id/complete', (req, res) => {
-    const attempt = completeReleaseAttempt(db, req.params.attempt_id, req.body?.result || {});
-    if (!attempt) return json(res, 404, { error: 'Attempt not found' });
-    json(res, 200, attempt);
+    try {
+      const attempt = completeReleaseAttempt(db, req.params.attempt_id, req.body?.result || {});
+      if (!attempt) return json(res, 404, { error: 'Attempt not found' });
+      json(res, 200, attempt);
+    } catch (error) {
+      transitionFailure(res, error);
+    }
   });
 
   router.post('/api/release/attempt/:attempt_id/fail', (req, res) => {
-    const attempt = failReleaseAttempt(db, req.params.attempt_id, req.body?.error || 'Operation failed');
-    if (!attempt) return json(res, 404, { error: 'Attempt not found' });
-    json(res, 200, attempt);
+    try {
+      const attempt = failReleaseAttempt(db, req.params.attempt_id, req.body?.error || 'Operation failed');
+      if (!attempt) return json(res, 404, { error: 'Attempt not found' });
+      json(res, 200, attempt);
+    } catch (error) {
+      transitionFailure(res, error);
+    }
   });
 }
