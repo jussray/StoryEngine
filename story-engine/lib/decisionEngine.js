@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { log } from '../models/eventModel.js';
 import { creativeProfileContext } from './creativeProfile.js';
+import { getFounderSummary, evaluateFounderConstraint } from './founderProfile.js';
 
 function safeJson(value, fallback) {
   try {
@@ -94,6 +95,9 @@ function buildRecoveryPlan(reasons, incidents) {
   if (reasons.some(reason => ['missing_creative_profile', 'incomplete_creative_profile'].includes(reason.code))) {
     plan.push('Tell L99 what story you want to tell and what kind of story it is before OODA plans execution.');
   }
+  if (reasons.some(reason => reason.code === 'founder_budget_exceeded')) {
+    plan.push('Route the task to a free alternative or ask the founder before spending.');
+  }
   if (reasons.some(reason => reason.code === 'empty_chapters')) {
     plan.push('Complete or remove empty chapters before release.');
   }
@@ -105,6 +109,8 @@ export function evaluateWorkspace(db, workspaceId) {
   const state = latestState(db, workspaceId);
   const profile = creativeProfileContext(db, workspaceId);
   const profileComplete = Boolean(profile?.story_vision?.trim() && profile?.story_kind?.trim());
+  const founder = getFounderSummary(db);
+  const founderConstraint = evaluateFounderConstraint(db, { estimated_cost: 0, recurring: false });
   const incidents = activeIncidents(db, workspaceId);
   const runtime = runtimeStats(db, workspaceId);
   const chapters = chapterStats(db, workspaceId);
@@ -124,6 +130,11 @@ export function evaluateWorkspace(db, workspaceId) {
     severity: 'critical',
     message: 'Story vision and story kind are required before OODA can authorize execution.'
   });
+  if (founder.monthly_spend > Number(founder.profile.monthly_budget || 0)) reasons.push({
+    code: 'founder_budget_exceeded',
+    severity: 'warning',
+    message: 'Founder Profile budget is exceeded; paid execution requires human review.'
+  });
   if (!state) reasons.push({ code: 'missing_state', severity: 'warning', message: 'Canonical Lindymode state is missing.' });
   if (criticalIncidents.length) reasons.push({ code: 'critical_drift', severity: 'critical', message: `${criticalIncidents.length} critical story incident(s) active.` });
   if (warningIncidents.length) reasons.push({ code: 'warning_drift', severity: 'warning', message: `${warningIncidents.length} story incident(s) need review.` });
@@ -140,6 +151,7 @@ export function evaluateWorkspace(db, workspaceId) {
   score -= Math.round(maxDrift * 20);
   if (!profile) score -= 20;
   else if (!profileComplete) score -= 35;
+  if (founder.monthly_spend > Number(founder.profile.monthly_budget || 0)) score -= 8;
   if (!state) score -= 15;
   if (runtime.p99 > 2000) score -= 15;
   else if (runtime.p99 > 1000) score -= 8;
@@ -170,6 +182,16 @@ export function evaluateWorkspace(db, workspaceId) {
     confidence_score: score,
     reasons,
     recovery_plan: buildRecoveryPlan(reasons, incidents),
+    founder_constraints: {
+      mode: founder.profile.mode,
+      monthly_budget: founder.profile.monthly_budget,
+      monthly_spend: founder.monthly_spend,
+      approval_threshold: founder.profile.approval_threshold,
+      prefer_free: founder.profile.prefer_free,
+      require_recurring_approval: founder.profile.require_recurring_approval,
+      recommendation: founder.recommendation,
+      zero_cost_evaluation: founderConstraint
+    },
     strategy: profileComplete ? {
       profile_id: profile.profile_id,
       story_vision: profile.story_vision,
@@ -190,6 +212,8 @@ export function evaluateWorkspace(db, workspaceId) {
     evidence: {
       creative_profile: profile,
       creative_profile_complete: profileComplete,
+      founder_profile: founder.profile,
+      founder_summary: founder,
       active_incidents: incidents.length,
       critical_incidents: criticalIncidents.length,
       max_drift: maxDrift,
@@ -228,6 +252,7 @@ export function persistDecision(db, decision) {
       action: decision.action,
       readiness: decision.readiness,
       confidence_score: decision.confidence_score,
+      founder_mode: decision.founder_constraints?.mode || null,
       profile_id: decision.strategy?.profile_id || null,
       story_kind: decision.strategy?.story_kind || null,
       medium: decision.strategy?.medium || null,
