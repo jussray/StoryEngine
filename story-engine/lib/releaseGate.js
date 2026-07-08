@@ -71,6 +71,7 @@ export function evaluateReleaseGate(db, workspaceId, options = {}) {
 
   const decision = evaluateWorkspace(db, workspaceId);
   const profile = decision.evidence.creative_profile;
+  const profileComplete = decision.evidence.creative_profile_complete;
   const runtime = latestRuntime(db, workspaceId);
   const recovery = latestRecovery(db, workspaceId);
   const incidents = activeIncidents(db, workspaceId);
@@ -86,6 +87,7 @@ export function evaluateReleaseGate(db, workspaceId, options = {}) {
   const supportedSchema = SUPPORTED_SCHEMA_VERSIONS.has(story.schema_version || '1.0.0');
 
   if (!profile) blockers.push('Creative Profile is missing.');
+  else if (!profileComplete) blockers.push('Story vision and story kind are required.');
   if (sev3.length) blockers.push(`${sev3.length} active Sev3 incident(s).`);
   if (continuity.length) blockers.push(`${continuity.length} unresolved continuity conflict(s).`);
   if (!genome.passed) blockers.push(`${genome.conflicts.length} unresolved Story Memory conflict(s).`);
@@ -106,6 +108,7 @@ export function evaluateReleaseGate(db, workspaceId, options = {}) {
   }
 
   if (!profile) actions.push('Create a Creative Profile before release.');
+  else if (!profileComplete) actions.push('Tell L99 what story you want to tell and what kind of story it is.');
   if (sev3.length || continuity.length) actions.push('Resolve active Lindymode incidents and re-run the autonomous runtime.');
   if (!genome.passed) actions.push('Resolve Story Memory conflicts before continuing.');
   if (runtime?.status === 'failed') actions.push('Open the runtime ledger, fix the failed step, and run again.');
@@ -127,6 +130,7 @@ export function evaluateReleaseGate(db, workspaceId, options = {}) {
     genome_conflicts: genome.conflicts,
     metrics: {
       creative_profile_present: Boolean(profile),
+      creative_profile_complete: profileComplete,
       active_incidents: incidents.length,
       sev3_incidents: sev3.length,
       unresolved_continuity_conflicts: continuity.length,
@@ -151,6 +155,7 @@ export function persistReleaseGate(db, workspaceId, operation = 'release_check',
   const auditId = randomUUID();
   const checks = [
     { name: 'creative_profile', passed: gate.metrics.creative_profile_present },
+    { name: 'story_intent', passed: gate.metrics.creative_profile_complete },
     { name: 'sev3_incidents', passed: gate.metrics.sev3_incidents === 0 },
     { name: 'continuity_conflicts', passed: gate.metrics.unresolved_continuity_conflicts === 0 },
     { name: 'genome_conflicts', passed: gate.metrics.unresolved_genome_conflicts === 0 },
@@ -188,6 +193,7 @@ export function persistReleaseGate(db, workspaceId, operation = 'release_check',
       status: gate.status,
       confidence: gate.confidence,
       profile_id: gate.creative_profile?.profile_id || null,
+      story_kind: gate.creative_profile?.story_kind || null,
       medium: gate.creative_profile?.medium || null,
       audience: gate.creative_profile?.audience || null,
       eli_level: gate.creative_profile?.eli_level || null,
