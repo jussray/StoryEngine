@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L99 IP Studio</title>
+<style>
+:root{--bg:#0f1014;--panel:#171922;--line:#2b2e3a;--text:#f1f3f7;--muted:#9da3b3;--accent:#7c83ff;--ok:#55c98b;--warn:#f5bd53}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}.shell{max-width:1180px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:24px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--accent)}h1{margin:5px 0 8px;font-size:clamp(2rem,5vw,3.8rem)}p{color:var(--muted);line-height:1.6}.flow{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.chip{padding:8px 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}.chip.active{border-color:var(--accent);color:var(--text);background:#232647}.grid{display:grid;grid-template-columns:340px 1fr;gap:18px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}label{display:block;color:var(--muted);font-size:13px;margin:14px 0 7px}input,select,button{width:100%;border:1px solid var(--line);border-radius:10px;background:#10121a;color:var(--text);padding:12px;font:inherit}button{margin-top:16px;background:var(--accent);border:0;font-weight:700;cursor:pointer}.status{min-height:22px;margin-top:12px;color:var(--muted)}.cards{display:grid;gap:12px}.card{background:#11131b;border:1px solid var(--line);border-radius:14px;padding:15px}.card h3{margin:0 0 6px}.meta{font-size:12px;color:var(--muted)}pre{white-space:pre-wrap;word-break:break-word;background:#0b0d13;border-radius:12px;padding:14px;max-height:520px;overflow:auto;color:#d8dbef}.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#173324;color:var(--ok);font-size:12px}@media(max-width:850px){.grid{grid-template-columns:1fr}.top{display:block}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <div>
+      <div class="eyebrow">L99 IP Lifecycle</div>
+      <h1>IP Studio</h1>
+      <p>Turn one validated seed into a visible production continuation: screenplay, storyboard, shot list, visual direction, audio plan, and asset manifest.</p>
+    </div>
+    <a href="/campaign_studio.html" style="color:var(--accent)">Open Campaign Studio →</a>
+  </div>
+  <div class="flow"><span class="chip">Validation Seed</span><span class="chip">IP Growth</span><span class="chip active">IP Studio</span><span class="chip">Campaign Studio</span><span class="chip">Release Gate</span></div>
+  <div class="grid">
+    <section class="panel">
+      <h2>Build a production pack</h2>
+      <label for="workspace">Source workspace ID</label>
+      <input id="workspace" placeholder="workspace_...">
+      <label for="target">Version to produce</label>
+      <select id="target"><option>movie</option><option>tv</option><option>animated_short</option><option>youtube_short</option><option>short_clip</option><option>comic</option><option>podcast</option><option>song</option><option>game</option><option>picture_book</option></select>
+      <label for="conversion">Conversion ID (optional)</label>
+      <input id="conversion" placeholder="conversion_...">
+      <button id="build">Build production pack</button>
+      <div class="status" id="status"></div>
+    </section>
+    <section class="panel">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h2>Visual continuation</h2><span class="badge" id="packState">Waiting</span></div>
+      <div class="cards" id="summary"><div class="card"><h3>No production pack yet</h3><p>Choose a validated workspace and version. L99 will keep every result tied to the same blueprint and source canon.</p></div></div>
+      <pre id="output">{}</pre>
+    </section>
+  </div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+$('build').addEventListener('click',async()=>{
+  const workspace=$('workspace').value.trim();
+  if(!workspace){$('status').textContent='Enter a source workspace ID.';return;}
+  $('status').textContent='Building source-faithful production pack…';$('packState').textContent='Working';
+  const body={target_medium:$('target').value};
+  if($('conversion').value.trim()) body.conversion_id=$('conversion').value.trim();
+  try{
+    const res=await fetch(`/api/ip-studio/${encodeURIComponent(workspace)}/production-pack`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const data=await res.json(); if(!res.ok) throw new Error(data.error||'Build failed');
+    $('status').textContent='Production pack created.';$('packState').textContent=data.status;
+    const lineage=data.pack.lineage||{}; const prod=data.pack.production||{};
+    $('summary').innerHTML=`<div class="card"><h3>${lineage.source_title||'Untitled'} → ${lineage.target_medium}</h3><div class="meta">Blueprint ${lineage.blueprint_id}<br>Version ${data.source_version}</div></div><div class="card"><h3>Included</h3><p>${(data.pack.asset_manifest||[]).join(' · ')}</p></div><div class="card"><h3>Release path</h3><p>${(data.pack.release_pipeline||[]).join(' → ')}</p></div>`;
+    $('output').textContent=JSON.stringify(data,null,2);
+  }catch(error){$('status').textContent=error.message;$('packState').textContent='Blocked';}
+});
+</script>
+</body>
+</html>
