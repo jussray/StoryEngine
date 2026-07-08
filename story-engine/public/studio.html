@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L99 Studio</title>
+  <style>
+    :root{--bg:#0f0f10;--surface:#171719;--surface2:#202024;--border:#34343a;--text:#e8e8ea;--muted:#8c8c93;--green:#6daa45;--gold:#e8af34;--red:#dd6974;--teal:#4f98a3;--blue:#5591c7;--purple:#a86fdf}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif}a{color:var(--teal);text-decoration:none}button,input,textarea{font:inherit}
+    header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0}.brand{font-weight:800}.pill{border:1px solid var(--border);border-radius:999px;padding:4px 9px;font-size:12px;background:var(--surface2)}
+    main{max-width:1180px;margin:auto;padding:22px}.grid{display:grid;grid-template-columns:330px 1fr;gap:14px}.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px}.label{font-size:12px;color:var(--muted);display:block;margin:10px 0 5px}input,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px}.btn{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:9px;padding:8px 12px;cursor:pointer}.btn:hover{border-color:var(--teal)}.btn.primary{background:#1e3336;color:var(--teal);border-color:#315b61;width:100%;margin-top:12px}
+    h1{font-size:22px;margin:0 0 5px}h2{font-size:16px;margin:0 0 10px}.sub{font-size:13px;color:var(--muted);line-height:1.5}.ideas{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.idea{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px}.idea h3{font-size:15px;margin:0 0 8px}.meta{font-size:12px;color:var(--muted);margin:6px 0}.scores{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:10px}.score{background:var(--surface2);border-radius:8px;padding:7px;text-align:center}.score b{display:block;color:var(--gold)}.selected{border-color:var(--green)}
+    @media(max-width:760px){main{padding:14px}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header><div class="brand">📚 L99 Studio · Idea Forge</div><div><a class="pill" href="/control_room.html">Control Room</a> <a class="pill" href="/performance_dashboard.html">Performance</a></div></header>
+  <main>
+    <section class="grid">
+      <form id="forgeForm" class="card">
+        <h1>💡 Idea Forge</h1>
+        <p class="sub">Generate scored, high-demand book ideas that can later feed Story Architect and Story Genome.</p>
+        <label class="label">Niche</label><input id="niche" value="teen emotional wellness" required>
+        <label class="label">Audience</label><input id="audience" value="teens and parents who want practical emotional support">
+        <label class="label">Tone</label><input id="tone" value="commercial, warm, practical, emotionally engaging">
+        <label class="label">Count</label><input id="count" type="number" min="1" max="25" value="10">
+        <button class="btn primary" type="submit">Generate Ideas</button>
+        <p id="status" class="sub"></p>
+      </form>
+      <div>
+        <div class="card" style="margin-bottom:12px"><h2>Pipeline</h2><p class="sub">Idea Forge → Story Architect → Story Genome → Chapter Builder → Redteam → Runtime → Release Gate.</p></div>
+        <div id="ideas" class="ideas"></div>
+      </div>
+    </section>
+  </main>
+  <script src="/studio.js"></script>
+</body>
+</html>
