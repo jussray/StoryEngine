@@ -41,6 +41,7 @@ import assistModeRoutes from './routes/assistMode.js';
 import audienceLensRoutes from './routes/audienceLens.js';
 import blueprintRoutes from './routes/blueprint.js';
 import validationSeedRoutes from './routes/validationSeed.js';
+import ipGrowthRoutes from './routes/ipGrowth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -83,6 +84,7 @@ assistModeRoutes(router, db);
 audienceLensRoutes(router, db);
 blueprintRoutes(router, db);
 validationSeedRoutes(router, db);
+ipGrowthRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -176,5 +178,6 @@ server.listen(PORT, () => {
   console.log('Audience lenses: GET /api/audience-lenses');
   console.log('Story Blueprint conversions: GET /api/blueprints/options');
   console.log('Validation Seed Assets: GET /api/validation-seeds/options');
-  console.log('Unified Story Engine, Validation Seed Assets, Story Blueprints, Assist Mode, Audience Lenses, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
+  console.log('IP Growth Engine: GET /api/ip-growth/overview');
+  console.log('Unified Story Engine, IP Growth Engine, Validation Seed Assets, Story Blueprints, Assist Mode, Audience Lenses, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
 });
