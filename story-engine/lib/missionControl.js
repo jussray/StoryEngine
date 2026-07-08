@@ -3,6 +3,7 @@
 import { collectActiveIncidents, computeMetrics } from './oodaProcessor.js';
 import { listDispatchQueue } from './runtimeDispatcher.js';
 import { getRetentionStatus } from './eventRetention.js';
+import { evaluateReleaseGate } from './releaseGate.js';
 
 function safeJson(value, fallback = {}) {
   try {
@@ -37,17 +38,6 @@ export function getMissionControlSnapshot(db) {
     ) x ON x.workspace_id = r.workspace_id AND x.latest = r.created_at
   `).all();
   const runsByWorkspace = new Map(latestRuns.map(row => [row.workspace_id, row]));
-
-  const latestAudits = db.prepare(`
-    SELECT a.*
-    FROM release_audits a
-    JOIN (
-      SELECT workspace_id, MAX(created_at) AS latest
-      FROM release_audits
-      GROUP BY workspace_id
-    ) x ON x.workspace_id = a.workspace_id AND x.latest = a.created_at
-  `).all();
-  const auditsByWorkspace = new Map(latestAudits.map(row => [row.workspace_id, row]));
 
   const latestRisks = db.prepare(`
     SELECT r.*
@@ -84,9 +74,9 @@ export function getMissionControlSnapshot(db) {
 
   const workspaces = stories.map(story => {
     const run = runsByWorkspace.get(story.workspace_id);
-    const audit = auditsByWorkspace.get(story.workspace_id);
     const risk = risksByWorkspace.get(story.workspace_id);
     const runResult = safeJson(run?.result_json, {});
+    const gate = evaluateReleaseGate(db, story.workspace_id);
     return {
       workspace_id: story.workspace_id,
       title: story.title,
@@ -95,14 +85,19 @@ export function getMissionControlSnapshot(db) {
       updated_at: story.updated_at,
       runtime_status: run?.status || 'never_run',
       runtime_run_id: run?.run_id || null,
-      release_result: audit?.result || runResult.release?.result || 'UNKNOWN',
-      confidence_score: Number(audit?.confidence_score || runResult.decision?.confidence_score || 0),
+      release_gate_status: gate?.status || 'UNKNOWN',
+      release_gate_reasons: gate?.reasons || [],
+      confidence_score: Number(gate?.confidence || runResult.decision?.confidence_score || 0),
       predicted_risk: risk?.predicted_risk || runResult.prediction?.predicted_risk || 'UNKNOWN'
     };
   });
 
   const validated = Number(recoveryStats?.validated || 0);
   const recoveryTotal = Number(recoveryStats?.total || 0);
+  const gateCounts = workspaces.reduce((acc, item) => {
+    acc[item.release_gate_status] = (acc[item.release_gate_status] || 0) + 1;
+    return acc;
+  }, {});
 
   return {
     generated_at: Date.now(),
@@ -115,7 +110,10 @@ export function getMissionControlSnapshot(db) {
       runtime_failures: Number(runtimeStats?.failed || 0),
       recovery_success_rate: recoveryTotal ? validated / recoveryTotal : null,
       live_event_count: retention.live_event_count,
-      compacted_episode_count: retention.compacted_episode_count
+      compacted_episode_count: retention.compacted_episode_count,
+      release_gate_ready: gateCounts.READY || 0,
+      release_gate_warning: gateCounts.WARNING || 0,
+      release_gate_blocked_count: gateCounts.BLOCKED || 0
     },
     workspaces,
     incidents,
