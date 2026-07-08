@@ -114,6 +114,20 @@ CREATE TABLE IF NOT EXISTS release_audits (
   created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS release_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  attempt_id TEXT NOT NULL UNIQUE,
+  workspace_id TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  gate_status TEXT,
+  gate_audit_id TEXT,
+  status TEXT NOT NULL DEFAULT 'created',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  error TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  completed_at INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS ooda_episodes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   episode_id TEXT NOT NULL UNIQUE,
@@ -209,13 +223,15 @@ CREATE TABLE IF NOT EXISTS compacted_event_episodes (
 CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_mode_created ON events(mode, created_at);
-CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_chapters_workspace ON chapters(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_beats_workspace ON movie_beats(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_lindy_incidents_workspace ON lindymode_incidents(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_lindy_incidents_correlation ON lindymode_incidents(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_ooda_decisions_workspace ON ooda_decisions(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_release_audits_workspace ON release_audits(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_release_attempts_workspace ON release_attempts(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_release_attempts_operation ON release_attempts(operation, status);
 CREATE INDEX IF NOT EXISTS idx_ooda_episodes_workspace ON ooda_episodes(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ooda_episodes_trigger ON ooda_episodes(trigger_type, outcome);
 CREATE INDEX IF NOT EXISTS idx_ooda_risk_workspace ON ooda_risk_snapshots(workspace_id, created_at);
