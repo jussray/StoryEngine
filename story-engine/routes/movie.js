@@ -16,10 +16,19 @@ export default function movieRoutes(router, db) {
   router.post('/api/movie/beats/generate/:workspace_id', (req, res) => {
     const { workspace_id } = req.params;
     const release = createReleaseAttempt(db, workspace_id, 'movie_beats_generate', {
-      allowWarning: req.body?.allow_warning === true
+      allowWarning: req.body?.allow_warning === true,
+      staleAfterMs: req.body?.stale_after_ms
     });
 
     if (!release) return json(res, 404, { error: 'Workspace not found' });
+    if (release.deduplicated) {
+      return json(res, 202, {
+        ok: true,
+        deduplicated: true,
+        message: 'Movie generation is already running.',
+        attempt: release.attempt
+      });
+    }
     if (!release.allowed) {
       return json(res, 409, {
         error: release.error,
@@ -48,7 +57,7 @@ export default function movieRoutes(router, db) {
         duration_ms: Date.now() - t0
       });
 
-      json(res, 200, { beats, gate: release.gate, attempt });
+      json(res, 200, { beats, gate: release.gate, attempt, deduplicated: false });
     } catch (error) {
       const attempt = failReleaseAttempt(db, release.attempt.attempt_id, error);
       json(res, 500, { error: error.message, attempt, gate: release.gate });
