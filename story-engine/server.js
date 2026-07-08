@@ -9,7 +9,7 @@ import { dirname } from 'node:path';
 
 import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
-import { requestContext, requireAuth, enforceWorkspaceAccess } from './lib/securityContext.js';
+import { requestContext, requireAuth, enforceWorkspaceAccess, securitySnapshot } from './lib/securityContext.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
@@ -178,11 +178,12 @@ startRuntimeScheduler(db, {
 });
 
 server.listen(PORT, () => {
-  const scopedAuth = Boolean(process.env.L99_API_KEYS_JSON);
+  const llmSnapshot = llmRoutingSnapshot();
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
-  console.log(`API authentication: ${scopedAuth ? 'scoped tenant keys configured' : process.env.API_KEY ? 'legacy development key configured' : 'MISSING'}`);
+  console.log('Security snapshot:', JSON.stringify(securitySnapshot()));
   console.log(`API body limit: ${API_MAX_BODY_BYTES} bytes`);
-  console.log('LLM routing:', JSON.stringify(llmRoutingSnapshot()));
+  console.log('LLM routing:', JSON.stringify(llmSnapshot));
+  console.log(`LLM client started at: ${new Date(llmSnapshot.client_started_at).toISOString()} (${llmSnapshot.circuit_state_scope})`);
   console.log('L99 OS Alpha entry point: http://localhost:' + PORT + '/story_engine.html');
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
   console.log('Series Continuity Audit API: POST /api/audit/series-continuity');
