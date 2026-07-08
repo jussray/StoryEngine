@@ -20,9 +20,9 @@ export const PIPELINE_STAGES = Object.freeze([
   'runtime',
   'story_memory',
   'learning_engine',
-  'artifacts',
   'playwright_validation',
   'redteam_pre_release',
+  'artifacts',
   'release_gate',
   'complete'
 ]);
@@ -149,9 +149,9 @@ function stageAgent(stage) {
     runtime: 'Runtime',
     story_memory: 'Story Memory',
     learning_engine: 'Learning Engine',
-    artifacts: 'Artifact Builder',
     playwright_validation: 'Playwright',
     redteam_pre_release: 'Redteam',
+    artifacts: 'Artifact Builder',
     release_gate: 'Release Gate',
     complete: 'Story Engine'
   }[stage] || 'L99';
@@ -218,7 +218,8 @@ function buildGhostPlan(runId, intent) {
       'Build structure and canon.',
       'Draft the first executable story unit.',
       'Validate continuity, audience fit, and operator constraints.',
-      'Generate a reviewable artifact before release validation.',
+      'Run browser validation before pre-release Redteam.',
+      'Finalize the release artifact after pre-release Redteam.',
       'Prepare the work for human review.'
     ],
     human_decisions: ['Approve paid execution when required.', 'Approve final release.']
@@ -235,7 +236,7 @@ function runRedteamPreRuntime(intent, decision, operatorCheck) {
 
 function runRedteamPreRelease(decision, artifactValidation) {
   const findings = [];
-  if (!artifactValidation?.passed) findings.push({ severity: 'critical', code: 'artifact_validation_failed', message: 'Artifact Playwright validation must pass before release.' });
+  if (!artifactValidation?.passed) findings.push({ severity: 'critical', code: 'playwright_validation_failed', message: 'Playwright validation must pass before pre-release Redteam can clear the run.' });
   if (decision.evidence?.critical_incidents > 0) findings.push({ severity: 'critical', code: 'continuity_conflict', message: 'Critical continuity incidents remain.' });
   if (decision.evidence?.chapters?.empty_count > 0) findings.push({ severity: 'warning', code: 'empty_units', message: 'One or more story units are empty.' });
   if (decision.confidence_score < 75) findings.push({ severity: 'warning', code: 'low_confidence', message: `Confidence is ${decision.confidence_score}%.` });
@@ -350,19 +351,20 @@ export async function resumeStoryEngineRun(db, runId) {
   db.prepare('UPDATE story_engine_runs SET learning_json=? WHERE run_id=?').run(JSON.stringify(learning), runId);
   setStage(db, runId, run.workspace_id, 'learning_engine', 'completed', 'Learning Engine recorded the execution lesson.', { learning });
 
-  const artifact = generateStoryArtifact(db, { runId, workspaceId: run.workspace_id, intent: run.intent });
-  db.prepare('UPDATE story_engine_runs SET artifact_json=? WHERE run_id=?').run(JSON.stringify({ artifact_id: artifact.artifact_id, status: artifact.status, title: artifact.title }), runId);
-  setStage(db, runId, run.workspace_id, 'artifacts', 'completed', 'Generated reviewable HTML artifact.', { artifact_id: artifact.artifact_id, title: artifact.title, status: artifact.status });
-
-  const validatedArtifact = await validateArtifactWithPlaywright(db, artifact.artifact_id);
-  db.prepare('UPDATE story_engine_runs SET artifact_json=? WHERE run_id=?').run(JSON.stringify({ artifact_id: validatedArtifact.artifact_id, status: validatedArtifact.status, title: validatedArtifact.title, validation: validatedArtifact.validation }), runId);
-  setStage(db, runId, run.workspace_id, 'playwright_validation', validatedArtifact.validation.passed ? 'completed' : 'blocked', validatedArtifact.validation.passed ? 'Artifact passed Playwright validation.' : 'Artifact failed Playwright validation.', { artifact_id: validatedArtifact.artifact_id, validation: validatedArtifact.validation });
+  const previewArtifact = generateStoryArtifact(db, { runId, workspaceId: run.workspace_id, intent: run.intent });
+  const validatedArtifact = await validateArtifactWithPlaywright(db, previewArtifact.artifact_id);
+  db.prepare('UPDATE story_engine_runs SET artifact_json=? WHERE run_id=?').run(JSON.stringify({ artifact_id: validatedArtifact.artifact_id, status: validatedArtifact.status, title: validatedArtifact.title, validation: validatedArtifact.validation, phase: 'playwright_preview' }), runId);
+  setStage(db, runId, run.workspace_id, 'playwright_validation', validatedArtifact.validation.passed ? 'completed' : 'blocked', validatedArtifact.validation.passed ? 'Runtime surface passed Playwright validation.' : 'Runtime surface failed Playwright validation.', { artifact_id: validatedArtifact.artifact_id, validation: validatedArtifact.validation });
 
   const decision = evaluateWorkspace(db, run.workspace_id);
   const findings = runRedteamPreRelease(decision, validatedArtifact.validation);
   db.prepare('UPDATE story_engine_runs SET pre_release_findings_json=? WHERE run_id=?').run(JSON.stringify(findings), runId);
   const critical = findings.some(finding => finding.severity === 'critical');
-  setStage(db, runId, run.workspace_id, 'redteam_pre_release', critical ? 'blocked' : 'completed', critical ? 'Pre-release validation blocked release.' : 'Pre-release validation completed.', { findings });
+  setStage(db, runId, run.workspace_id, 'redteam_pre_release', critical ? 'blocked' : 'completed', critical ? 'Pre-release Redteam blocked final artifact.' : 'Pre-release Redteam cleared the validated surface.', { findings });
+
+  const finalArtifact = validatedArtifact;
+  db.prepare('UPDATE story_engine_runs SET artifact_json=? WHERE run_id=?').run(JSON.stringify({ artifact_id: finalArtifact.artifact_id, status: finalArtifact.status, title: finalArtifact.title, validation: finalArtifact.validation, phase: critical ? 'artifact_needs_review' : 'release_candidate' }), runId);
+  setStage(db, runId, run.workspace_id, 'artifacts', critical ? 'blocked' : 'completed', critical ? 'Artifact retained as review candidate after Redteam block.' : 'Final release candidate artifact prepared.', { artifact_id: finalArtifact.artifact_id, title: finalArtifact.title, status: finalArtifact.status });
 
   const audit = runReleaseAudit(db, run.workspace_id);
   db.prepare('UPDATE story_engine_runs SET release_audit_id=? WHERE run_id=?').run(audit.audit_id, runId);
