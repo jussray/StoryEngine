@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { assertReleaseAllowed } from './releaseGate.js';
 import { log } from '../models/eventModel.js';
 
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'blocked']);
+
 function parseResult(value) {
   try {
     return value ? JSON.parse(value) : {};
@@ -16,10 +18,25 @@ function hydrate(row) {
   return row ? { ...row, result: parseResult(row.result_json) } : null;
 }
 
+function transitionError(attempt, nextStatus) {
+  const error = new Error(`Cannot transition release attempt from ${attempt.status} to ${nextStatus}.`);
+  error.code = 'INVALID_RELEASE_ATTEMPT_TRANSITION';
+  error.attempt = attempt;
+  return error;
+}
+
+function normalizeOperation(operation) {
+  const value = String(operation || '').trim();
+  if (!value) throw new Error('Release attempt operation is required.');
+  if (value.length > 120) throw new Error('Release attempt operation is too long.');
+  return value;
+}
+
 export function createReleaseAttempt(db, workspaceId, operation, options = {}) {
+  const normalizedOperation = normalizeOperation(operation);
   const attemptId = randomUUID();
   const createdAt = Date.now();
-  const authorization = assertReleaseAllowed(db, workspaceId, operation, {
+  const authorization = assertReleaseAllowed(db, workspaceId, normalizedOperation, {
     allowWarning: options.allowWarning === true,
     confidenceThreshold: options.confidenceThreshold,
     p99Limit: options.p99Limit
@@ -37,7 +54,7 @@ export function createReleaseAttempt(db, workspaceId, operation, options = {}) {
   `).run(
     attemptId,
     workspaceId,
-    operation,
+    normalizedOperation,
     authorization.gate.status,
     authorization.gate.audit_id,
     status,
@@ -52,7 +69,7 @@ export function createReleaseAttempt(db, workspaceId, operation, options = {}) {
     event_type: blocked ? 'release_attempt_blocked' : 'release_attempt_started',
     payload: {
       attempt_id: attemptId,
-      operation,
+      operation: normalizedOperation,
       gate_status: authorization.gate.status,
       gate_audit_id: authorization.gate.audit_id
     },
@@ -70,11 +87,14 @@ export function createReleaseAttempt(db, workspaceId, operation, options = {}) {
 export function completeReleaseAttempt(db, attemptId, result = {}) {
   const attempt = getReleaseAttempt(db, attemptId);
   if (!attempt) return null;
+  if (attempt.status === 'completed') return attempt;
+  if (TERMINAL_STATUSES.has(attempt.status)) throw transitionError(attempt, 'completed');
+
   const completedAt = Date.now();
   db.prepare(`
     UPDATE release_attempts
     SET status = 'completed', result_json = ?, error = NULL, completed_at = ?
-    WHERE attempt_id = ?
+    WHERE attempt_id = ? AND status = 'running'
   `).run(JSON.stringify(result), completedAt, attemptId);
 
   log(db, {
@@ -90,11 +110,14 @@ export function completeReleaseAttempt(db, attemptId, result = {}) {
 export function failReleaseAttempt(db, attemptId, error) {
   const attempt = getReleaseAttempt(db, attemptId);
   if (!attempt) return null;
+  if (attempt.status === 'failed') return attempt;
+  if (TERMINAL_STATUSES.has(attempt.status)) throw transitionError(attempt, 'failed');
+
   const message = error instanceof Error ? error.message : String(error || 'Unknown error');
   db.prepare(`
     UPDATE release_attempts
     SET status = 'failed', error = ?, completed_at = ?
-    WHERE attempt_id = ?
+    WHERE attempt_id = ? AND status = 'running'
   `).run(message, Date.now(), attemptId);
 
   log(db, {
@@ -113,12 +136,13 @@ export function getReleaseAttempt(db, attemptId) {
 }
 
 export function listReleaseAttempts(db, workspaceId, limit = 100) {
+  const boundedLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
   return db.prepare(`
     SELECT * FROM release_attempts
     WHERE workspace_id = ?
     ORDER BY created_at DESC
     LIMIT ?
-  `).all(workspaceId, limit).map(hydrate);
+  `).all(workspaceId, boundedLimit).map(hydrate);
 }
 
 export function latestReleaseAttempt(db, workspaceId) {
