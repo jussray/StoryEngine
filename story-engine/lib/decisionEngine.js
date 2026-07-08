@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { log } from '../models/eventModel.js';
+import { creativeProfileContext } from './creativeProfile.js';
 
 function safeJson(value, fallback) {
   try {
@@ -90,6 +91,9 @@ function buildRecoveryPlan(reasons, incidents) {
   if (reasons.some(reason => reason.code === 'missing_state')) {
     plan.push('Create canonical Lindymode state before release.');
   }
+  if (reasons.some(reason => reason.code === 'missing_creative_profile')) {
+    plan.push('Create a Creative Profile so every subsystem knows the medium, audience, tone, goal, and constraints.');
+  }
   if (reasons.some(reason => reason.code === 'empty_chapters')) {
     plan.push('Complete or remove empty chapters before release.');
   }
@@ -99,6 +103,7 @@ function buildRecoveryPlan(reasons, incidents) {
 
 export function evaluateWorkspace(db, workspaceId) {
   const state = latestState(db, workspaceId);
+  const profile = creativeProfileContext(db, workspaceId);
   const incidents = activeIncidents(db, workspaceId);
   const runtime = runtimeStats(db, workspaceId);
   const chapters = chapterStats(db, workspaceId);
@@ -108,6 +113,11 @@ export function evaluateWorkspace(db, workspaceId) {
   const warningIncidents = incidents.filter(item => item.severity === 'sev2');
   const maxDrift = incidents.reduce((max, item) => Math.max(max, Number(item.drift_score || 0)), 0);
 
+  if (!profile) reasons.push({
+    code: 'missing_creative_profile',
+    severity: 'warning',
+    message: 'Creative Profile is missing; audience and medium alignment cannot be verified.'
+  });
   if (!state) reasons.push({ code: 'missing_state', severity: 'warning', message: 'Canonical Lindymode state is missing.' });
   if (criticalIncidents.length) reasons.push({ code: 'critical_drift', severity: 'critical', message: `${criticalIncidents.length} critical story incident(s) active.` });
   if (warningIncidents.length) reasons.push({ code: 'warning_drift', severity: 'warning', message: `${warningIncidents.length} story incident(s) need review.` });
@@ -122,6 +132,7 @@ export function evaluateWorkspace(db, workspaceId) {
   score -= warningIncidents.length * 12;
   score -= incidents.filter(item => item.severity === 'watch').length * 5;
   score -= Math.round(maxDrift * 20);
+  if (!profile) score -= 20;
   if (!state) score -= 15;
   if (runtime.p99 > 2000) score -= 15;
   else if (runtime.p99 > 1000) score -= 8;
@@ -152,7 +163,22 @@ export function evaluateWorkspace(db, workspaceId) {
     confidence_score: score,
     reasons,
     recovery_plan: buildRecoveryPlan(reasons, incidents),
+    strategy: profile ? {
+      profile_id: profile.profile_id,
+      medium: profile.medium,
+      audience: profile.audience,
+      eli_level: profile.eli_level,
+      tone: profile.tone,
+      goal: profile.goal,
+      constraints: profile.constraints,
+      outputs: profile.outputs,
+      instruction: profile.instructions.profile_instruction,
+      require_human_decision: profile.instructions.require_human_decision,
+      redteam_pre_runtime: profile.instructions.redteam_pre_runtime,
+      redteam_pre_release: profile.instructions.redteam_pre_release
+    } : null,
     evidence: {
+      creative_profile: profile,
       active_incidents: incidents.length,
       critical_incidents: criticalIncidents.length,
       max_drift: maxDrift,
@@ -190,7 +216,11 @@ export function persistDecision(db, decision) {
       decision_id: decisionId,
       action: decision.action,
       readiness: decision.readiness,
-      confidence_score: decision.confidence_score
+      confidence_score: decision.confidence_score,
+      profile_id: decision.strategy?.profile_id || null,
+      medium: decision.strategy?.medium || null,
+      audience: decision.strategy?.audience || null,
+      eli_level: decision.strategy?.eli_level || null
     },
     rollback: decision.action === 'BLOCK' ? 1 : 0
   });
@@ -201,6 +231,7 @@ export function persistDecision(db, decision) {
 export function runReleaseAudit(db, workspaceId) {
   const decision = evaluateWorkspace(db, workspaceId);
   const checks = [
+    { name: 'creative_profile', passed: Boolean(decision.evidence.creative_profile) },
     { name: 'canonical_state', passed: !decision.reasons.some(item => item.code === 'missing_state') },
     { name: 'continuity', passed: decision.evidence.critical_incidents === 0 },
     { name: 'story_drift', passed: decision.evidence.max_drift < 0.8 },
@@ -232,7 +263,13 @@ export function runReleaseAudit(db, workspaceId) {
     workspace_id: workspaceId,
     mode: 'ooda',
     event_type: result === 'READY' ? 'release.gate_passed' : 'release.gate_blocked',
-    payload: { audit_id: auditId, result, blockers, confidence_score: decision.confidence_score },
+    payload: {
+      audit_id: auditId,
+      result,
+      blockers,
+      confidence_score: decision.confidence_score,
+      creative_profile_id: decision.strategy?.profile_id || null
+    },
     rollback: result === 'BLOCKED' ? 1 : 0
   });
 
