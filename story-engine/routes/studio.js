@@ -3,6 +3,7 @@
 import { json } from '../lib/miniRouter.js';
 import { forgeIdeas, listIdeas, getIdea, selectIdea } from '../lib/ideaForge.js';
 import { buildStoryArchitecture, getArchitecture } from '../lib/storyArchitect.js';
+import { buildChapterDraft, buildAllChapterDrafts } from '../lib/chapterBuilder.js';
 
 export default function studioRoutes(router, db) {
   router.post('/api/studio/ideas/generate', (req, res) => {
@@ -51,5 +52,25 @@ export default function studioRoutes(router, db) {
     const architecture = getArchitecture(db, req.params.workspace_id);
     if (!architecture) return json(res, 404, { error: 'Story architecture not found.' });
     json(res, 200, architecture);
+  });
+
+  router.post('/api/studio/chapters/build', (req, res) => {
+    try {
+      const result = buildChapterDraft(db, req.body || {});
+      json(res, result.action === 'created' ? 201 : 200, result);
+    } catch (error) {
+      const status = /not found/i.test(error.message) ? 404 : 400;
+      json(res, status, { error: error.message });
+    }
+  });
+
+  router.post('/api/studio/chapters/build-all', (req, res) => {
+    try {
+      const results = buildAllChapterDrafts(db, req.body || {});
+      json(res, 201, { chapters: results });
+    } catch (error) {
+      const status = /not found/i.test(error.message) ? 404 : 400;
+      json(res, status, { error: error.message });
+    }
   });
 }
