@@ -62,14 +62,14 @@ function applyAssistMode(db, run, requestedMode) {
       workspace_id: run.workspace_id,
       source: 'l99',
       action: 'director_draft_requested',
-      metadata: { assist_mode: 'director', run_id: run.run_id }
+      metadata: { assist_mode: 'director', run_id: run.run_id, ghost_draft_status: run.ghost_plan?.draft?.status }
     });
   } else if (profile.assist_mode === 'autonomous_studio') {
     recordAssistContribution(db, {
       workspace_id: run.workspace_id,
       source: 'l99',
       action: 'autonomous_pipeline_started',
-      metadata: { assist_mode: 'autonomous_studio', run_id: run.run_id, stop_at: 'release_gate' }
+      metadata: { assist_mode: 'autonomous_studio', run_id: run.run_id, stop_at: 'release_gate', ghost_draft_status: run.ghost_plan?.draft?.status }
     });
   }
 
@@ -79,7 +79,8 @@ function applyAssistMode(db, run, requestedMode) {
     event_type: `assist.role.${profile.assist_mode}.activated`,
     payload: {
       run_id: run.run_id,
-      permissions: profile.permissions
+      permissions: profile.permissions,
+      ghost_commands: run.ghost_plan?.ghost_commands || []
     }
   });
 
@@ -104,7 +105,9 @@ export default function storyEngineRoutes(router, db) {
       mediums: ['book', 'picture_book', 'movie', 'tv', 'song', 'podcast', 'game', 'comic', 'play', 'short_clip'],
       audiences: ['baby', 'child', 'eli5', 'eli10', 'middle_grade', 'teen', 'young_adult', 'adult'],
       story_kinds: ['adventure', 'fantasy', 'romance', 'mystery', 'horror', 'comedy', 'educational', 'science_fiction', 'historical', 'drama', 'thriller', 'other'],
-      assist_modes: ASSIST_MODES
+      assist_modes: ASSIST_MODES,
+      writing_providers: ['anthropic', 'openai', 'openrouter'],
+      ghost_commands: storyEngineBrainSnapshot(db).ghost_commands
     });
   });
 
@@ -113,9 +116,9 @@ export default function storyEngineRoutes(router, db) {
     catch (error) { json(res, 400, { error: error.message }); }
   });
 
-  router.post('/api/story-engine/runs', (req, res) => {
+  router.post('/api/story-engine/runs', async (req, res) => {
     try {
-      const run = startStoryEngineRun(db, req.body || {});
+      const run = await startStoryEngineRun(db, req.body || {});
       json(res, 201, applyAssistMode(db, run, req.body?.assist_mode));
     } catch (error) {
       json(res, 400, { error: error.message });
