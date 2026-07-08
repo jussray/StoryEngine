@@ -37,6 +37,7 @@ import studioRoutes from './routes/studio.js';
 import creativeProfileRoutes from './routes/creativeProfile.js';
 import auditRoutes from './routes/audit.js';
 import storyEngineRoutes from './routes/storyEngine.js';
+import assistModeRoutes from './routes/assistMode.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -75,6 +76,7 @@ studioRoutes(router, db);
 creativeProfileRoutes(router, db);
 auditRoutes(router, db);
 storyEngineRoutes(router, db);
+assistModeRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -164,5 +166,6 @@ server.listen(PORT, () => {
   console.log('Performance Dashboard: http://localhost:' + PORT + '/performance_dashboard.html');
   console.log('L99 Studio: http://localhost:' + PORT + '/studio.html');
   console.log('Story Memory API: GET /api/memory/:workspace_id');
-  console.log('Unified Story Engine, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
+  console.log('Assist Mode: GET /api/assist/options');
+  console.log('Unified Story Engine, Assist Mode, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
 });
