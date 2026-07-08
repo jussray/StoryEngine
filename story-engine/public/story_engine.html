@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L99 Story Engine</title>
+  <style>
+    :root{--bg:#0d0d0f;--surface:#17171b;--surface2:#212126;--border:#34343b;--text:#f2f2f4;--muted:#9999a3;--green:#72b94f;--gold:#e3b04d;--red:#df6975;--teal:#58a6b2;--purple:#aa76dd}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1d1730 0,#0d0d0f 42%);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh}button,input,textarea,select{font:inherit}.shell{max-width:1080px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:34px}.brand{font-size:20px;font-weight:900}.links{display:flex;gap:12px}.links a{color:var(--teal);text-decoration:none}.hero{text-align:center;max-width:760px;margin:0 auto 26px}.hero h1{font-size:clamp(34px,7vw,68px);margin:0 0 10px}.hero p{color:var(--muted);font-size:18px}.card{background:#17171be8;border:1px solid var(--border);border-radius:18px;padding:18px}.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}.type{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:12px;padding:14px;cursor:pointer;text-align:center}.type.active,.type:hover{border-color:var(--purple);background:#292139}.type span{display:block;font-size:25px;margin-bottom:6px}.field{margin:12px 0}.field label{display:block;font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}.field textarea,.field input,.field select{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.actions{display:flex;justify-content:flex-end;margin-top:14px}.btn{padding:11px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);cursor:pointer}.btn.primary{background:#39295a;border-color:#7754ad}.btn:disabled{opacity:.5;cursor:not-allowed}.hidden{display:none}.run{margin-top:22px}.run-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.pill{padding:5px 9px;border-radius:999px;background:var(--surface2);font-size:12px}.pipeline{display:grid;gap:8px;margin-top:16px}.stage{display:grid;grid-template-columns:28px 190px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)}.stage .dot{width:12px;height:12px;border-radius:50%;background:#555}.stage.completed .dot{background:var(--green)}.stage.running .dot,.stage.queued .dot{background:var(--gold)}.stage.blocked .dot,.stage.failed .dot{background:var(--red)}.stage .agent{color:var(--purple);font-size:12px}.stage .summary{color:var(--muted);font-size:13px}.empty{color:var(--muted);padding:18px;text-align:center}@media(max-width:760px){.grid{grid-template-columns:1fr}.stage{grid-template-columns:24px 1fr}.stage .summary,.stage .agent{grid-column:2}.top{align-items:flex-start}.links{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="top"><div class="brand">L99 Story Engine</div><div class="links"><a href="/control_room.html">Control Room</a><a href="/front_door.html">Workspaces</a></div></div>
+    <section class="hero"><h1>What story do you want to tell?</h1><p>One request enters one complete L99 operating-system pipeline.</p></section>
+
+    <section class="card">
+      <div class="types" id="types">
+        <button class="type active" data-medium="book"><span>📖</span>Novel</button>
+        <button class="type" data-medium="picture_book"><span>📚</span>Children's Book</button>
+        <button class="type" data-medium="movie"><span>🎬</span>Movie</button>
+        <button class="type" data-medium="tv"><span>📺</span>TV Series</button>
+        <button class="type" data-medium="song"><span>🎵</span>Song</button>
+        <button class="type" data-medium="podcast"><span>🎙️</span>Podcast</button>
+        <button class="type" data-medium="game"><span>🎮</span>Game</button>
+        <button class="type" data-medium="comic"><span>📜</span>Comic</button>
+      </div>
+      <form id="storyForm">
+        <div class="field"><label>Your story idea</label><textarea id="vision" rows="5" required placeholder="Write me a middle-grade fantasy about a girl who discovers a sleeping moon beneath her neighborhood."></textarea></div>
+        <div class="grid">
+          <div class="field"><label>Audience</label><select id="audience"><option value="adult">Adult</option><option value="young_adult">Young Adult</option><option value="teen">Teen</option><option value="middle_grade" selected>Middle Grade</option><option value="eli10">ELI10</option><option value="eli5">ELI5</option><option value="child">Child</option></select></div>
+          <div class="field"><label>Story kind</label><select id="kind"><option value="other">Let L99 infer it</option><option value="fantasy">Fantasy</option><option value="adventure">Adventure</option><option value="mystery">Mystery</option><option value="science_fiction">Science Fiction</option><option value="romance">Romance</option><option value="comedy">Comedy</option><option value="drama">Drama</option></select></div>
+          <div class="field"><label>How should it feel?</label><select id="emotion"><option value="mixed">Mixed</option><option value="wonder">Wonder</option><option value="joy">Joy</option><option value="comfort">Comfort</option><option value="excitement">Excitement</option><option value="hope">Hope</option><option value="reflection">Reflection</option></select></div>
+        </div>
+        <div class="actions"><button id="start" class="btn primary" type="submit">Start L99 OS Alpha</button></div>
+      </form>
+    </section>
+
+    <section id="runPanel" class="card run hidden">
+      <div class="run-head"><div><strong id="runTitle">Pipeline Run</strong><div id="runMeta" class="summary"></div></div><div><span id="runStatus" class="pill"></span> <button id="approve" class="btn hidden">Approve</button></div></div>
+      <div id="pipeline" class="pipeline"></div>
+    </section>
+  </main>
+  <script src="/story_engine.js"></script>
+</body>
+</html>
