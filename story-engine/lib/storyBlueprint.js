@@ -7,6 +7,7 @@ import { creativeProfileContext, upsertCreativeProfile } from './creativeProfile
 import { getStoryGenome, buildStoryGenome } from './storyGenome.js';
 import { getChildrenBookProfile } from './childrenBookProfile.js';
 import { evaluateAudienceFit } from './audienceLens.js';
+import { evaluateWorkspace, persistDecision } from './decisionEngine.js';
 import { log } from '../models/eventModel.js';
 
 export const BLUEPRINT_TARGETS = Object.freeze([
@@ -21,6 +22,19 @@ export const BLUEPRINT_TARGETS = Object.freeze([
   'game',
   'ip_deck'
 ]);
+
+const TARGET_PRIORITY = Object.freeze({
+  picture_book: 80,
+  short_clip: 98,
+  youtube_short: 100,
+  movie: 84,
+  tv: 78,
+  comic: 88,
+  song: 75,
+  podcast: 72,
+  game: 70,
+  ip_deck: 82
+});
 
 function parseJson(value, fallback = {}) {
   try { return JSON.parse(value || ''); } catch { return fallback; }
@@ -82,19 +96,104 @@ function pageOrChapterBeats(chapters) {
   }));
 }
 
-function validateBlueprint(profile, chapters, text) {
+function validateLindymodeSeed(profile, chapters, text) {
   const findings = [];
   const childProfile = profile?.instructions?.children_book_profile || null;
   const audienceFit = evaluateAudienceFit(text, profile?.audience);
-  if (!chapters.length) findings.push({ severity: 'critical', code: 'blueprint_no_source_units', message: 'A blueprint needs at least one source story unit.' });
-  if (!childProfile) findings.push({ severity: 'warning', code: 'blueprint_no_children_profile', message: 'Source does not have a children-book production profile.' });
-  if (audienceFit.active && !audienceFit.passed) findings.push(...audienceFit.findings);
+  const genomeSignals = {
+    source_unit_count: chapters.length,
+    total_words: text.split(/\s+/).filter(Boolean).length,
+    audience: profile?.audience || null,
+    medium: profile?.medium || null,
+    child_profile_active: Boolean(childProfile)
+  };
+
+  if (!chapters.length) findings.push({ severity: 'critical', code: 'seed_no_source_units', message: 'A seed needs at least one completed source story unit.' });
+  if (!profile) findings.push({ severity: 'critical', code: 'seed_missing_creative_profile', message: 'Seed cannot be validated without a Creative Profile.' });
+  if (childProfile && chapters.length < 1) findings.push({ severity: 'critical', code: 'seed_children_book_incomplete', message: 'Children’s-book seed needs story units before conversion.' });
+  if (!childProfile && ['baby', 'child', 'eli5', 'eli10', 'middle_grade'].includes(profile?.audience)) {
+    findings.push({ severity: 'warning', code: 'seed_no_children_profile', message: 'Child-facing source does not have a children’s-book production profile.' });
+  }
+  if (audienceFit.active && !audienceFit.passed) findings.push(...audienceFit.findings.map(finding => ({ ...finding, source: 'lindymode_seed_validation' })));
+
   return {
+    stage: 'lindymode_validation',
     passed: !findings.some(finding => finding.severity === 'critical'),
+    preset: childProfile || profile?.instructions || null,
     findings,
     audience_fit: audienceFit,
-    child_profile: childProfile
+    genome_signals: genomeSignals
   };
+}
+
+function runOodaSeedDecision(db, workspaceId, lindymodeValidation) {
+  const decision = persistDecision(db, evaluateWorkspace(db, workspaceId));
+  const blockers = [];
+  if (!lindymodeValidation.passed) blockers.push('lindymode_seed_validation_failed');
+  if (decision.action === 'BLOCK') blockers.push('ooda_blocked_source_seed');
+  return {
+    stage: 'ooda_decision',
+    passed: blockers.length === 0,
+    decision_id: decision.decision_id,
+    action: decision.action,
+    readiness: decision.readiness,
+    confidence_score: decision.confidence_score,
+    reasons: decision.reasons,
+    blockers
+  };
+}
+
+function redteamSeedCheck(blueprintDraft, lindymodeValidation, oodaDecision) {
+  const findings = [];
+  const childProfile = blueprintDraft.developmental_profile;
+  if (!lindymodeValidation.passed) {
+    findings.push({ severity: 'critical', code: 'redteam_lindymode_seed_failed', message: 'Do not unlock conversions until Lindymode validates the source against its preset.' });
+  }
+  if (!oodaDecision.passed) {
+    findings.push({ severity: 'critical', code: 'redteam_ooda_seed_blocked', message: 'OODA did not clear this source as a safe seed.' });
+  }
+  if (!blueprintDraft.beats?.length) {
+    findings.push({ severity: 'critical', code: 'redteam_no_adaptation_beats', message: 'Seed has no beat map to continue from.' });
+  }
+  if (childProfile && !blueprintDraft.conversion_rules?.never?.includes('raise emotional intensity beyond child profile')) {
+    findings.push({ severity: 'critical', code: 'redteam_missing_child_safety_rule', message: 'Child-facing seed must preserve the original emotional ceiling during conversions.' });
+  }
+  if (blueprintDraft.characters?.length === 0) {
+    findings.push({ severity: 'warning', code: 'redteam_weak_character_signal', message: 'Seed has weak character extraction; conversions may need manual review.' });
+  }
+  return {
+    stage: 'redteam_seed_check',
+    passed: !findings.some(finding => finding.severity === 'critical'),
+    findings,
+    challenged_at: Date.now()
+  };
+}
+
+function seedStatus(lindymodeValidation, oodaDecision, redteam) {
+  if (!lindymodeValidation.passed) return 'blocked_lindymode';
+  if (!oodaDecision.passed) return 'blocked_ooda';
+  if (!redteam.passed) return 'blocked_redteam';
+  return 'conversion_ready';
+}
+
+function continuationOptions(blueprint, seedGate) {
+  if (seedGate.status !== 'conversion_ready') return [];
+  const child = Boolean(blueprint.developmental_profile);
+  const ranked = BLUEPRINT_TARGETS.map(target => {
+    let score = TARGET_PRIORITY[target] || 50;
+    if (child && ['youtube_short', 'short_clip', 'comic', 'song', 'picture_book'].includes(target)) score += 12;
+    if (child && ['game', 'tv', 'movie'].includes(target)) score -= 8;
+    if (target === blueprint.source_medium) score -= 20;
+    return {
+      target_medium: target,
+      score,
+      continuation_type: child ? 'child-safe continuation' : 'source-faithful continuation',
+      reason: child
+        ? `Continues the validated ${blueprint.audience} book while preserving its developmental profile.`
+        : `Continues the validated ${blueprint.source_medium} while preserving canon and audience promise.`
+    };
+  }).sort((a, b) => b.score - a.score);
+  return ranked;
 }
 
 function hydrateBlueprint(row) {
@@ -123,13 +222,13 @@ export function buildStoryBlueprint(db, sourceWorkspaceId) {
   const profile = creativeProfileContext(db, sourceWorkspaceId);
   const genome = getStoryGenome(db, sourceWorkspaceId) || buildStoryGenome(db, sourceWorkspaceId);
   const fullText = sourceText(chapters);
-  const validation = validateBlueprint(profile, chapters, fullText);
+  const lindymodeValidation = validateLindymodeSeed(profile, chapters, fullText);
   const childProfile = profile?.instructions?.children_book_profile || getChildrenBookProfile(profile?.audience, profile?.medium);
   const now = Date.now();
   const existing = db.prepare('SELECT blueprint_id FROM story_blueprints WHERE source_workspace_id=?').get(sourceWorkspaceId);
   const blueprintId = existing?.blueprint_id || `blueprint_${randomUUID()}`;
 
-  const blueprint = {
+  const blueprintDraft = {
     blueprint_id: blueprintId,
     source_workspace_id: sourceWorkspaceId,
     title: story.title,
@@ -142,17 +241,48 @@ export function buildStoryBlueprint(db, sourceWorkspaceId) {
     canon: genome,
     characters: extractNames(fullText).map(name => ({ name, source: 'heuristic', preserve: true })),
     beats: pageOrChapterBeats(chapters),
-    proof: {
-      validated_book_source: validation.passed,
-      audience_fit_score: validation.audience_fit?.score ?? null,
-      source_unit_count: chapters.length,
-      generated_at: now
-    },
     conversion_rules: {
       preserve: ['core lesson', 'emotional promise', 'main characters', 'canon facts', 'age appropriateness'],
       adapt: ['length', 'format conventions', 'visual rhythm', 'dialogue density', 'platform pacing'],
       never: ['contradict source canon', 'raise emotional intensity beyond child profile', 'erase the lesson that made the book work']
     }
+  };
+  const oodaDecision = runOodaSeedDecision(db, sourceWorkspaceId, lindymodeValidation);
+  const redteam = redteamSeedCheck(blueprintDraft, lindymodeValidation, oodaDecision);
+  const status = seedStatus(lindymodeValidation, oodaDecision, redteam);
+  const seedGate = {
+    required_order: ['book', 'lindymode_validation', 'ooda_decision', 'redteam_seed_check', 'conversion_ready'],
+    status,
+    conversion_ready: status === 'conversion_ready',
+    lindymode_validation: lindymodeValidation,
+    ooda_decision: oodaDecision,
+    redteam_seed_check: redteam
+  };
+  const blueprint = {
+    ...blueprintDraft,
+    proof: {
+      validated_seed_source: seedGate.conversion_ready,
+      lindymode_validated: lindymodeValidation.passed,
+      ooda_cleared: oodaDecision.passed,
+      redteam_cleared: redteam.passed,
+      audience_fit_score: lindymodeValidation.audience_fit?.score ?? null,
+      source_unit_count: chapters.length,
+      generated_at: now
+    },
+    seed_gate: seedGate,
+    continuation_options: continuationOptions(blueprintDraft, seedGate)
+  };
+  const validation = {
+    passed: seedGate.conversion_ready,
+    status,
+    seed_gate: seedGate,
+    findings: [
+      ...lindymodeValidation.findings,
+      ...oodaDecision.blockers.map(code => ({ severity: 'critical', code, message: 'OODA blocked seed conversion.' })),
+      ...redteam.findings
+    ],
+    audience_fit: lindymodeValidation.audience_fit,
+    child_profile: childProfile
   };
 
   db.prepare(`
@@ -184,8 +314,15 @@ export function buildStoryBlueprint(db, sourceWorkspaceId) {
   log(db, {
     workspace_id: sourceWorkspaceId,
     mode: 'story_blueprint',
-    event_type: 'story_blueprint.built',
-    payload: { blueprint_id: blueprintId, passed: validation.passed, target_options: BLUEPRINT_TARGETS }
+    event_type: 'story_blueprint.seed_gate_completed',
+    payload: {
+      blueprint_id: blueprintId,
+      status,
+      lindymode_validated: lindymodeValidation.passed,
+      ooda_cleared: oodaDecision.passed,
+      redteam_cleared: redteam.passed,
+      continuation_options: blueprint.continuation_options.map(option => option.target_medium)
+    }
   });
 
   return hydrateBlueprint(db.prepare('SELECT * FROM story_blueprints WHERE blueprint_id=?').get(blueprintId));
@@ -203,6 +340,16 @@ export function listBlueprintConversions(db, blueprintId) {
     WHERE blueprint_id=?
     ORDER BY created_at DESC
   `).all(blueprintId).map(hydrateConversion);
+}
+
+export function getBlueprintContinuationOptions(db, sourceWorkspaceId) {
+  const row = getStoryBlueprint(db, sourceWorkspaceId) || buildStoryBlueprint(db, sourceWorkspaceId);
+  return {
+    blueprint_id: row.blueprint_id,
+    source_workspace_id: sourceWorkspaceId,
+    seed_gate: row.blueprint.seed_gate,
+    options: row.blueprint.continuation_options || []
+  };
 }
 
 function conversionPlan(blueprint, targetMedium) {
@@ -241,7 +388,7 @@ function conversionPlan(blueprint, targetMedium) {
       'adapt pacing to target medium',
       'route through Release Gate before publish'
     ],
-    proof_note: `Converted from validated source book with ${beatCount} source unit(s).`
+    proof_note: `Converted from Lindymode/OODA/Redteam-cleared seed with ${beatCount} source unit(s).`
   };
 }
 
@@ -254,7 +401,7 @@ function createConvertedWorkspace(db, blueprint, plan, targetMedium) {
   });
 
   upsertCreativeProfile(db, targetWorkspaceId, {
-    story_vision: `Adapt ${blueprint.title} into ${targetMedium} using source blueprint ${blueprint.blueprint_id}.`,
+    story_vision: `Continue ${blueprint.title} into ${targetMedium} using seed blueprint ${blueprint.blueprint_id}.`,
     story_kind: blueprint.story_kind,
     emotional_effect: blueprint.emotional_effect || 'mixed',
     medium: targetMedium === 'youtube_short' ? 'short_clip' : targetMedium === 'ip_deck' ? 'book' : targetMedium,
@@ -262,7 +409,10 @@ function createConvertedWorkspace(db, blueprint, plan, targetMedium) {
     goal: targetMedium === 'ip_deck' ? 'inform' : 'entertain_and_teach',
     constraints: [
       `source_blueprint:${blueprint.blueprint_id}`,
-      'preserve validated book canon',
+      'preserve validated seed canon',
+      'preserve Lindymode preset validation',
+      'preserve OODA seed decision',
+      'preserve Redteam seed check',
       'do not exceed child-development profile'
     ],
     outputs: [targetMedium]
@@ -273,6 +423,11 @@ function createConvertedWorkspace(db, blueprint, plan, targetMedium) {
     `Target: ${targetMedium}`,
     `Length: ${plan.length}`,
     '',
+    'Seed Gate:',
+    `- Lindymode: ${blueprint.seed_gate?.lindymode_validation?.passed ? 'passed' : 'blocked'}`,
+    `- OODA: ${blueprint.seed_gate?.ooda_decision?.passed ? 'passed' : 'blocked'}`,
+    `- Redteam: ${blueprint.seed_gate?.redteam_seed_check?.passed ? 'passed' : 'blocked'}`,
+    '',
     'Conversion Plan:',
     ...plan.structure.map((item, index) => `${index + 1}. ${item}`),
     '',
@@ -282,7 +437,7 @@ function createConvertedWorkspace(db, blueprint, plan, targetMedium) {
     'Validation Promises:',
     ...plan.validation_promises.map(item => `- ${item}`)
   ].join('\n');
-  Chapter.create(db, targetWorkspaceId, { title: `${targetMedium.replaceAll('_', ' ')} adaptation plan`, content, position: 0 });
+  Chapter.create(db, targetWorkspaceId, { title: `${targetMedium.replaceAll('_', ' ')} continuation plan`, content, position: 0 });
   return targetWorkspaceId;
 }
 
@@ -291,8 +446,12 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
   const target = String(targetMedium || '').toLowerCase();
   if (!BLUEPRINT_TARGETS.includes(target)) throw new Error(`Unsupported blueprint target: ${target}.`);
   const row = getStoryBlueprint(db, sourceWorkspaceId) || buildStoryBlueprint(db, sourceWorkspaceId);
-  if (!row.validation.passed) throw new Error('Source book blueprint is not valid enough to convert yet.');
+  if (!row.validation.passed || !row.blueprint.seed_gate?.conversion_ready) {
+    throw new Error('Seed is not conversion-ready. Required order: Book → Lindymode Validation → OODA → Redteam Seed Check → Convert.');
+  }
   const blueprint = row.blueprint;
+  const option = (blueprint.continuation_options || []).find(item => item.target_medium === target);
+  if (!option) throw new Error(`Target ${target} is not unlocked for this seed.`);
   const plan = conversionPlan(blueprint, target);
   const targetWorkspaceId = createConvertedWorkspace(db, blueprint, plan, target);
   const conversionId = `conversion_${randomUUID()}`;
@@ -301,9 +460,13 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
     passed: true,
     source_blueprint_id: row.blueprint_id,
     target_medium: target,
+    seed_gate: blueprint.seed_gate,
+    continuation_option: option,
     checks: [
       { check: 'source_blueprint_exists', passed: true },
-      { check: 'source_book_validated', passed: true },
+      { check: 'lindymode_seed_validated', passed: blueprint.seed_gate.lindymode_validation.passed },
+      { check: 'ooda_seed_cleared', passed: blueprint.seed_gate.ooda_decision.passed },
+      { check: 'redteam_seed_checked', passed: blueprint.seed_gate.redteam_seed_check.passed },
       { check: 'canon_preservation_rules_attached', passed: true },
       { check: 'child_development_profile_preserved', passed: Boolean(blueprint.developmental_profile) }
     ]
@@ -319,13 +482,13 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
   log(db, {
     workspace_id: sourceWorkspaceId,
     mode: 'story_blueprint',
-    event_type: 'story_blueprint.converted',
+    event_type: 'story_blueprint.converted_after_seed_gate',
     payload: { conversion_id: conversionId, blueprint_id: row.blueprint_id, target_medium: target, target_workspace_id: targetWorkspaceId }
   });
   log(db, {
     workspace_id: targetWorkspaceId,
     mode: 'story_blueprint',
-    event_type: 'story_blueprint.adaptation_workspace_created',
+    event_type: 'story_blueprint.continuation_workspace_created',
     payload: { conversion_id: conversionId, source_workspace_id: sourceWorkspaceId, blueprint_id: row.blueprint_id, target_medium: target }
   });
 
