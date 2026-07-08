@@ -36,6 +36,7 @@ import performanceRoutes from './routes/performance.js';
 import studioRoutes from './routes/studio.js';
 import creativeProfileRoutes from './routes/creativeProfile.js';
 import auditRoutes from './routes/audit.js';
+import storyEngineRoutes from './routes/storyEngine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -73,6 +74,7 @@ performanceRoutes(router, db);
 studioRoutes(router, db);
 creativeProfileRoutes(router, db);
 auditRoutes(router, db);
+storyEngineRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -128,7 +130,7 @@ const server = createServer((req, res) => {
   }
 
   let urlPath = req.url.split('?')[0];
-  if (urlPath === '/') urlPath = '/front_door.html';
+  if (urlPath === '/') urlPath = '/story_engine.html';
   const filePath = join(__dirname, 'public', urlPath);
 
   if (existsSync(filePath)) {
@@ -154,6 +156,7 @@ server.listen(PORT, () => {
   console.log(`API authentication: ${process.env.API_KEY ? 'configured' : 'MISSING API_KEY'}`);
   console.log(`API body limit: ${API_MAX_BODY_BYTES} bytes`);
   console.log('LLM routing:', JSON.stringify(llmRoutingSnapshot()));
+  console.log('L99 OS Alpha entry point: http://localhost:' + PORT + '/story_engine.html');
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
   console.log('Series Continuity Audit API: POST /api/audit/series-continuity');
   console.log('Creative Profiles: http://localhost:' + PORT + '/creative_profile.html');
@@ -161,5 +164,5 @@ server.listen(PORT, () => {
   console.log('Performance Dashboard: http://localhost:' + PORT + '/performance_dashboard.html');
   console.log('L99 Studio: http://localhost:' + PORT + '/studio.html');
   console.log('Story Memory API: GET /api/memory/:workspace_id');
-  console.log('Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
+  console.log('Unified Story Engine, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
 });
