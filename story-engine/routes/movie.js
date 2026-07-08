@@ -2,6 +2,7 @@
 import { json } from '../lib/miniRouter.js';
 import * as Movie from '../models/movieModel.js';
 import { log } from '../models/eventModel.js';
+import { assertReleaseAllowed } from '../lib/releaseGate.js';
 
 export default function movieRoutes(router, db) {
   router.get('/api/movie/beats/:workspace_id', (req, res) => {
@@ -10,10 +11,28 @@ export default function movieRoutes(router, db) {
 
   router.post('/api/movie/beats/generate/:workspace_id', (req, res) => {
     const { workspace_id } = req.params;
+    const authorization = assertReleaseAllowed(db, workspace_id, 'movie_beats_generate', {
+      allowWarning: req.body?.allow_warning !== false
+    });
+
+    if (!authorization.gate) return json(res, 404, { error: authorization.error });
+    if (!authorization.allowed) {
+      return json(res, 409, {
+        error: authorization.error,
+        gate: authorization.gate
+      });
+    }
+
     const t0 = Date.now();
     const beats = Movie.generateBeats(db, workspace_id);
-    log(db, { workspace_id, mode: 'movie', event_type: 'beats_generated', payload: { count: beats.length }, duration_ms: Date.now() - t0 });
-    json(res, 200, beats);
+    log(db, {
+      workspace_id,
+      mode: 'movie',
+      event_type: 'beats_generated',
+      payload: { count: beats.length, release_gate_audit_id: authorization.gate.audit_id },
+      duration_ms: Date.now() - t0
+    });
+    json(res, 200, { beats, gate: authorization.gate });
   });
 
   router.put('/api/movie/beats/:id', (req, res) => {
@@ -21,7 +40,12 @@ export default function movieRoutes(router, db) {
     const { logline } = req.body || {};
     const t0 = Date.now();
     Movie.updateBeat(db, id, { logline });
-    log(db, { workspace_id: req.body.workspace_id || 'unknown', mode: 'movie', event_type: 'beat_updated', duration_ms: Date.now() - t0 });
+    log(db, {
+      workspace_id: req.body.workspace_id || 'unknown',
+      mode: 'movie',
+      event_type: 'beat_updated',
+      duration_ms: Date.now() - t0
+    });
     json(res, 200, { ok: true });
   });
 }
