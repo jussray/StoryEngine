@@ -1,8 +1,22 @@
 const $ = id => document.getElementById(id);
 let medium = 'book';
-let assistMode = 'human_first';
+let assistMode = 'writer';
 let currentRunId = null;
 let pollTimer = null;
+
+const ROLE_LABELS = {
+  writer: 'Writer',
+  co_writer: 'Co-Writer',
+  director: 'Director',
+  autonomous_studio: 'Autonomous Studio'
+};
+
+const START_LABELS = {
+  writer: 'Start as Writer',
+  co_writer: 'Start Co-Writing',
+  director: 'Direct L99',
+  autonomous_studio: 'Launch Autonomous Studio'
+};
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -31,7 +45,7 @@ document.querySelectorAll('.assist-option').forEach(button => {
     document.querySelectorAll('.assist-option').forEach(item => item.classList.remove('active'));
     button.classList.add('active');
     assistMode = button.dataset.assist;
-    $('start').textContent = assistMode === 'human_first' ? 'Start Writing Workspace' : 'Have L99 Draft It';
+    $('start').textContent = START_LABELS[assistMode];
   });
 });
 
@@ -39,11 +53,8 @@ function renderRun(run) {
   currentRunId = run.run_id;
   $('runPanel').classList.remove('hidden');
   $('runTitle').textContent = run.intent?.title || 'L99 Pipeline Run';
-  const assistLabel = run.assist_profile?.assist_mode === 'human_first'
-    ? 'Human-First'
-    : run.assist_profile?.assist_mode === 'system_first'
-      ? 'System-First'
-      : null;
+  const role = run.assist_profile?.assist_mode;
+  const assistLabel = role ? ROLE_LABELS[role] : null;
   $('runMeta').textContent = `${assistLabel ? `${assistLabel} · ` : ''}${run.active_agent} · ${run.current_stage}`;
   $('runStatus').textContent = run.status;
   $('approve').classList.toggle('hidden', run.status !== 'awaiting_approval');
@@ -67,8 +78,10 @@ function renderRun(run) {
     const event = byStage.get(stage);
     const status = event?.status || (stage === run.current_stage ? run.status : 'pending');
     let waiting = 'Waiting for its turn.';
-    if (run.status === 'human_writing' && stage === 'story_engine') {
-      waiting = 'You are the writer. L99 is available for suggestions, continuity checks, and accepted fixes.';
+    if (run.status === 'writer_active' && stage === 'story_engine') {
+      waiting = 'You are writing. L99 stays advisory until you ask for support.';
+    } else if (run.status === 'co_writer_ready' && stage === 'story_engine') {
+      waiting = 'You and L99 share the workspace. Every proposed change still requires your acceptance.';
     }
     return `<div class="stage ${esc(status)}">
       <div class="dot"></div>
@@ -78,7 +91,7 @@ function renderRun(run) {
     </div>`;
   }).join('');
 
-  if (['complete', 'failed', 'needs_review', 'awaiting_approval', 'human_writing'].includes(run.status)) {
+  if (['complete', 'failed', 'needs_review', 'awaiting_approval', 'writer_active', 'co_writer_ready'].includes(run.status)) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
@@ -97,13 +110,13 @@ async function refreshRun() {
 async function loadDefaultAssistMode() {
   try {
     const settings = await api('/api/control-room/operator/assist-default');
-    assistMode = settings.default_assist_mode || 'human_first';
+    assistMode = settings.default_assist_mode || 'writer';
     document.querySelectorAll('.assist-option').forEach(item => {
       item.classList.toggle('active', item.dataset.assist === assistMode);
     });
-    $('start').textContent = assistMode === 'human_first' ? 'Start Writing Workspace' : 'Have L99 Draft It';
+    $('start').textContent = START_LABELS[assistMode] || START_LABELS.writer;
   } catch {
-    assistMode = 'human_first';
+    assistMode = 'writer';
   }
 }
 
@@ -123,7 +136,7 @@ $('storyForm').addEventListener('submit', async event => {
     };
     const run = await api('/api/story-engine/runs', { method: 'POST', body: JSON.stringify(payload) });
     renderRun(run);
-    if (!['complete', 'failed', 'needs_review', 'awaiting_approval', 'human_writing'].includes(run.status)) {
+    if (!['complete', 'failed', 'needs_review', 'awaiting_approval', 'writer_active', 'co_writer_ready'].includes(run.status)) {
       clearInterval(pollTimer);
       pollTimer = setInterval(refreshRun, 3000);
     }
@@ -131,7 +144,7 @@ $('storyForm').addEventListener('submit', async event => {
     alert(error.message);
   } finally {
     $('start').disabled = false;
-    $('start').textContent = assistMode === 'human_first' ? 'Start Writing Workspace' : 'Have L99 Draft It';
+    $('start').textContent = START_LABELS[assistMode] || START_LABELS.writer;
   }
 });
 
