@@ -14,7 +14,11 @@ export default function bootstrapEngineRoutes(router, db) {
   router.get('/api/bootstrap-engine/options', (req, res) => {
     json(res, 200, {
       providers: DEFAULT_BOOTSTRAP_PROVIDERS,
-      principle: 'Being broke is the Lindy filter: stay free until reliability, quality, or revenue justifies spending.'
+      principle: 'Being broke is the Lindy filter: stay free until reliability, quality, or revenue justifies spending.',
+      write_roles: {
+        update_provider: 'administrator',
+        persist_evaluation: 'reviewer+'
+      }
     });
   });
 
