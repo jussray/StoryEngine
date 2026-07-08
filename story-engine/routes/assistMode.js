@@ -16,14 +16,24 @@ export default function assistModeRoutes(router, db) {
     json(res, 200, {
       modes: ASSIST_MODES,
       labels: {
-        human_first: 'Write it myself',
-        system_first: 'Have L99 draft it'
+        writer: 'Writer',
+        co_writer: 'Co-Writer',
+        director: 'Director',
+        autonomous_studio: 'Autonomous Studio'
+      },
+      icons: {
+        writer: '👤',
+        co_writer: '✍️',
+        director: '🤖',
+        autonomous_studio: '🚀'
       },
       descriptions: {
-        human_first: 'L99 watches for continuity, gives suggestions, and lets you lead.',
-        system_first: 'L99 writes a draft, and you shape and approve the final story.'
+        writer: 'I write everything. L99 supports me when I ask.',
+        co_writer: 'We write together. Every proposed change still requires acceptance.',
+        director: 'L99 drafts. I shape, redirect, and approve the work.',
+        autonomous_studio: 'L99 runs the full pipeline until Release Gate, where I make the final decision.'
       },
-      invariant: 'L99 never overwrites human text without explicit acceptance.'
+      invariant: 'L99 never overwrites human text or releases work without explicit human authority.'
     });
   });
 
