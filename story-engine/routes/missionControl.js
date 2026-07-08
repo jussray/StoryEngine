@@ -3,6 +3,7 @@
 import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { enqueueRuntime, drainRuntimeQueue, listDispatchQueue, scanChangedWorkspaces } from '../lib/runtimeDispatcher.js';
+import { runEventRetention } from '../lib/eventRetention.js';
 
 export default function missionControlRoutes(router, db) {
   router.get('/api/mission-control/snapshot', (req, res) => {
@@ -27,5 +28,17 @@ export default function missionControlRoutes(router, db) {
 
   router.post('/api/runtime/scan', (req, res) => {
     json(res, 200, { enqueued: scanChangedWorkspaces(db) });
+  });
+
+  router.post('/api/mission-control/retention/run', (req, res) => {
+    try {
+      json(res, 200, runEventRetention(db, {
+        keepMs: req.body?.keep_ms ? Number(req.body.keep_ms) : undefined,
+        limit: req.body?.limit ? Number(req.body.limit) : undefined,
+        dryRun: Boolean(req.body?.dry_run)
+      }));
+    } catch (error) {
+      json(res, 500, { error: error.message });
+    }
   });
 }
