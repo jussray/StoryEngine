@@ -6,6 +6,8 @@ import { log } from '../models/eventModel.js';
 const MEDIUMS = new Set(['book', 'picture_book', 'movie', 'tv', 'song', 'short_clip', 'comic', 'game', 'play', 'podcast', 'series']);
 const AUDIENCES = new Set(['baby', 'child', 'eli5', 'eli10', 'middle_grade', 'teen', 'young_adult', 'adult', 'expert']);
 const GOALS = new Set(['entertain', 'teach', 'inspire', 'inform', 'persuade', 'explore', 'entertain_and_teach']);
+const STORY_KINDS = new Set(['adventure', 'fantasy', 'romance', 'mystery', 'horror', 'comedy', 'slice_of_life', 'educational', 'inspirational', 'science_fiction', 'historical', 'drama', 'thriller', 'musical', 'other']);
+const EMOTIONAL_EFFECTS = new Set(['joy', 'comfort', 'wonder', 'love', 'fear', 'sadness', 'laughter', 'inspiration', 'reflection', 'excitement', 'hope', 'mixed']);
 
 const AUDIENCE_RULES = {
   baby: { reading_level: 'pre-reader', sentence_style: 'single-clause', vocabulary: 'very_simple', max_sentence_words: 6, safety: 'gentle' },
@@ -44,12 +46,20 @@ function array(value) {
   return [];
 }
 
+function addColumn(db, name, definition) {
+  const columns = db.prepare('PRAGMA table_info(creative_profiles)').all().map(row => row.name);
+  if (!columns.includes(name)) db.exec(`ALTER TABLE creative_profiles ADD COLUMN ${name} ${definition}`);
+}
+
 export function ensureCreativeProfileSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS creative_profiles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       profile_id TEXT NOT NULL UNIQUE,
       workspace_id TEXT NOT NULL UNIQUE,
+      story_vision TEXT NOT NULL DEFAULT '',
+      story_kind TEXT NOT NULL DEFAULT '',
+      emotional_effect TEXT NOT NULL DEFAULT 'mixed',
       medium TEXT NOT NULL,
       audience TEXT NOT NULL,
       eli_level TEXT,
@@ -67,12 +77,22 @@ export function ensureCreativeProfileSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_creative_profiles_medium ON creative_profiles(medium, audience);
     CREATE INDEX IF NOT EXISTS idx_creative_profiles_updated ON creative_profiles(updated_at);
   `);
+  addColumn(db, 'story_vision', "TEXT NOT NULL DEFAULT ''");
+  addColumn(db, 'story_kind', "TEXT NOT NULL DEFAULT ''");
+  addColumn(db, 'emotional_effect', "TEXT NOT NULL DEFAULT 'mixed'");
 }
 
 export function resolveCreativeProfile(input = {}) {
+  const storyVision = text(input.story_vision);
+  const storyKind = text(input.story_kind).toLowerCase();
+  const emotionalEffect = text(input.emotional_effect, 'mixed').toLowerCase();
   const medium = text(input.medium, 'book').toLowerCase();
   const audience = text(input.audience, 'adult').toLowerCase();
   const goal = text(input.goal, 'entertain').toLowerCase();
+
+  if (!storyVision) throw new Error('Tell L99 what story you want to tell.');
+  if (!STORY_KINDS.has(storyKind)) throw new Error(`Unsupported story kind: ${storyKind || 'missing'}.`);
+  if (!EMOTIONAL_EFFECTS.has(emotionalEffect)) throw new Error(`Unsupported emotional effect: ${emotionalEffect}.`);
   if (!MEDIUMS.has(medium)) throw new Error(`Unsupported medium: ${medium}.`);
   if (!AUDIENCES.has(audience)) throw new Error(`Unsupported audience: ${audience}.`);
   if (!GOALS.has(goal)) throw new Error(`Unsupported goal: ${goal}.`);
@@ -83,9 +103,12 @@ export function resolveCreativeProfile(input = {}) {
   const constraints = array(input.constraints);
   const outputs = array(input.outputs).length ? array(input.outputs) : [medium];
   const tone = text(input.tone, audience === 'baby' || audience === 'child' ? 'gentle' : 'engaging');
-  const genre = text(input.genre, 'general');
+  const genre = text(input.genre, storyKind === 'other' ? 'general' : storyKind);
 
   return {
+    story_vision: storyVision,
+    story_kind: storyKind,
+    emotional_effect: emotionalEffect,
     medium,
     audience,
     eli_level: eliLevel || null,
@@ -97,13 +120,16 @@ export function resolveCreativeProfile(input = {}) {
     resolved_rules: {
       ...audienceRules,
       ...mediumRules,
+      story_vision: storyVision,
+      story_kind: storyKind,
+      emotional_effect: emotionalEffect,
       tone,
       genre,
       goal,
       require_human_decision: true,
       redteam_pre_runtime: true,
       redteam_pre_release: true,
-      profile_instruction: `Create a ${genre} ${medium} for ${audience}. Use ${audienceRules.vocabulary} vocabulary, ${audienceRules.sentence_style} sentences, a ${tone} tone, and optimize to ${goal}.`
+      profile_instruction: `Tell this story: ${storyVision} Build it as a ${storyKind} ${medium} for ${audience}. Make the audience feel ${emotionalEffect}. Use ${audienceRules.vocabulary} vocabulary, ${audienceRules.sentence_style} sentences, a ${tone} tone, and optimize to ${goal}.`
     }
   };
 }
@@ -130,18 +156,25 @@ export function upsertCreativeProfile(db, workspaceId, input = {}) {
   ensureCreativeProfileSchema(db);
   const story = db.prepare('SELECT * FROM stories WHERE workspace_id = ?').get(workspaceId);
   if (!story) throw new Error('Workspace not found.');
-  const resolved = resolveCreativeProfile({ genre: story.genre, ...input });
   const existing = getCreativeProfile(db, workspaceId);
+  const resolved = resolveCreativeProfile({
+    story_vision: existing?.story_vision || story.pitch,
+    story_kind: existing?.story_kind || story.genre,
+    emotional_effect: existing?.emotional_effect || 'mixed',
+    genre: story.genre,
+    ...input
+  });
   const now = Date.now();
 
   if (existing) {
     db.prepare(`
       UPDATE creative_profiles
-      SET medium = ?, audience = ?, eli_level = ?, genre = ?, tone = ?, goal = ?,
-          constraints_json = ?, outputs_json = ?, resolved_rules_json = ?,
-          status = 'active', version = version + 1, updated_at = ?
+      SET story_vision = ?, story_kind = ?, emotional_effect = ?, medium = ?, audience = ?,
+          eli_level = ?, genre = ?, tone = ?, goal = ?, constraints_json = ?, outputs_json = ?,
+          resolved_rules_json = ?, status = 'active', version = version + 1, updated_at = ?
       WHERE workspace_id = ?
     `).run(
+      resolved.story_vision, resolved.story_kind, resolved.emotional_effect,
       resolved.medium, resolved.audience, resolved.eli_level, resolved.genre,
       resolved.tone, resolved.goal, JSON.stringify(resolved.constraints),
       JSON.stringify(resolved.outputs), JSON.stringify(resolved.resolved_rules), now, workspaceId
@@ -149,12 +182,13 @@ export function upsertCreativeProfile(db, workspaceId, input = {}) {
   } else {
     db.prepare(`
       INSERT INTO creative_profiles (
-        profile_id, workspace_id, medium, audience, eli_level, genre, tone, goal,
-        constraints_json, outputs_json, resolved_rules_json, status, version,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?)
+        profile_id, workspace_id, story_vision, story_kind, emotional_effect,
+        medium, audience, eli_level, genre, tone, goal, constraints_json,
+        outputs_json, resolved_rules_json, status, version, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?)
     `).run(
-      randomUUID(), workspaceId, resolved.medium, resolved.audience, resolved.eli_level,
+      randomUUID(), workspaceId, resolved.story_vision, resolved.story_kind,
+      resolved.emotional_effect, resolved.medium, resolved.audience, resolved.eli_level,
       resolved.genre, resolved.tone, resolved.goal, JSON.stringify(resolved.constraints),
       JSON.stringify(resolved.outputs), JSON.stringify(resolved.resolved_rules), now, now
     );
@@ -167,6 +201,8 @@ export function upsertCreativeProfile(db, workspaceId, input = {}) {
     event_type: existing ? 'creative_profile.updated' : 'creative_profile.created',
     payload: {
       profile_id: profile.profile_id,
+      story_kind: profile.story_kind,
+      emotional_effect: profile.emotional_effect,
       medium: profile.medium,
       audience: profile.audience,
       eli_level: profile.eli_level,
@@ -183,6 +219,9 @@ export function creativeProfileContext(db, workspaceId) {
   return {
     profile_id: profile.profile_id,
     version: profile.version,
+    story_vision: profile.story_vision,
+    story_kind: profile.story_kind,
+    emotional_effect: profile.emotional_effect,
     medium: profile.medium,
     audience: profile.audience,
     eli_level: profile.eli_level,
@@ -196,6 +235,8 @@ export function creativeProfileContext(db, workspaceId) {
 }
 
 export const CREATIVE_PROFILE_OPTIONS = Object.freeze({
+  story_kinds: [...STORY_KINDS],
+  emotional_effects: [...EMOTIONAL_EFFECTS],
   mediums: [...MEDIUMS],
   audiences: [...AUDIENCES],
   goals: [...GOALS]
