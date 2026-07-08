@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:playwright": "npx playwright test"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.49.0"
   },
   "engines": {
     "node": ">=22.5.0"
