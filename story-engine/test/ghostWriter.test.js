@@ -37,7 +37,7 @@ test('Ghost commands expose draft, humanize, suggest, and rewrite', () => {
   assert.deepEqual(commands, ['/ghost draft', '/ghost humanize', '/ghost suggest', '/ghost rewrite']);
 });
 
-test('Ghost draft falls back safely when no provider key is configured', async () => {
+test('Ghost draft falls back safely when no provider key is configured', { concurrency: false }, async () => {
   const priorAnthropic = process.env.ANTHROPIC_API_KEY;
   const priorOpenAI = process.env.OPENAI_API_KEY;
   const priorOpenRouter = process.env.OPENROUTER_API_KEY;
