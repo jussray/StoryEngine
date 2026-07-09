@@ -1,6 +1,7 @@
 // lib/ghostWriter.js
 
 import { complete } from './llmClient.js';
+import { runBlader } from './blader.js';
 
 const AI_SIGNALS = [
   [/\bfurthermore,?\s*/gi, ''],
@@ -159,7 +160,9 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
   const request = promptForDraft(intent, fingerprint);
   try {
     const raw = await complete(request.prompt, request);
-    const draft = ghostHumanizePass(raw);
+    const baseDraft = ghostHumanizePass(raw);
+    const blader = runBlader(baseDraft, fingerprint);
+    const draft = blader.text || baseDraft;
     return {
       status: draft ? 'drafted' : 'empty_draft',
       provider: request.provider,
@@ -170,7 +173,10 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
         applied: true,
         removed_ai_signals: AI_SIGNALS.map(([pattern]) => String(pattern)),
         cadence: cadenceReport(draft)
-      }
+      },
+      blader_score: blader.blader_score,
+      detector_report: blader.detector_report,
+      blader
     };
   } catch (error) {
     return {
@@ -180,7 +186,10 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       voice_fingerprint: fingerprint,
       draft_unit: fallbackDraft(intent, fingerprint),
       error: error.message,
-      humanize_pass: { applied: false, reason: 'provider_unavailable' }
+      humanize_pass: { applied: false, reason: 'provider_unavailable' },
+      blader_score: 0,
+      detector_report: null,
+      blader: null
     };
   }
 }
