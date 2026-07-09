@@ -53,23 +53,12 @@ function capitalize(value) {
   return clean ? clean[0].toUpperCase() + clean.slice(1) : clean;
 }
 
-function addImperfection(sentence, index, fingerprint = {}) {
-  const audience = String(fingerprint.audience || '').toLowerCase();
-  if (audience === 'eli5' || audience === 'baby' || audience === 'child') return sentence;
-  if (index % 5 !== 2) return sentence;
-  if (/[—;]/.test(sentence)) return sentence;
-  return sentence.replace(/\.\s*$/, '—just for a breath.');
-}
-
 function varyCadence(text, fingerprint = {}) {
   const maxWords = ['eli5', 'child', 'baby'].includes(String(fingerprint.audience || '').toLowerCase()) ? 15 : 24;
   const out = [];
-  sentences(text).forEach((sentence, index) => {
-    const split = splitLongSentence(sentence, maxWords);
-    split.forEach((piece, pieceIndex) => {
-      out.push(addImperfection(piece, index + pieceIndex, fingerprint));
-    });
-  });
+  for (const sentence of sentences(text)) {
+    out.push(...splitLongSentence(sentence, maxWords));
+  }
   return out.join(' ').replace(/\s+/g, ' ').trim();
 }
 
@@ -79,27 +68,12 @@ function lexicalPass(text) {
   return output.replace(/\s+([,.!?;:])/g, '$1').replace(/ {2,}/g, ' ').trim();
 }
 
-function rhythmInjection(text, fingerprint = {}) {
-  const sentenceList = sentences(text);
-  if (sentenceList.length < 4) return text;
-  const audience = String(fingerprint.audience || '').toLowerCase();
-  if (['eli5', 'baby'].includes(audience)) return text;
-  const result = [];
-  for (let i = 0; i < sentenceList.length; i += 1) {
-    result.push(sentenceList[i]);
-    if (i === 1 && !/[?!]$/.test(sentenceList[i])) result.push('Not loudly.');
-    if (i === 4 && audience !== 'child') result.push('That part mattered.');
-  }
-  return result.join(' ');
-}
-
 export function runBlader(text = '', fingerprint = {}, options = {}) {
   const original = String(text || '').trim();
   const baseline = scoreHumanLikeness(original, fingerprint);
   let current = ghostHumanizePass(original);
   current = lexicalPass(current);
   current = varyCadence(current, fingerprint);
-  current = rhythmInjection(current, fingerprint);
   current = ghostHumanizePass(current);
 
   const comparison = compareHumanScores(original, current, fingerprint);
@@ -117,7 +91,6 @@ export function runBlader(text = '', fingerprint = {}, options = {}) {
       'lexical_substitution',
       'sentence_fragmentation',
       'cadence_variation',
-      'rhythm_injection',
       'final_ghost_cleanup'
     ],
     accepted,
