@@ -9,7 +9,7 @@ import { dirname } from 'node:path';
 
 import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
-import { requireAuth } from './lib/requireAuth.js';
+import { requestContext, requireAuth, enforceWorkspaceAccess, securitySnapshot } from './lib/securityContext.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
@@ -44,10 +44,11 @@ import validationSeedRoutes from './routes/validationSeed.js';
 import ipGrowthRoutes from './routes/ipGrowth.js';
 import ipStudioRoutes from './routes/ipStudio.js';
 import campaignStudioRoutes from './routes/campaignStudio.js';
+import bootstrapEngineRoutes from './routes/bootstrapEngine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
-const API_MAX_BODY_BYTES = Number(process.env.API_MAX_BODY_BYTES || 10 * 1024 * 1024);
+const API_MAX_BODY_BYTES = Number(process.env.API_MAX_BODY_BYTES || 2 * 1024 * 1024);
 
 const MIME = {
   '.html': 'text/html',
@@ -58,7 +59,9 @@ const MIME = {
 };
 
 const router = createRouter({ maxBodyBytes: API_MAX_BODY_BYTES });
+router.use('/api', requestContext);
 router.use('/api', requireAuth);
+router.use('/api', enforceWorkspaceAccess);
 storyRoutes(router, db);
 outlineRoutes(router, db);
 chapterRoutes(router, db);
@@ -89,6 +92,7 @@ validationSeedRoutes(router, db);
 ipGrowthRoutes(router, db);
 ipStudioRoutes(router, db);
 campaignStudioRoutes(router, db);
+bootstrapEngineRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -106,16 +110,20 @@ function broadcastIncidents(incidents) {
 function openOodaStream(req, res) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive'
+    'Cache-Control': 'no-cache, no-store',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
   });
-  sendSse(res, 'heartbeat', { t: Date.now() });
+  sendSse(res, 'heartbeat', { t: Date.now(), request_id: req.request_id });
   sendSse(res, 'incidents', latestIncidents);
   oodaClients.add(res);
   req.on('close', () => oodaClients.delete(res));
 }
 
 function serveStatic(filePath, ext, res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   if (ext === '.html') {
     const html = readFileSync(filePath, 'utf8');
     const injected = html.includes('/l99_auth.js')
@@ -134,7 +142,7 @@ const server = createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   if (url.pathname === '/api/ooda/incidents') {
-    requireAuth(req, res, () => openOodaStream(req, res));
+    requestContext(req, res, () => requireAuth(req, res, () => openOodaStream(req, res)));
     return;
   }
 
@@ -155,6 +163,10 @@ const server = createServer((req, res) => {
   }
 });
 
+server.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 120_000);
+server.headersTimeout = Number(process.env.HTTP_HEADERS_TIMEOUT_MS || 15_000);
+server.keepAliveTimeout = Number(process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS || 5_000);
+
 startOODALoop(db, 30_000, incidents => {
   console.log(`[OODA] Active incidents: ${incidents.length}`);
   broadcastIncidents(incidents);
@@ -166,10 +178,12 @@ startRuntimeScheduler(db, {
 });
 
 server.listen(PORT, () => {
+  const llmSnapshot = llmRoutingSnapshot();
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
-  console.log(`API authentication: ${process.env.API_KEY ? 'configured' : 'MISSING API_KEY'}`);
+  console.log('Security snapshot:', JSON.stringify(securitySnapshot()));
   console.log(`API body limit: ${API_MAX_BODY_BYTES} bytes`);
-  console.log('LLM routing:', JSON.stringify(llmRoutingSnapshot()));
+  console.log('LLM routing:', JSON.stringify(llmSnapshot));
+  console.log(`LLM client started at: ${new Date(llmSnapshot.client_started_at).toISOString()} (${llmSnapshot.circuit_state_scope})`);
   console.log('L99 OS Alpha entry point: http://localhost:' + PORT + '/story_engine.html');
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
   console.log('Series Continuity Audit API: POST /api/audit/series-continuity');
@@ -187,5 +201,5 @@ server.listen(PORT, () => {
   console.log('IP Growth Engine: GET /api/ip-growth/overview');
   console.log('IP Studio: GET /api/ip-studio/options');
   console.log('Campaign Studio: GET /api/campaign-studio/options');
-  console.log('Unified Story Engine, IP Growth Engine, IP Studio, Campaign Studio, Validation Seed Assets, Story Blueprints, Assist Mode, Audience Lenses, Mission Control, Studio, Creative Profiles, Series Audit, Memory Engine, LLM routing, Performance Dashboard, retention, Release Gate, Release Attempts, Control Room, and runtime scheduler registered.');
+  console.log('Founder Economics: GET /api/bootstrap-engine/overview');
 });
