@@ -22,9 +22,12 @@ test('Blader improves detector score on AI-ish draft', () => {
   assert.ok(result.comparison.delta >= 0);
 });
 
-test('Blader reports pass list and detector report', () => {
+test('Blader reports pass list and detector report without fixed phrase injection', () => {
   const result = runBlader(aiDraft, fingerprint, { force: true });
   assert.ok(result.passes.includes('sentence_fragmentation'));
-  assert.ok(result.passes.includes('rhythm_injection'));
+  assert.ok(!result.passes.includes('rhythm_injection'));
+  assert.doesNotMatch(result.text, /Not loudly\./);
+  assert.doesNotMatch(result.text, /That part mattered\./);
+  assert.doesNotMatch(result.text, /just for a breath/);
   assert.equal(typeof result.detector_report.score, 'number');
 });
