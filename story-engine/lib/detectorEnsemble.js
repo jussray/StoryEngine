@@ -59,30 +59,31 @@ function fingerprintMatchScore(text, fingerprint = {}) {
   const lower = String(text || '').toLowerCase();
   const tokenList = words(text);
   const sentenceList = sentences(text);
-  let score = 70;
+  let score = 50;
   const audience = String(fingerprint.audience || '').toLowerCase();
   const medium = String(fingerprint.medium || '').toLowerCase();
   const tone = String(fingerprint.tone || '').toLowerCase();
   const avgSentence = sentenceList.length ? average(sentenceList.map(sentence => words(sentence).length)) : 0;
 
   if (audience === 'eli5' || audience === 'child' || audience === 'baby') {
-    if (avgSentence <= 13) score += 12;
-    else score -= 15;
+    if (avgSentence <= 13) score += 18;
+    else score -= 18;
   } else if (audience === 'eli10' || audience === 'middle_grade') {
-    if (avgSentence <= 19) score += 8;
-    else score -= 8;
+    if (avgSentence <= 19) score += 12;
+    else score -= 12;
   } else if (avgSentence >= 7 && avgSentence <= 28) {
-    score += 5;
+    score += 8;
   }
 
   if (medium.includes('movie') || medium.includes('tv')) {
-    if (/\b(int\.|ext\.|cut to|close on|scene)\b/i.test(text)) score += 8;
+    if (/\b(int\.|ext\.|cut to|close on|scene)\b/i.test(text)) score += 12;
+    else score -= 6;
   }
   if (medium.includes('picture') || medium.includes('book')) {
-    if (sentenceList.length >= 2) score += 5;
+    if (sentenceList.length >= 2) score += 8;
   }
-  if (tone && lower.includes(tone)) score += 2;
-  if (uniqueRatio(tokenList) > 0.45) score += 5;
+  if (tone && lower.includes(tone)) score += 4;
+  if (uniqueRatio(tokenList) > 0.45) score += 8;
 
   return clamp(score);
 }
@@ -103,7 +104,7 @@ export function scoreHumanLikeness(text = '', fingerprint = {}) {
   const burstinessScore = clamp(Math.min(100, burstiness * 9 + (sentenceLengths.length >= 3 ? 20 : 0)));
   const perplexityProxy = clamp(unique * 85 + Math.min(15, burstiness * 2));
   const sentenceVarianceScore = clamp(sentenceVariance >= 6 ? 85 : sentenceVariance * 12);
-  const aiSignalScore = clamp(100 - signals.density * 22 - signals.hits * 5);
+  const aiSignalScore = clamp(100 - signals.density * 34);
   const repetitionScore = clamp(100 - repetitionPenalty * 45);
 
   const composite = clamp(
