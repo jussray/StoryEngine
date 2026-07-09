@@ -76,6 +76,18 @@ function hydrate(row) {
   return { ...row, enabled: Boolean(row.enabled), metadata: parseJson(row.metadata_json, {}) };
 }
 
+function withTransaction(db, callback) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = callback();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
+
 export function listBootstrapProviders(db) {
   ensureSchema(db);
   return db.prepare('SELECT * FROM bootstrap_providers ORDER BY category').all().map(hydrate);
@@ -179,9 +191,9 @@ export function evaluateBootstrapStack(db, { persist = false } = {}) {
   if (persist) {
     const insert = db.prepare(`INSERT INTO bootstrap_decisions (decision_id, category, provider, action, lindy_score, confidence_score, reasons_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
     const now = Date.now();
-    db.transaction(() => {
+    withTransaction(db, () => {
       for (const item of evaluations) insert.run(`bootstrap_${randomUUID()}`, item.category, item.provider, item.action, item.lindy_score, item.confidence_score, JSON.stringify(item.reasons), now);
-    })();
+    });
     log(db, { workspace_id: 'control-room', mode: 'bootstrap_engine', event_type: 'bootstrap.stack.evaluated', payload: { stack_score: stackScore, monthly_cost: monthlyCost, at_risk_count: atRisk.length } });
   }
 
