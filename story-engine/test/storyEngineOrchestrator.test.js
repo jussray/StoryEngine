@@ -44,9 +44,9 @@ test('all required L99 OS Alpha stages have one canonical order', () => {
   ]);
 });
 
-test('one Story Engine request creates workspace, profile, Ghost plan, Lindymode state, OODA decision, and runtime dispatch', () => {
+test('one Story Engine request creates workspace, profile, Ghost plan, Lindymode state, OODA decision, and runtime dispatch', async () => {
   const db = createDb();
-  const run = startStoryEngineRun(db, {
+  const run = await startStoryEngineRun(db, {
     story_vision: 'Write a middle-grade fantasy novel about a girl who finds a sleeping moon.',
     medium: 'book',
     audience: 'middle_grade',
@@ -58,7 +58,7 @@ test('one Story Engine request creates workspace, profile, Ghost plan, Lindymode
   assert.equal(run.status, 'runtime_queued');
   assert.equal(run.current_stage, 'runtime');
   assert.equal(run.intent.medium, 'book');
-  assert.equal(run.ghost_plan.tasks.length, 8);
+  assert.equal(run.ghost_plan.tasks.length, 9);
   assert.ok(run.ooda_decision.decision_id);
   assert.ok(run.dispatch_id);
   assert.ok(run.stages.some(stage => stage.stage === 'redteam_pre_runtime' && stage.status === 'completed'));
@@ -72,7 +72,7 @@ test('one Story Engine request creates workspace, profile, Ghost plan, Lindymode
   db.close();
 });
 
-test('paid Story Engine work pauses for human operator approval', () => {
+test('paid Story Engine work pauses for human operator approval', async () => {
   const db = createDb();
   updateOperatorProfile(db, {
     mode: 'bootstrap',
@@ -82,7 +82,7 @@ test('paid Story Engine work pauses for human operator approval', () => {
     require_recurring_approval: true
   });
 
-  const blocked = startStoryEngineRun(db, {
+  const blocked = await startStoryEngineRun(db, {
     story_vision: 'Create an ELI10 educational comic about how rain forms.',
     medium: 'comic',
     audience: 'eli10',
@@ -103,7 +103,7 @@ test('paid Story Engine work pauses for human operator approval', () => {
 
 test('run retrieval exposes the full operating-system trace', async () => {
   const db = createDb();
-  const started = startStoryEngineRun(db, {
+  const started = await startStoryEngineRun(db, {
     story_vision: 'Write a mystery podcast for teens.',
     medium: 'podcast',
     audience: 'teen',
@@ -121,9 +121,9 @@ test('run retrieval exposes the full operating-system trace', async () => {
   db.close();
 });
 
-test('Control Room historian writes a searchable permanent run summary', () => {
+test('Control Room historian writes a searchable permanent run summary', async () => {
   const db = createDb();
-  const run = startStoryEngineRun(db, {
+  const run = await startStoryEngineRun(db, {
     story_vision: 'Write an ELI10 adventure about a small robot learning courage.',
     medium: 'book',
     audience: 'eli10',
