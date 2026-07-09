@@ -1,6 +1,7 @@
 // lib/releaseAttempts.js
 
 import { randomUUID } from 'node:crypto';
+import './sqliteTransaction.js';
 import { assertReleaseAllowed } from './releaseGate.js';
 import { log } from '../models/eventModel.js';
 

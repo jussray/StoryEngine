@@ -1,5 +1,7 @@
 // models/movieModel.js
 
+import '../lib/sqliteTransaction.js';
+
 export function listBeats(db, workspace_id) {
   return db.prepare(`
     SELECT mb.*, c.title as chapter_title
