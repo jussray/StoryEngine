@@ -48,6 +48,12 @@ function list(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
 }
 
+function clampNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
 function sentenceLengthProfile(audience) {
   if (audience === 'eli5' || audience === 'baby' || audience === 'child') return 'mostly short sentences, usually under 12 words, but never baby talk';
   if (audience === 'eli10' || audience === 'middle_grade') return 'mostly clear sentences under 18 words with occasional longer rhythm';
@@ -87,8 +93,8 @@ function promptForDraft(intent, fingerprint) {
   return {
     provider: process.env.GHOST_WRITER_PROVIDER || process.env.DEFAULT_WRITING_LLM || 'anthropic',
     task: 'chapter_generation',
-    maxTokens: Number(process.env.GHOST_WRITER_MAX_TOKENS || 1800),
-    temperature: Number(process.env.GHOST_WRITER_TEMPERATURE || 0.72),
+    maxTokens: Math.round(clampNumber(process.env.GHOST_WRITER_MAX_TOKENS, 1800, 256, 8192)),
+    temperature: clampNumber(process.env.GHOST_WRITER_TEMPERATURE, 0.72, 0, 1),
     system: [
       'You are Ghost inside L99 Story Engine.',
       'Write original, human-feeling creative prose or script pages from the creator profile.',
