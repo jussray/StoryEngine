@@ -9,6 +9,7 @@ import { ipGrowthOverview } from '../lib/ipGrowthEngine.js';
 import { ipStudioOverview } from '../lib/ipStudio.js';
 import { campaignStudioOverview } from '../lib/campaignStudio.js';
 import { founderEconomicsOverview } from '../lib/bootstrapEngine.js';
+import { ipSeedOverview } from '../lib/ipSeedMemoryGraph.js';
 import { llmRoutingSnapshot } from '../lib/llmClient.js';
 import { authSnapshot, requireRole } from '../lib/securityContext.js';
 import {
@@ -89,7 +90,7 @@ function lineageHealth(db) {
   };
 }
 
-function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudio, founderEconomics, llm, blader) {
+function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudio, founderEconomics, llm, blader, ipSeed) {
   const running = Number(snapshot.overview?.running_dispatches || 0);
   const failed = Number(snapshot.overview?.runtime_failures || 0);
   const gateBlocked = Number(snapshot.overview?.release_gate_blocked_count || 0);
@@ -98,6 +99,7 @@ function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudi
     { key: 'story_engine', label: 'Story Engine', status: brain.active_count ? 'running' : 'ok' },
     { key: 'ghost', label: 'Ghost', status: brain.current?.current_stage === 'ghost' ? 'running' : 'ok' },
     { key: 'blader', label: 'Blader', status: blader.below_threshold_count ? 'watch' : blader.last_run ? 'ok' : 'idle' },
+    { key: 'ip_seed', label: 'IP Seed', status: ipSeed.refresh_needed_count ? 'watch' : ipSeed.seed_count ? 'ready' : 'idle' },
     { key: 'lindymode', label: 'Lindymode', status: snapshot.incidents?.length ? 'watch' : 'ok' },
     { key: 'ooda', label: 'OODA Loop', status: 'running' },
     { key: 'redteam', label: 'Redteam', status: brain.current?.current_stage?.startsWith('redteam') ? 'running' : 'ok' },
@@ -128,6 +130,7 @@ export function buildControlRoomOverview(db, now = Date.now()) {
   const llm = llmRoutingSnapshot();
   const lineage = lineageHealth(db);
   const blader = bladerHealthSnapshot(db);
+  const ipSeed = ipSeedOverview(db);
   return {
     ...snapshot,
     control_room_generated_at: now,
@@ -136,6 +139,7 @@ export function buildControlRoomOverview(db, now = Date.now()) {
     operator_alerts: operatorAlerts,
     story_engine_brain: brain,
     blader_health: blader,
+    ip_seed: ipSeed,
     ip_growth: ipGrowth,
     ip_studio: ipStudio,
     campaign_studio: campaignStudio,
@@ -143,7 +147,7 @@ export function buildControlRoomOverview(db, now = Date.now()) {
     founder_economics: founderEconomics,
     llm_gateway: llm,
     recent_run_summaries: runSummaries,
-    pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth, ipStudio, campaignStudio, founderEconomics, llm, blader)
+    pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth, ipStudio, campaignStudio, founderEconomics, llm, blader, ipSeed)
   };
 }
 
