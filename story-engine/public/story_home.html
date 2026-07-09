@@ -1,30 +1,268 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Story Home — L99</title>
-  <link rel="stylesheet" href="/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>L99 — Your Story</title>
+  <script src="/l99_auth.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Georgia', serif;
+      background: #0a0a0a;
+      color: #f0ede8;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 800px;
+      margin: 0 auto 2.5rem;
+    }
+    .wordmark { font-size: 0.85rem; letter-spacing: 0.3em; text-transform: uppercase; color: #555; }
+    .nav-link { font-size: 0.85rem; color: #888; text-decoration: none; }
+    .nav-link:hover { color: #f0ede8; }
+    main { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 2.5rem; }
+    h1 { font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 400; line-height: 1.2; }
+    .meta { font-size: 0.85rem; color: #666; margin-top: 0.4rem; }
+    section { display: flex; flex-direction: column; gap: 1rem; }
+    .section-label { font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: #555; }
+    .progress-bar-track {
+      background: #1a1a1a;
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #f0ede8;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+    .progress-meta { font-size: 0.82rem; color: #666; margin-top: 0.3rem; }
+    .draft-card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 1.2rem 1.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+    .draft-label { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: #555; }
+    .draft-preview {
+      font-size: 0.95rem;
+      line-height: 1.65;
+      color: #c8c4be;
+      white-space: pre-wrap;
+      max-height: 7em;
+      overflow: hidden;
+      position: relative;
+    }
+    .draft-preview::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2.5em;
+      background: linear-gradient(transparent, #111);
+    }
+    .draft-actions { display: flex; gap: 0.7rem; flex-wrap: wrap; }
+    .btn {
+      font-family: 'Georgia', serif;
+      font-size: 0.85rem;
+      padding: 0.5rem 1rem;
+      border-radius: 5px;
+      border: 1px solid #333;
+      background: transparent;
+      color: #f0ede8;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover { background: #1a1a1a; border-color: #555; }
+    .btn-primary { background: #f0ede8; color: #0a0a0a; border-color: #f0ede8; }
+    .btn-primary:hover { opacity: 0.88; background: #f0ede8; }
+    .convert-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 0.7rem;
+    }
+    .convert-card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 7px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      text-align: left;
+    }
+    .convert-card:hover { border-color: #555; }
+    .convert-card-title { font-size: 0.9rem; color: #f0ede8; }
+    .convert-card-desc { font-size: 0.78rem; color: #666; margin-top: 0.25rem; }
+    .empty-state { font-size: 0.9rem; color: #555; padding: 1rem 0; }
+    .status { font-size: 0.82rem; color: #888; min-height: 1em; }
+    .status.error { color: #e05555; }
+    .status.ok { color: #5aab6e; }
+    .score-pill {
+      display: inline-block;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      padding: 0.15rem 0.5rem;
+      border-radius: 20px;
+      border: 1px solid #2a2a2a;
+      color: #888;
+    }
+  </style>
 </head>
 <body>
-  <main class="container">
-    <nav class="back"><a href="/front_door.html">← Workspace Library</a></nav>
-    <p class="eyebrow">Workspace</p>
-    <h1 id="storyTitle">Loading...</h1>
-    <p id="storyPitch" class="subtitle"></p>
-    <nav class="mode-nav">
-      <a id="outlineLink" href="#">Outline</a>
-      <a id="chaptersLink" href="#">Chapters</a>
-      <a id="movieLink" href="#">Movie Beats</a>
-      <a id="lindymodeLink" href="#">Lindymode</a>
-      <a id="decisionLink" href="#">OODA Decision</a>
-      <a id="learningLink" href="#">Predictive OODA</a>
-      <a id="recoveryLink" href="#">Recovery + Genome</a>
-      <a id="runtimeLink" href="#">Autonomous Runtime</a>
-      <a id="releaseGateLink" href="#">Release Gate</a>
-      <a id="eventsLink" href="#">Events</a>
-    </nav>
+  <header>
+    <span class="wordmark">L99</span>
+    <a href="/front_door.html" class="nav-link">+ New story</a>
+  </header>
+
+  <main>
+    <div>
+      <h1 id="storyTitle">Loading…</h1>
+      <p class="meta" id="storyMeta"></p>
+    </div>
+
+    <section id="progressSection" style="display:none">
+      <p class="section-label">Progress</p>
+      <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
+      <p class="progress-meta" id="progressMeta"></p>
+    </section>
+
+    <section id="draftSection" style="display:none">
+      <p class="section-label">Ready for your review</p>
+      <div class="draft-card">
+        <p class="draft-label" id="draftLabel">Draft</p>
+        <div class="draft-preview" id="draftPreview"></div>
+        <div class="draft-actions">
+          <button class="btn btn-primary" id="acceptBtn">Accept this draft</button>
+          <button class="btn" id="rejectBtn">Try again</button>
+          <button class="btn" id="editBtn">Open in writer</button>
+        </div>
+        <p class="status" id="draftStatus"></p>
+      </div>
+    </section>
+
+    <section id="convertSection" style="display:none">
+      <p class="section-label">Take this story further</p>
+      <div class="convert-grid" id="convertGrid"></div>
+    </section>
+
+    <p class="status" id="pageStatus"></p>
   </main>
-  <script src="/story_home.js"></script>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const workspaceId = params.get('workspace_id') || '';
+    const apiKey = window.L99_API_KEY || localStorage.getItem('l99_api_key') || '';
+    const headers = { 'Content-Type': 'application/json', ...(apiKey ? { 'x-api-key': apiKey } : {}) };
+
+    const CONVERT_OPTIONS = [
+      { title: 'Turn into a movie', format: 'movie', desc: 'Write a screenplay version' },
+      { title: 'TV series bible', format: 'tv', desc: 'Expand into episodes' },
+      { title: 'Picture book', format: 'picture_book', desc: 'Simplify for young readers' },
+      { title: 'Graphic novel', format: 'comic', desc: 'Page-by-page breakdown' },
+      { title: 'Game concept', format: 'game', desc: 'Build into a playable world' },
+      { title: 'Song seed', format: 'song', desc: 'Extract a lyric prompt' }
+    ];
+
+    async function load() {
+      if (!workspaceId) {
+        document.getElementById('storyTitle').textContent = 'No story selected.';
+        document.getElementById('pageStatus').textContent = 'Return to the home page to start a story.';
+        return;
+      }
+      try {
+        const res = await fetch(`/api/story-engine/runs/${encodeURIComponent(workspaceId)}`, { headers });
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json();
+        const run = data.run || data;
+
+        document.getElementById('storyTitle').textContent = run.title || run.story_vision || 'Your story';
+        document.getElementById('storyMeta').textContent =
+          [run.medium, run.audience].filter(Boolean).join(' · ') +
+          (run.created_at ? ' · started ' + new Date(run.created_at).toLocaleDateString() : '');
+
+        // Progress
+        const totalStages = 6;
+        const completedStages = Number(run.completed_stages || 0);
+        const pct = Math.round((completedStages / totalStages) * 100);
+        document.getElementById('progressFill').style.width = pct + '%';
+        document.getElementById('progressMeta').textContent =
+          pct < 100 ? `${pct}% — ${run.current_stage || 'building your story'}` : 'Complete';
+        document.getElementById('progressSection').style.display = '';
+
+        // Ghost draft
+        const draft = run.ghost_draft || run.draft_unit;
+        if (draft) {
+          document.getElementById('draftLabel').textContent =
+            run.medium ? `First ${run.medium} draft` : 'First draft';
+          document.getElementById('draftPreview').textContent = draft;
+          document.getElementById('draftSection').style.display = '';
+        }
+
+        // Conversion options
+        const grid = document.getElementById('convertGrid');
+        CONVERT_OPTIONS.forEach(opt => {
+          const card = document.createElement('div');
+          card.className = 'convert-card';
+          card.innerHTML = `<div class="convert-card-title">${opt.title}</div><div class="convert-card-desc">${opt.desc}</div>`;
+          card.addEventListener('click', () => startConversion(opt.format));
+          grid.appendChild(card);
+        });
+        document.getElementById('convertSection').style.display = '';
+
+      } catch (err) {
+        document.getElementById('storyTitle').textContent = 'Could not load your story.';
+        document.getElementById('pageStatus').textContent = err.message;
+        document.getElementById('pageStatus').className = 'status error';
+      }
+    }
+
+    async function startConversion(format) {
+      document.getElementById('pageStatus').textContent = `Starting ${format} conversion…`;
+      document.getElementById('pageStatus').className = 'status';
+      try {
+        const res = await fetch('/api/ip-studio/convert', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ workspace_id: workspaceId, target_format: format })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Status ${res.status}`);
+        document.getElementById('pageStatus').textContent = `${format} conversion started. Check IP Studio for results.`;
+        document.getElementById('pageStatus').className = 'status ok';
+      } catch (err) {
+        document.getElementById('pageStatus').textContent = err.message;
+        document.getElementById('pageStatus').className = 'status error';
+      }
+    }
+
+    document.getElementById('acceptBtn')?.addEventListener('click', async () => {
+      document.getElementById('draftStatus').textContent = 'Saving…';
+      try {
+        const res = await fetch(`/api/story-engine/runs/${encodeURIComponent(workspaceId)}/accept-draft`, {
+          method: 'POST', headers, body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        document.getElementById('draftStatus').textContent = 'Draft accepted. Your story is growing.';
+        document.getElementById('draftStatus').className = 'status ok';
+      } catch (err) {
+        document.getElementById('draftStatus').textContent = err.message;
+        document.getElementById('draftStatus').className = 'status error';
+      }
+    });
+
+    document.getElementById('editBtn')?.addEventListener('click', () => {
+      location.href = `/story_engine.html?workspace_id=${encodeURIComponent(workspaceId)}`;
+    });
+
+    load();
+  </script>
 </body>
 </html>
