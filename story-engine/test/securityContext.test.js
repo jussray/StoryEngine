@@ -35,6 +35,25 @@ test('security context resolves scoped actor identity from cached registry', () 
   }
 });
 
+test('security context resolves l99_api_key cookie for EventSource/SSE clients', () => {
+  const prior = process.env.L99_API_KEYS_JSON;
+  try {
+    process.env.L99_API_KEYS_JSON = JSON.stringify([{ key: 'cookie-secret', actor_id: 'cookie-actor', tenant_id: 'tenant-a', role: 'viewer', workspace_ids: ['workspace_1'] }]);
+    const req = { method: 'GET', headers: { cookie: `theme=dark; l99_api_key=${encodeURIComponent('cookie-secret')}; other=1` }, request_id: 'req_cookie' };
+    const res = mockRes();
+    let nextCalled = false;
+
+    requireAuth(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, true);
+    assert.equal(req.auth.actor_id, 'cookie-actor');
+    assert.equal(req.auth.auth_type || req.auth.type, 'scoped_api_key');
+  } finally {
+    if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
+    else process.env.L99_API_KEYS_JSON = prior;
+  }
+});
+
 test('security context refreshes cached registry when env source changes', () => {
   const prior = process.env.L99_API_KEYS_JSON;
   try {
