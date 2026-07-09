@@ -10,7 +10,7 @@ import { ipStudioOverview } from '../lib/ipStudio.js';
 import { campaignStudioOverview } from '../lib/campaignStudio.js';
 import { founderEconomicsOverview } from '../lib/bootstrapEngine.js';
 import { llmRoutingSnapshot } from '../lib/llmClient.js';
-import { authSnapshot, requireRole } from '../lib/securityContext.js';
+import { authSnapshot, requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
   OPERATOR_PROFILE_OPTIONS,
   getOperatorSummary,
@@ -29,6 +29,18 @@ function safeJson(value, fallback = []) {
 
 function tableExists(db, tableName) {
   return Boolean(db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1`).get(tableName));
+}
+
+function withTransaction(db, callback) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = callback();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
 }
 
 function storyMemorySignals(db) {
@@ -156,7 +168,7 @@ export function resolveControlRoomIncident(db, input = {}) {
   let diffChanges = 0;
   let incidentChanges = 0;
   let workspaceId = input.workspace_id || 'control-room';
-  db.transaction(() => {
+  withTransaction(db, () => {
     if (diffId) {
       if (!tableExists(db, 'memory_diffs')) throw new Error('Memory Engine is not available.');
       const diff = db.prepare('SELECT workspace_id FROM memory_diffs WHERE id=?').get(diffId);
@@ -173,7 +185,7 @@ export function resolveControlRoomIncident(db, input = {}) {
         WHERE incident_id=? AND status='active'
       `).run(`operator:${resolution}`, now, incidentId).changes || 0);
     }
-  })();
+  });
   log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.incident_resolved', payload: { incident_id: incidentId || null, diff_id: diffId || null, resolution, actor: input.actor || null } });
   return { ok: true, incident_id: incidentId || null, diff_id: diffId || null, resolved: diffChanges + incidentChanges, resolution, resolved_at: now };
 }
@@ -248,12 +260,14 @@ export default function controlRoomRoutes(router, db) {
   });
   router.post('/api/control-room/resolve-incident', (req, res) => {
     requireRole('reviewer')(req, res, () => {
+      if (!requireWorkspaceAccess(req, res, req.body?.workspace_id)) return;
       try { json(res, 200, resolveControlRoomIncident(db, { ...req.body, actor: authSnapshot(req) })); }
       catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
     });
   });
   router.post('/api/control-room/force-gate-pass', (req, res) => {
     requireRole('release_manager')(req, res, () => {
+      if (!requireWorkspaceAccess(req, res, req.body?.workspace_id)) return;
       try { json(res, 201, forceControlRoomGatePass(db, { ...req.body, actor: authSnapshot(req) })); }
       catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
     });
