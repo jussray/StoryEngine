@@ -1,58 +1,219 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>L99 Story Engine</title>
-  <link rel="stylesheet" href="/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>L99 — Start Your Story</title>
+  <script src="/l99_auth.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Georgia', serif;
+      background: #0a0a0a;
+      color: #f0ede8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .stage {
+      width: 100%;
+      max-width: 640px;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+    .wordmark {
+      font-size: 1rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: #888;
+      text-align: center;
+    }
+    h1 {
+      font-size: clamp(1.8rem, 5vw, 2.8rem);
+      font-weight: 400;
+      line-height: 1.2;
+      text-align: center;
+      color: #f0ede8;
+    }
+    .prompt-area {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    label {
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #888;
+    }
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #f0ede8;
+      font-family: 'Georgia', serif;
+      font-size: 1rem;
+      line-height: 1.6;
+      padding: 1rem;
+      resize: vertical;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { outline: none; border-color: #555; }
+    textarea::placeholder { color: #444; }
+    .selectors {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    .selector-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    select {
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #f0ede8;
+      font-family: 'Georgia', serif;
+      font-size: 0.95rem;
+      padding: 0.6rem 0.8rem;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    select:focus { outline: none; border-color: #555; }
+    .cta {
+      background: #f0ede8;
+      color: #0a0a0a;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Georgia', serif;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.9rem 1.5rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      width: 100%;
+    }
+    .cta:hover { opacity: 0.88; }
+    .cta:disabled { opacity: 0.35; cursor: not-allowed; }
+    .status {
+      font-size: 0.85rem;
+      color: #888;
+      text-align: center;
+      min-height: 1.2em;
+    }
+    .status.error { color: #e05555; }
+    .status.ok { color: #5aab6e; }
+  </style>
 </head>
 <body>
-  <main class="container app-shell">
-    <header class="hero-row">
-      <div>
-        <p class="eyebrow">RiverEditor Runtime</p>
-        <h1>L99 Story Engine</h1>
-        <p class="subtitle">Your story worlds, continuity health, and production tools in one place.</p>
-      </div>
-      <button id="showCreateForm" class="primary-action" type="button">New Story</button>
-    </header>
+  <div class="stage">
+    <p class="wordmark">L99</p>
+    <h1>What story do you want to tell?</h1>
 
-    <nav class="mode-nav compact-nav" aria-label="Operations">
-      <a href="/mission_control.html">Mission Control</a>
-      <a href="/ooda_dashboard.html">OODA Live</a>
-      <a href="/lindymode_dashboard.html">Lindymode</a>
-    </nav>
+    <div class="prompt-area">
+      <label for="vision">Your story in a sentence or two</label>
+      <textarea
+        id="vision"
+        placeholder="A retired astronaut discovers her late husband left clues to a life she never knew..."
+        maxlength="1000"
+      ></textarea>
+    </div>
 
-    <section id="createPanel" class="beat-card create-panel hidden">
-      <div class="section-heading-row">
-        <div>
-          <p class="eyebrow">Create</p>
-          <h2>New Story Workspace</h2>
-        </div>
-        <button id="hideCreateForm" class="quiet-button" type="button">Close</button>
+    <div class="selectors">
+      <div class="selector-group">
+        <label for="medium">Format</label>
+        <select id="medium">
+          <option value="book">Book</option>
+          <option value="picture_book">Picture book</option>
+          <option value="movie">Movie</option>
+          <option value="tv">TV series</option>
+          <option value="song">Song</option>
+          <option value="podcast">Podcast</option>
+          <option value="game">Game</option>
+          <option value="comic">Comic</option>
+          <option value="play">Play</option>
+          <option value="short_clip">Short clip</option>
+        </select>
       </div>
-      <form id="storyForm">
-        <label>Title<input type="text" id="title" placeholder="The River Between Stars" required></label>
-        <label>Genre<input type="text" id="genre" placeholder="Fantasy, thriller, romance..."></label>
-        <label>Pitch<textarea id="pitch" rows="4" placeholder="What is this story really about?"></textarea></label>
-        <button type="submit">Create Workspace</button>
-      </form>
-      <div id="error" class="error hidden"></div>
-    </section>
+      <div class="selector-group">
+        <label for="audience">Audience</label>
+        <select id="audience">
+          <option value="adult">Adult</option>
+          <option value="young_adult">Young adult</option>
+          <option value="teen">Teen</option>
+          <option value="eli10">Kids (around 10)</option>
+          <option value="eli5">Young kids</option>
+          <option value="child">Child</option>
+          <option value="middle_grade">Middle grade</option>
+        </select>
+      </div>
+    </div>
 
-    <section class="library-section">
-      <div class="section-heading-row">
-        <div>
-          <p class="eyebrow">Library</p>
-          <h2>Your Workspaces</h2>
-        </div>
-        <button id="refreshStories" class="quiet-button" type="button">Refresh</button>
-      </div>
-      <div id="workspaceList" class="workspace-grid">
-        <div class="beat-card"><p class="subtitle">Loading workspaces…</p></div>
-      </div>
-    </section>
-  </main>
-  <script src="/front_door.js"></script>
+    <button class="cta" id="startBtn" disabled>Begin</button>
+    <p class="status" id="status"></p>
+  </div>
+
+  <script>
+    const visionEl = document.getElementById('vision');
+    const mediumEl = document.getElementById('medium');
+    const audienceEl = document.getElementById('audience');
+    const startBtn = document.getElementById('startBtn');
+    const statusEl = document.getElementById('status');
+
+    function updateBtn() {
+      startBtn.disabled = visionEl.value.trim().length < 10;
+    }
+    visionEl.addEventListener('input', updateBtn);
+
+    startBtn.addEventListener('click', async () => {
+      const vision = visionEl.value.trim();
+      if (!vision) return;
+
+      startBtn.disabled = true;
+      statusEl.textContent = 'Starting your story\u2026';
+      statusEl.className = 'status';
+
+      try {
+        const key = window.L99_API_KEY || localStorage.getItem('l99_api_key') || '';
+        const res = await fetch('/api/story-engine/runs', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(key ? { 'x-api-key': key } : {})
+          },
+          body: JSON.stringify({
+            story_vision: vision,
+            medium: mediumEl.value,
+            audience: audienceEl.value
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Server error ${res.status}`);
+        }
+
+        const run = await res.json();
+        const workspaceId = run.workspace_id || run.run?.workspace_id;
+        if (workspaceId) {
+          window.location.href = `/story_home.html?workspace_id=${encodeURIComponent(workspaceId)}`;
+        } else {
+          window.location.href = '/story_home.html';
+        }
+      } catch (err) {
+        statusEl.textContent = err.message || 'Something went wrong. Try again.';
+        statusEl.className = 'status error';
+        startBtn.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>

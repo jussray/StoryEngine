@@ -10,6 +10,7 @@ import { dirname } from 'node:path';
 import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
 import { requestContext, requireAuth, enforceWorkspaceAccess, securitySnapshot } from './lib/securityContext.js';
+import { enforcePageAccess } from './lib/pageGuard.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
@@ -133,7 +134,6 @@ function serveStatic(filePath, ext, res) {
     res.end(injected);
     return;
   }
-
   res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain' });
   res.end(readFileSync(filePath));
 }
@@ -152,11 +152,28 @@ const server = createServer((req, res) => {
   }
 
   let urlPath = req.url.split('?')[0];
-  if (urlPath === '/') urlPath = '/story_engine.html';
-  const filePath = join(__dirname, 'public', urlPath);
+  // Root redirects to the creator entry point.
+  if (urlPath === '/') urlPath = '/front_door.html';
 
+  const filePath = join(__dirname, 'public', urlPath);
+  const ext = extname(filePath);
+
+  // Only gate HTML and JS files — images, icons, css pass through freely.
+  if (ext === '.html' || ext === '.js') {
+    enforcePageAccess(urlPath, req, res, () => {
+      if (existsSync(filePath)) {
+        serveStatic(filePath, ext, res);
+      } else {
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    });
+    return;
+  }
+
+  // Non-gated static assets (css, ico, etc).
   if (existsSync(filePath)) {
-    serveStatic(filePath, extname(filePath), res);
+    serveStatic(filePath, ext, res);
   } else {
     res.writeHead(404);
     res.end('Not found');
@@ -184,22 +201,8 @@ server.listen(PORT, () => {
   console.log(`API body limit: ${API_MAX_BODY_BYTES} bytes`);
   console.log('LLM routing:', JSON.stringify(llmSnapshot));
   console.log(`LLM client started at: ${new Date(llmSnapshot.client_started_at).toISOString()} (${llmSnapshot.circuit_state_scope})`);
-  console.log('L99 OS Alpha entry point: http://localhost:' + PORT + '/story_engine.html');
+  console.log('Creator entry point: http://localhost:' + PORT + '/ → /front_door.html');
+  console.log('Operator entry point: http://localhost:' + PORT + '/control_room.html (administrator role required)');
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
-  console.log('Series Continuity Audit API: POST /api/audit/series-continuity');
-  console.log('Creative Profiles: http://localhost:' + PORT + '/creative_profile.html');
-  console.log('Control Room: http://localhost:' + PORT + '/control_room.html');
-  console.log('Performance Dashboard: http://localhost:' + PORT + '/performance_dashboard.html');
-  console.log('L99 Studio: http://localhost:' + PORT + '/studio.html');
-  console.log('IP Studio: http://localhost:' + PORT + '/ip_studio.html');
-  console.log('Campaign Studio: http://localhost:' + PORT + '/campaign_studio.html');
-  console.log('Story Memory API: GET /api/memory/:workspace_id');
-  console.log('Assist Mode: GET /api/assist/options');
-  console.log('Audience lenses: GET /api/audience-lenses');
-  console.log('Story Blueprint conversions: GET /api/blueprints/options');
-  console.log('Validation Seed Assets: GET /api/validation-seeds/options');
-  console.log('IP Growth Engine: GET /api/ip-growth/overview');
-  console.log('IP Studio: GET /api/ip-studio/options');
-  console.log('Campaign Studio: GET /api/campaign-studio/options');
   console.log('Founder Economics: GET /api/bootstrap-engine/overview');
 });
