@@ -136,7 +136,7 @@ test('Retention compacts resolved correlations and preserves active incident cor
   `).run(workspaceId, old + 2);
 
   const result = runEventRetention(db, { keepMs: 7 * 24 * 60 * 60 * 1000, limit: 100 });
-  const remaining = db.prepare('SELECT payload FROM events ORDER BY id').all();
+  const remaining = db.prepare("SELECT payload FROM events WHERE event_type LIKE 'runtime.%' ORDER BY id").all();
   const compacted = db.prepare('SELECT * FROM compacted_event_episodes').all();
   const status = getRetentionStatus(db);
 
