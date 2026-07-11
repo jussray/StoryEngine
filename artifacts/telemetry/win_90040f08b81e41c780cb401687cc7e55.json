@@ -1,0 +1,213 @@
+{
+  "computed_at": "2026-07-11T08:19:53.277628Z",
+  "report": {
+    "by_cache_state": {
+      "cold": {
+        "count": 3,
+        "l99_ms": 1782.8,
+        "max_ms": 1800.0,
+        "p50_ms": 940.0,
+        "p95_ms": 1713.9999999999998
+      },
+      "unknown": {
+        "count": 1,
+        "l99_ms": 90.0,
+        "max_ms": 90.0,
+        "p50_ms": 90.0,
+        "p95_ms": 90.0
+      },
+      "warm": {
+        "count": 3,
+        "l99_ms": 606.1999999999999,
+        "max_ms": 610.0,
+        "p50_ms": 420.0,
+        "p95_ms": 591.0
+      }
+    },
+    "by_chain_id": {
+      "chain_001": {
+        "cache_state": "warm",
+        "command_type": "/style chain",
+        "correlation_id": "inc_shell_chain_001",
+        "migration_applied": false,
+        "profile_tier": "pro",
+        "registry_schema_version": "1.1.0",
+        "rollback_applied": false,
+        "stage_count": 3,
+        "status": "completed",
+        "tenant_id": "tenant_alpha",
+        "total_latency_ms": 1280.0,
+        "unsupported_registry_blocked": false,
+        "validation_failed": false
+      },
+      "chain_002": {
+        "cache_state": "cold",
+        "command_type": "/style chain",
+        "correlation_id": "inc_shell_chain_002",
+        "migration_applied": true,
+        "profile_tier": "starter",
+        "registry_schema_version": "1.0.0",
+        "rollback_applied": true,
+        "stage_count": 3,
+        "status": "failed",
+        "tenant_id": "tenant_alpha",
+        "total_latency_ms": 2920.0,
+        "unsupported_registry_blocked": false,
+        "validation_failed": true
+      },
+      "chain_003": {
+        "cache_state": "unknown",
+        "command_type": "/ghost apply",
+        "correlation_id": "inc_shell_chain_003",
+        "migration_applied": false,
+        "profile_tier": "enterprise",
+        "registry_schema_version": "2.0.0",
+        "rollback_applied": false,
+        "stage_count": 1,
+        "status": "failed",
+        "tenant_id": "tenant_beta",
+        "total_latency_ms": 90.0,
+        "unsupported_registry_blocked": true,
+        "validation_failed": true
+      }
+    },
+    "by_command_type": {
+      "/ghost apply": {
+        "count": 1,
+        "l99_ms": 90.0,
+        "max_ms": 90.0,
+        "p50_ms": 90.0,
+        "p95_ms": 90.0
+      },
+      "/style chain": {
+        "count": 6,
+        "l99_ms": 1757.0,
+        "max_ms": 1800.0,
+        "p50_ms": 515.0,
+        "p95_ms": 1585.0
+      }
+    },
+    "by_handler": {
+      "caveman_rewrite": {
+        "count": 2,
+        "l99_ms": 1788.1,
+        "max_ms": 1800.0,
+        "p50_ms": 1205.0,
+        "p95_ms": 1740.5
+      },
+      "ghost_apply": {
+        "count": 2,
+        "l99_ms": 934.8000000000001,
+        "max_ms": 940.0,
+        "p50_ms": 680.0,
+        "p95_ms": 914.0
+      },
+      "proofread_run": {
+        "count": 1,
+        "l99_ms": 250.0,
+        "max_ms": 250.0,
+        "p50_ms": 250.0,
+        "p95_ms": 250.0
+      },
+      "registry_validator": {
+        "count": 2,
+        "l99_ms": 179.1,
+        "max_ms": 180.0,
+        "p50_ms": 135.0,
+        "p95_ms": 175.5
+      }
+    },
+    "by_profile_tier": {
+      "enterprise": {
+        "count": 1,
+        "l99_ms": 90.0,
+        "max_ms": 90.0,
+        "p50_ms": 90.0,
+        "p95_ms": 90.0
+      },
+      "pro": {
+        "count": 3,
+        "l99_ms": 606.1999999999999,
+        "max_ms": 610.0,
+        "p50_ms": 420.0,
+        "p95_ms": 591.0
+      },
+      "starter": {
+        "count": 3,
+        "l99_ms": 1782.8,
+        "max_ms": 1800.0,
+        "p50_ms": 940.0,
+        "p95_ms": 1713.9999999999998
+      }
+    },
+    "by_registry_schema_version": {
+      "1.0.0": {
+        "count": 1,
+        "l99_ms": 180.0,
+        "max_ms": 180.0,
+        "p50_ms": 180.0,
+        "p95_ms": 180.0
+      },
+      "1.1.0": {
+        "count": 5,
+        "l99_ms": 1765.6000000000001,
+        "max_ms": 1800.0,
+        "p50_ms": 610.0,
+        "p95_ms": 1628.0
+      },
+      "2.0.0": {
+        "count": 1,
+        "l99_ms": 90.0,
+        "max_ms": 90.0,
+        "p50_ms": 90.0,
+        "p95_ms": 90.0
+      }
+    },
+    "by_stage": {
+      "caveman.rewrite": {
+        "count": 2,
+        "l99_ms": 1788.1,
+        "max_ms": 1800.0,
+        "p50_ms": 1205.0,
+        "p95_ms": 1740.5
+      },
+      "ghost.apply": {
+        "count": 2,
+        "l99_ms": 934.8000000000001,
+        "max_ms": 940.0,
+        "p50_ms": 680.0,
+        "p95_ms": 914.0
+      },
+      "proofread.run": {
+        "count": 1,
+        "l99_ms": 250.0,
+        "max_ms": 250.0,
+        "p50_ms": 250.0,
+        "p95_ms": 250.0
+      },
+      "registry.validate": {
+        "count": 2,
+        "l99_ms": 179.1,
+        "max_ms": 180.0,
+        "p50_ms": 135.0,
+        "p95_ms": 175.5
+      }
+    },
+    "summary": {
+      "chain_count": 3,
+      "chain_success_rate": 0.3333333333333333,
+      "l99_chain_latency_ms": 2887.2,
+      "max_chain_latency_ms": 2920.0,
+      "migration_applied_rate": 0.3333333333333333,
+      "p50_chain_latency_ms": 1280.0,
+      "p95_chain_latency_ms": 2755.9999999999995,
+      "record_count": 7,
+      "rollback_rate": 0.3333333333333333,
+      "unsupported_registry_block_rate": 0.3333333333333333,
+      "validation_failure_rate": 0.6666666666666666
+    }
+  },
+  "window_end_utc": "2026-07-07T11:30:00Z",
+  "window_id": "win_90040f08b81e41c780cb401687cc7e55",
+  "window_start_utc": "2026-07-07T11:15:00Z"
+}
