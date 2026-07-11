@@ -2,6 +2,21 @@
 
 L99 is an AI runtime and operations layer focused on state integrity, provenance-safe semantic reuse, recovery, shadow validation, and observable promotion controls.
 
+## AI operating contracts
+
+- [`GLOBAL_AI.md`](GLOBAL_AI.md) — provider-neutral founder contract
+- [`CLAUDE.md`](CLAUDE.md) — Claude / Claude Code repository instructions
+- [`AGENTS.md`](AGENTS.md) — Codex, ChatGPT, and repository-agent instructions
+- [`docs/PROVIDERS.md`](docs/PROVIDERS.md) — Claude, Codex, OpenAI, Anthropic, Perplexity, and GitHub boundaries
+
+Shared founder stack:
+
+```text
+/garyvee lindymode redteam l99 redteam ooda
+```
+
+The first redteam attacks the premise. The second attacks the selected implementation. Provider instructions may become stricter for L99, but they may not weaken isolation, provenance, revocation, evidence, approval, rollback, or truthfulness.
+
 ## Current foundation
 
 - `policies/cross_user_leak_detection.md` — structural isolation and incident-response policy.
