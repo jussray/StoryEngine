@@ -58,7 +58,7 @@ function stageTimings(events = []) {
 
 function modelsUsed(db, workspaceId, since) {
   const rows = db.prepare(`
-    SELECT payload_json
+    SELECT payload
     FROM events
     WHERE workspace_id=? AND created_at>=?
       AND (event_type LIKE 'llm.%' OR event_type LIKE 'model.%')
@@ -66,7 +66,7 @@ function modelsUsed(db, workspaceId, since) {
   `).all(workspaceId, since);
   const found = new Set();
   for (const row of rows) {
-    const payload = parseJson(row.payload_json, {});
+    const payload = parseJson(row.payload, {});
     for (const value of [payload.model, payload.provider, payload.route]) {
       if (value) found.add(String(value));
     }

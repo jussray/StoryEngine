@@ -1,6 +1,7 @@
 // lib/campaignStudio.js
 
 import { randomUUID } from 'node:crypto';
+import './sqliteTransaction.js';
 import { buildStoryBlueprint, getStoryBlueprint } from './storyBlueprint.js';
 import { getProductionPack } from './ipStudio.js';
 import { log } from '../models/eventModel.js';

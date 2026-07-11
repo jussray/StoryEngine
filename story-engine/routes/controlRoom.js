@@ -1,6 +1,7 @@
 // routes/controlRoom.js
 
 import { randomUUID } from 'node:crypto';
+import '../lib/sqliteTransaction.js';
 import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { storyEngineBrainSnapshot } from '../lib/storyEngineOrchestrator.js';

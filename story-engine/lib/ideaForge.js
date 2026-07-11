@@ -1,6 +1,7 @@
 // lib/ideaForge.js
 
 import { randomUUID, createHash } from 'node:crypto';
+import './sqliteTransaction.js';
 import { log } from '../models/eventModel.js';
 
 const ANGLES = [

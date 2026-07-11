@@ -1,6 +1,7 @@
 // lib/eventRetention.js
 
 import { randomUUID } from 'node:crypto';
+import './sqliteTransaction.js';
 
 const DEFAULT_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 const MIN_KEEP_MS = 24 * 60 * 60 * 1000;

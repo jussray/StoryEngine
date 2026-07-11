@@ -1,5 +1,7 @@
 // models/lindymodeModel.js
 
+import '../lib/sqliteTransaction.js';
+
 export function getState(db, workspace_id) {
   const row = db.prepare('SELECT * FROM lindymode_state WHERE workspace_id = ?').get(workspace_id);
   if (!row) return null;

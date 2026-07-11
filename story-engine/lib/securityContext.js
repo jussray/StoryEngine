@@ -39,6 +39,22 @@ function keyRegistry() {
   return registryCache;
 }
 
+function cookieCredential(req) {
+  const cookieHeader = req.headers?.cookie;
+  if (typeof cookieHeader !== 'string' || !cookieHeader) return '';
+  for (const part of cookieHeader.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator === -1) continue;
+    if (part.slice(0, separator).trim() !== 'l99_api_key') continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      return part.slice(separator + 1).trim();
+    }
+  }
+  return '';
+}
+
 function suppliedCredential(req) {
   const direct = req.headers?.['x-api-key'];
   if (typeof direct === 'string' && direct.trim()) return direct.trim();
@@ -47,6 +63,8 @@ function suppliedCredential(req) {
     const match = authorization.match(/^Bearer\s+(.+)$/i);
     if (match) return match[1].trim();
   }
+  const cookie = cookieCredential(req);
+  if (cookie) return cookie;
   return '';
 }
 

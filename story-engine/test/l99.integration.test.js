@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { evaluateReleaseGate } from '../lib/releaseGate.js';
 import { enqueueRuntime } from '../lib/runtimeDispatcher.js';
 import { getRetentionStatus, runEventRetention } from '../lib/eventRetention.js';
+import { upsertCreativeProfile } from '../lib/creativeProfile.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
@@ -45,6 +46,15 @@ function seedHealthyWorkspace(db, workspaceId = 'workspace-test') {
       status, steps_json, result_json, created_at, completed_at
     ) VALUES ('run-1', 'corr-runtime-1', ?, 1, 'test', 'completed', '[]', '{}', ?, ?)
   `).run(workspaceId, now, now);
+
+  upsertCreativeProfile(db, workspaceId, {
+    story_vision: 'A complete test story about courage and belonging.',
+    story_kind: 'drama',
+    emotional_effect: 'hope',
+    medium: 'book',
+    audience: 'adult',
+    goal: 'entertain',
+  });
 
   return workspaceId;
 }
@@ -126,7 +136,7 @@ test('Retention compacts resolved correlations and preserves active incident cor
   `).run(workspaceId, old + 2);
 
   const result = runEventRetention(db, { keepMs: 7 * 24 * 60 * 60 * 1000, limit: 100 });
-  const remaining = db.prepare('SELECT payload FROM events ORDER BY id').all();
+  const remaining = db.prepare("SELECT payload FROM events WHERE event_type LIKE 'runtime.%' ORDER BY id").all();
   const compacted = db.prepare('SELECT * FROM compacted_event_episodes').all();
   const status = getRetentionStatus(db);
 
