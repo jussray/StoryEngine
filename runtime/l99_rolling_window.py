@@ -70,15 +70,21 @@ def append_window(
             "status": "completed",
             "source_system": "l99_rolling_window",
             "reason": f"window_computed:{window_start_utc}..{window_end_utc}",
-            "l99_latency_ms": summary["l99_chain_latency_ms"],
-            "p50_latency_ms": summary["p50_chain_latency_ms"],
-            "p95_latency_ms": summary["p95_chain_latency_ms"],
             "rollback_rate": summary["rollback_rate"],
             "validation_failure_rate": summary["validation_failure_rate"],
             "chain_success_rate": summary["chain_success_rate"],
             "unsupported_registry_block_rate": summary["unsupported_registry_block_rate"],
             "artifact_ref": artifact_ref,
         }
+        # An empty telemetry batch yields None latency percentiles (no
+        # records to compute them from); omit those keys rather than
+        # emitting a null for a schema field typed as a number.
+        if summary["l99_chain_latency_ms"] is not None:
+            event["l99_latency_ms"] = summary["l99_chain_latency_ms"]
+        if summary["p50_chain_latency_ms"] is not None:
+            event["p50_latency_ms"] = summary["p50_chain_latency_ms"]
+        if summary["p95_chain_latency_ms"] is not None:
+            event["p95_latency_ms"] = summary["p95_chain_latency_ms"]
         append_event(feed_path, event)
         window["event_id"] = event["event_id"]
 

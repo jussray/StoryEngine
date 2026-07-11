@@ -142,6 +142,18 @@ const SEVERITY_ORDER = ["sev3", "sev2", "sev1", "watch", "info"];
 
 const state = { events: [], tenant: "", criticalOnly: false };
 
+// Event fields (reason, correlation_id, ...) can carry attacker-influenced
+// text — e.g. via `:emit lindy-event`'s reason argument reaching this feed —
+// so anything interpolated into innerHTML must be escaped first.
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function isCritical(event) {
   return (
     event.severity === "sev3" ||
@@ -213,10 +225,14 @@ function groupEvents() {
 function eventRow(event) {
   const row = document.createElement("div");
   row.className = "event-row" + (isCritical(event) ? " critical" : "");
+  const timestamp = escapeHtml((event.timestamp_utc || "").replace("T", " ").replace("Z", ""));
+  const eventType = escapeHtml(event.event_type || "unknown");
+  const reason = escapeHtml(event.reason || "");
+  const severity = escapeHtml(event.severity || "info");
   row.innerHTML = `
-    <span class="muted">${(event.timestamp_utc || "").replace("T", " ").replace("Z", "")}</span>
-    <span>${event.event_type || "unknown"} — ${event.reason || ""}</span>
-    <span class="badge ${event.severity || "info"}">${event.severity || "info"}</span>
+    <span class="muted">${timestamp}</span>
+    <span>${eventType} — ${reason}</span>
+    <span class="badge ${severity}">${severity}</span>
   `;
   row.addEventListener("click", () => showCorrelationChain(event.correlation_id));
   return row;
@@ -271,15 +287,18 @@ function showCorrelationChain(correlationId) {
     .filter((event) => event.correlation_id === correlationId)
     .sort((a, b) => (a.timestamp_utc || "").localeCompare(b.timestamp_utc || ""));
 
-  chainEl.innerHTML = `<p class="muted">correlation_id: ${correlationId} (${chain.length} events)</p>`;
+  chainEl.innerHTML = `<p class="muted">correlation_id: ${escapeHtml(correlationId)} (${chain.length} events)</p>`;
   for (const event of chain) {
     const item = document.createElement("div");
     item.className = "chain-item" + (isCritical(event) ? " critical" : "");
+    const parentLine = event.parent_event_id
+      ? `<br /><span class="muted">parent: ${escapeHtml(event.parent_event_id)}</span>`
+      : "";
     item.innerHTML = `
-      <strong>${event.event_type}</strong><br />
-      <span class="muted">${event.timestamp_utc || ""}</span><br />
-      ${event.reason || ""}
-      ${event.parent_event_id ? `<br /><span class="muted">parent: ${event.parent_event_id}</span>` : ""}
+      <strong>${escapeHtml(event.event_type)}</strong><br />
+      <span class="muted">${escapeHtml(event.timestamp_utc || "")}</span><br />
+      ${escapeHtml(event.reason || "")}
+      ${parentLine}
     `;
     chainEl.appendChild(item);
   }

@@ -48,7 +48,13 @@ def validate_event(event: dict[str, Any], schema: dict[str, Any] | None = None) 
 
     for key, value in event.items():
         prop = properties.get(key)
-        if prop is None or value is None:
+        if prop is None:
+            continue
+        if value is None:
+            # No property in this schema is declared nullable (no
+            # "type": [..., "null"]); a present-but-null value on a typed
+            # field is invalid, not something to silently skip.
+            problems.append(f"{key} is null but schema requires type {prop.get('type')!r}")
             continue
         enum = prop.get("enum")
         if enum is not None and value not in enum:

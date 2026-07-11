@@ -16,6 +16,7 @@ evaluation (that is the still-unbuilt Provenance Engine itself).
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
@@ -40,8 +41,27 @@ def load_provenance_rules(path: str | Path = PROVENANCE_RULES_PATH) -> dict[str,
     return _rules_cache
 
 
+_SAFE_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _sanitize_path_component(value: str, label: str) -> str:
+    """Reject anything that isn't a safe single filesystem path component.
+
+    `artifact_id` (and, defensively, `category`) can originate from
+    attacker-influenced input — e.g. `:open episode <correlation_id>` feeds
+    a shell argument straight into `build_incident_artifact`'s artifact_id.
+    Without this check, a value like `../../policies/provenance_rules`
+    would escape `artifacts/<category>/` entirely.
+    """
+    if value in {".", ".."} or "/" in value or "\\" in value or not _SAFE_PATH_COMPONENT.match(value):
+        raise ValueError(f"unsafe {label}: {value!r}")
+    return value
+
+
 def write_artifact(category: str, artifact_id: str, payload: dict[str, Any], artifacts_dir: str | Path = ARTIFACTS_DIR) -> str:
     """Write one JSON artifact and return its path relative to the repo root."""
+    category = _sanitize_path_component(category, "category")
+    artifact_id = _sanitize_path_component(artifact_id, "artifact_id")
     directory = Path(artifacts_dir) / category
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{artifact_id}.json"
