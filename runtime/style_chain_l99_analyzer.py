@@ -12,7 +12,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import sys
 from typing import Any, Iterable
+from uuid import uuid4
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from artifact_writer import write_artifact  # noqa: E402
 
 
 DEFAULT_SLICE_FIELDS = (
@@ -125,6 +130,12 @@ def write_report(input_path: str | Path, output_path: str | Path) -> dict[str, A
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report
+
+
+def write_telemetry_artifact(report: dict[str, Any], artifact_id: str | None = None) -> str:
+    """Write a telemetry report through the shared artifact writer. Returns artifact_ref."""
+    artifact_id = artifact_id or f"telemetry_{uuid4().hex}"
+    return write_artifact("telemetry", artifact_id, report)
 
 
 if __name__ == "__main__":
