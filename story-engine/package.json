@@ -6,10 +6,11 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js",
-    "test:playwright": "npx playwright test"
+    "test:playwright": "playwright test",
+    "test:guardrails": "playwright test e2e/guardrails.spec.js"
   },
-  "optionalDependencies": {
-    "playwright": "^1.49.0"
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   },
   "engines": {
     "node": ">=22.5.0"
