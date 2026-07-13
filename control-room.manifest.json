@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "repository": "jussray/l99-",
+  "repository": "jussray/l99-StoryEngine",
   "portfolioHub": "jussray/founder-control-room",
   "role": "runtime-control-room",
   "authority": {
@@ -20,12 +20,15 @@
   },
   "evidence": {
     "status": "at-risk",
-    "commit": "7e035abb7e944dbedcb794991d564ec7be9198a9",
-    "observedAt": "2026-07-12",
+    "commit": "7fc160fd08284381074766ef79d64fc21ecdaaa3",
+    "observedAt": "2026-07-13",
     "proofRefs": [
       "GLOBAL_AI.md",
       "docs/GUARDRAILS.md",
-      "story-engine/routes/controlRoom.js"
+      "story-engine/routes/controlRoom.js",
+      "runtime/promotion_gates.py",
+      "runtime/portfolio_status.py",
+      ".github/workflows/publish-control-room-status.yml"
     ]
   },
   "risk": {
@@ -36,5 +39,5 @@
       "Stale feature PR branches still require closure or reconstruction from current main"
     ]
   },
-  "nextGate": "Complete tenant-safe authorization and close stale stacked PRs before production release or portfolio write integration."
+  "nextGate": "Verify the exact-main GitHub OIDC status bridge, then complete tenant-safe authorization and close or reconstruct stale feature pull requests before production release."
 }
