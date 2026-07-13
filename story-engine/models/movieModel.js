@@ -43,6 +43,10 @@ export function generateBeats(db, workspace_id) {
   return listBeats(db, workspace_id);
 }
 
+export function getBeat(db, id) {
+  return db.prepare('SELECT * FROM movie_beats WHERE id = ?').get(id);
+}
+
 export function updateBeat(db, id, { logline }) {
   db.prepare('UPDATE movie_beats SET logline = ?, updated_at = ? WHERE id = ?')
     .run(logline, Date.now(), id);

@@ -4,12 +4,14 @@ import { json } from '../lib/miniRouter.js';
 import * as Chapter from '../models/chapterModel.js';
 import { log } from '../models/eventModel.js';
 import { enqueueRuntime } from '../lib/runtimeDispatcher.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function chapterMaintenanceRoutes(router, db) {
   router.delete('/api/chapters/:id', (req, res) => {
     const id = Number(req.params.id);
     const chapter = Chapter.get(db, id);
     if (!chapter) return json(res, 404, { error: 'Not found' });
+    if (!requireWorkspaceAccess(req, res, chapter.workspace_id)) return;
 
     Chapter.remove(db, id);
     log(db, {
