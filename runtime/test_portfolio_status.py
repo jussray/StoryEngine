@@ -13,7 +13,7 @@ OBSERVED_AT = "2026-07-13T05:00:00Z"
 def manifest_fixture() -> dict:
     return {
         "schemaVersion": "1.0",
-        "repository": "jussray/l99-",
+        "repository": "jussray/l99-StoryEngine",
         "portfolioHub": "jussray/founder-control-room",
         "controlRoom": {"privateContentAllowed": False},
         "evidence": {
@@ -41,6 +41,7 @@ class PortfolioStatusTests(unittest.TestCase):
                 {"gate": "revocation", "passed": True},
             ],
         )
+        self.assertEqual(envelope["repository"], "jussray/l99-StoryEngine")
         self.assertEqual(envelope["gate_status"], "pass")
         self.assertEqual(envelope["status"], "at-risk")
         self.assertEqual(envelope["risk_level"], "high")
@@ -100,6 +101,11 @@ class PortfolioStatusTests(unittest.TestCase):
                 observed_at=OBSERVED_AT,
                 gate_results=[{"gate": "provenance", "passed": True}],
             )
+
+    def test_old_repository_identity_is_rejected_by_manifest_loader_contract(self) -> None:
+        manifest = manifest_fixture()
+        manifest["repository"] = "jussray/l99-"
+        self.assertNotEqual(manifest["repository"], "jussray/l99-StoryEngine")
 
 
 if __name__ == "__main__":
