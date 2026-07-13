@@ -1,0 +1,89 @@
+name: Publish L99 Control Room Status
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: l99-control-room-status-main
+  cancel-in-progress: true
+
+env:
+  STATUS_PATH: artifacts/control-room/l99-status.json
+  FOUNDER_CONTROL_ROOM_URL: https://oojzfmmywbvficgybaxd.supabase.co/functions/v1/ingest-l99-status
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test status exporter
+        run: python runtime/test_portfolio_status.py
+
+      - name: Build exact-head sanitized status
+        run: |
+          python runtime/portfolio_status.py \
+            --commit "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --output "$STATUS_PATH"
+
+      - name: Upload status evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: l99-control-room-status-${{ github.sha }}
+          path: ${{ env.STATUS_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Request GitHub OIDC token
+        id: oidc
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=founder-control-room")"
+          token="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$response")"
+          test -n "$token"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Send observation to Founder Control Room
+        shell: bash
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --show-error --silent \
+            --retry 2 --retry-all-errors \
+            -X POST "$FOUNDER_CONTROL_ROOM_URL" \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary "@$STATUS_PATH"
+
+      - name: Keep failed promotion gates red
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('artifacts/control-room/l99-status.json').read_text())
+          if payload['gate_status'] != 'pass':
+              failed = [item['gate'] for item in payload['gate_results'] if not item['passed']]
+              raise SystemExit(f"Promotion gates failed: {', '.join(failed)}")
+          print('All promotion gates passed; sanitized observation published.')
+          PY
