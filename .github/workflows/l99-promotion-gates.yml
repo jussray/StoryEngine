@@ -26,6 +26,9 @@ on:
       - 'dashboards/**'
       - '.github/workflows/l99-promotion-gates.yml'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   gates:
     name: Promotion gates
