@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "repository": "jussray/l99-",
+  "portfolioHub": "jussray/founder-control-room",
+  "role": "runtime-control-room",
+  "authority": {
+    "sourceOfTruth": "Current main event spine, Story Engine state, artifacts, promotion gates, and repository CI evidence",
+    "portfolioMode": "sanitized-read-only-observer",
+    "productionMutation": "separate-founder-gate"
+  },
+  "controlRoom": {
+    "localSurface": true,
+    "surfaces": [
+      "story-engine/routes/controlRoom.js",
+      "story-engine/lib/guardrails.js",
+      "GLOBAL_AI.md",
+      "docs/GUARDRAILS.md"
+    ],
+    "privateContentAllowed": false
+  },
+  "evidence": {
+    "status": "at-risk",
+    "commit": "7e035abb7e944dbedcb794991d564ec7be9198a9",
+    "observedAt": "2026-07-12",
+    "proofRefs": [
+      "GLOBAL_AI.md",
+      "docs/GUARDRAILS.md",
+      "story-engine/routes/controlRoom.js"
+    ]
+  },
+  "risk": {
+    "level": "high",
+    "blockers": [
+      "Tenant-safe authentication and resource ownership remain release blockers",
+      "Creator and operator surfaces are not fully separated",
+      "Stale feature PR branches still require closure or reconstruction from current main"
+    ]
+  },
+  "nextGate": "Complete tenant-safe authorization and close stale stacked PRs before production release or portfolio write integration."
+}
