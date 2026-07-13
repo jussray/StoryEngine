@@ -2,7 +2,8 @@
 
 These files contain evidence-ranked opportunity analysis. They do **not** change runtime contracts, event schemas, promotion gates, release state, or roadmap authority.
 
-- [`L99_AI_TOOLING_OPPORTUNITIES_2026.md`](L99_AI_TOOLING_OPPORTUNITIES_2026.md) — ten AI-tooling opportunities mapped to L99 invariants, evidence strength, priority, and stop conditions
+- [`../industry-signals/ai-tooling-under-the-radar-2026.md`](../industry-signals/ai-tooling-under-the-radar-2026.md) — canonical ten-trend AI-tooling research brief
+- [`L99_AI_TOOLING_OPPORTUNITIES_2026.md`](L99_AI_TOOLING_OPPORTUNITIES_2026.md) — repo-specific opportunities mapped to L99 invariants, evidence strength, priority, and stop conditions
 
 ## Promotion rule
 
