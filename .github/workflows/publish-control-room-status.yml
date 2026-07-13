@@ -4,13 +4,20 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'control-room.manifest.json'
+      - 'runtime/portfolio_status.py'
+      - 'runtime/test_portfolio_status.py'
+      - 'runtime/promotion_gates.py'
+      - '.github/workflows/publish-control-room-status.yml'
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: l99-control-room-status-main
+  group: l99-control-room-status-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -51,6 +58,7 @@ jobs:
           retention-days: 14
 
       - name: Request GitHub OIDC token
+        if: github.event_name != 'pull_request'
         id: oidc
         shell: bash
         run: |
@@ -64,6 +72,7 @@ jobs:
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
       - name: Send observation to Founder Control Room
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
@@ -85,5 +94,5 @@ jobs:
           if payload['gate_status'] != 'pass':
               failed = [item['gate'] for item in payload['gate_results'] if not item['passed']]
               raise SystemExit(f"Promotion gates failed: {', '.join(failed)}")
-          print('All promotion gates passed; sanitized observation published.')
+          print('All promotion gates passed; sanitized observation is valid.')
           PY
