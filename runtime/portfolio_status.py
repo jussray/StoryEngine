@@ -1,9 +1,9 @@
 """Build the sanitized L99 portfolio status envelope.
 
-This module is intentionally zero-dependency. It reads the repository-owned
-control-room manifest, runs the existing promotion gates, and emits the narrow
-status contract accepted by Founder Control Room. It never exports story text,
-creator content, credentials, raw events, or production mutation authority.
+The exporter is deliberately zero-dependency. It runs the repository-owned
+promotion gates and exports only bounded operational status. Story text,
+creator content, credentials, raw events, and mutation authority never cross
+this boundary.
 """
 
 from __future__ import annotations
@@ -23,21 +23,16 @@ DEFAULT_MANIFEST_PATH = ROOT / "control-room.manifest.json"
 DEFAULT_OUTPUT_PATH = ROOT / "artifacts" / "control-room" / "l99-status.json"
 
 CONTRACT_VERSION = "1.0"
-REPOSITORY = "jussray/l99-"
+REPOSITORY = "jussray/l99-StoryEngine"
 ALLOWED_STATUSES = {
-    "planned",
-    "integrated",
-    "verified",
-    "released",
-    "blocked",
-    "at-risk",
-    "demo",
+    "planned", "integrated", "verified", "released", "blocked", "at-risk", "demo"
 }
 ALLOWED_RISKS = {"low", "medium", "high", "critical"}
 RISK_ORDER = {"low": 10, "medium": 20, "high": 30, "critical": 40}
 SECRET_PATTERN = re.compile(
-    r"service[_-]?role[_-]?key|api[_-]?key|secret\s*[:=]|sk-[a-z0-9_-]{10,}|"
-    r"sb_secret_[a-z0-9_-]{10,}|authorization\s*:\s*bearer",
+    r"service[_-]?role[_-]?key|api[_-]?key|secret\s*[:=]|"
+    r"sk-[a-z0-9_-]{10,}|sb_secret_[a-z0-9_-]{10,}|"
+    r"authorization\s*:\s*bearer",
     re.IGNORECASE,
 )
 COMMIT_PATTERN = re.compile(r"^[a-f0-9]{40}$")
@@ -45,21 +40,21 @@ SAFE_REF_PATTERN = re.compile(r"^(?!.*\.\.)(?!https?://)[A-Za-z0-9_./-]{1,220}$"
 
 
 class PortfolioStatusError(ValueError):
-    """Raised when the public status envelope would violate its contract."""
+    """The public status envelope violates its contract."""
 
 
-def _bounded_string(value: object, field: str, max_length: int) -> str:
+def _string(value: object, field: str, limit: int) -> str:
     if not isinstance(value, str):
         raise PortfolioStatusError(f"{field}_must_be_string")
     cleaned = value.strip()
-    if not cleaned or len(cleaned) > max_length:
+    if not cleaned or len(cleaned) > limit:
         raise PortfolioStatusError(f"{field}_invalid_length")
     if SECRET_PATTERN.search(cleaned):
         raise PortfolioStatusError(f"{field}_contains_sensitive_material")
     return cleaned
 
 
-def _bounded_strings(
+def _strings(
     value: object,
     field: str,
     max_items: int,
@@ -71,10 +66,20 @@ def _bounded_strings(
         raise PortfolioStatusError(f"{field}_invalid_array")
     output: list[str] = []
     for index, item in enumerate(value):
-        cleaned = _bounded_string(item, f"{field}_{index}", max_length)
+        cleaned = _string(item, f"{field}_{index}", max_length)
         if safe_ref and not SAFE_REF_PATTERN.fullmatch(cleaned):
             raise PortfolioStatusError(f"{field}_{index}_invalid")
         output.append(cleaned)
+    return output
+
+
+def _unique(values: Iterable[str]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value not in seen:
+            output.append(value)
+            seen.add(value)
     return output
 
 
@@ -106,20 +111,6 @@ def run_gates(
     return results
 
 
-def _higher_risk(left: str, right: str) -> str:
-    return left if RISK_ORDER[left] >= RISK_ORDER[right] else right
-
-
-def _unique(values: Iterable[str]) -> list[str]:
-    output: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        if value not in seen:
-            output.append(value)
-            seen.add(value)
-    return output
-
-
 def build_status_envelope(
     manifest: Mapping[str, object],
     *,
@@ -129,10 +120,10 @@ def build_status_envelope(
     observed_at: str,
     gate_results: list[dict[str, object]],
 ) -> dict[str, object]:
-    commit = _bounded_string(commit.lower(), "commit", 40)
+    commit = _string(commit.lower(), "commit", 40)
     if not COMMIT_PATTERN.fullmatch(commit):
         raise PortfolioStatusError("commit_invalid")
-    run_id = _bounded_string(source_run_id, "source_run_id", 64)
+    run_id = _string(source_run_id, "source_run_id", 64)
     if not isinstance(source_run_attempt, int) or source_run_attempt < 1:
         raise PortfolioStatusError("source_run_attempt_invalid")
 
@@ -141,70 +132,71 @@ def build_status_envelope(
     if not isinstance(evidence, Mapping) or not isinstance(risk, Mapping):
         raise PortfolioStatusError("manifest_evidence_or_risk_invalid")
 
-    manifest_status = _bounded_string(evidence.get("status"), "status", 32)
+    manifest_status = _string(evidence.get("status"), "status", 32)
+    manifest_risk = _string(risk.get("level"), "risk_level", 16)
     if manifest_status not in ALLOWED_STATUSES:
         raise PortfolioStatusError("status_invalid")
-    manifest_risk = _bounded_string(risk.get("level"), "risk_level", 16)
     if manifest_risk not in ALLOWED_RISKS:
         raise PortfolioStatusError("risk_level_invalid")
 
-    normalized_gates: list[dict[str, object]] = []
-    seen_gates: set[str] = set()
+    normalized: list[dict[str, object]] = []
+    seen: set[str] = set()
     for index, result in enumerate(gate_results):
         if not isinstance(result, Mapping):
             raise PortfolioStatusError(f"gate_results_{index}_invalid")
-        name = _bounded_string(result.get("gate"), f"gate_results_{index}_gate", 80)
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", name) or name in seen_gates:
+        name = _string(result.get("gate"), f"gate_results_{index}_gate", 80)
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name) or name in seen:
             raise PortfolioStatusError(f"gate_results_{index}_gate_invalid")
         passed = result.get("passed")
         if not isinstance(passed, bool):
             raise PortfolioStatusError(f"gate_results_{index}_passed_invalid")
-        seen_gates.add(name)
-        normalized_gates.append({"gate": name, "passed": passed})
+        seen.add(name)
+        normalized.append({"gate": name, "passed": passed})
 
     gate_status = (
-        "unknown"
-        if not normalized_gates
-        else "pass"
-        if all(bool(result["passed"]) for result in normalized_gates)
+        "unknown" if not normalized
+        else "pass" if all(bool(item["passed"]) for item in normalized)
         else "fail"
     )
-    failed_gates = [str(result["gate"]) for result in normalized_gates if not result["passed"]]
+    failed = [str(item["gate"]) for item in normalized if not item["passed"]]
     status = manifest_status if gate_status == "pass" else "blocked"
-    risk_level = manifest_risk if gate_status != "fail" else _higher_risk(manifest_risk, "high")
+    risk_level = manifest_risk
+    if gate_status == "fail" and RISK_ORDER[risk_level] < RISK_ORDER["high"]:
+        risk_level = "high"
 
-    proof_refs = _bounded_strings(evidence.get("proofRefs", []), "proof_refs", 18, 220, safe_ref=True)
-    proof_refs = _unique(
-        [
-            *proof_refs,
-            "runtime/promotion_gates.py",
-            ".github/workflows/publish-control-room-status.yml",
-        ]
-    )[:20]
+    proof_refs = _strings(evidence.get("proofRefs", []), "proof_refs", 18, 220, safe_ref=True)
+    proof_refs = _unique([
+        *proof_refs,
+        "runtime/promotion_gates.py",
+        "runtime/portfolio_status.py",
+        ".github/workflows/publish-control-room-status.yml",
+    ])[:20]
 
-    blockers = _bounded_strings(risk.get("blockers", []), "blockers", 19, 360)
-    if failed_gates:
-        blockers = _unique([*blockers, f"Promotion gates failed: {', '.join(failed_gates)}"])[:20]
+    blockers = _strings(risk.get("blockers", []), "blockers", 19, 360)
+    if failed:
+        blockers = _unique([*blockers, f"Promotion gates failed: {', '.join(failed)}"])[:20]
 
-    next_gate = _bounded_string(manifest.get("nextGate"), "next_gate", 700)
-    if failed_gates:
-        next_gate = f"Fix failed promotion gates ({', '.join(failed_gates)}) before: {next_gate}"
-        next_gate = _bounded_string(next_gate, "next_gate", 700)
+    next_gate = _string(manifest.get("nextGate"), "next_gate", 700)
+    if failed:
+        next_gate = _string(
+            f"Fix failed promotion gates ({', '.join(failed)}) before: {next_gate}",
+            "next_gate",
+            700,
+        )
 
     timestamp = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
     if timestamp.tzinfo is None:
         raise PortfolioStatusError("observed_at_timezone_required")
-    observed_at_utc = timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
     envelope: dict[str, object] = {
         "schema_version": CONTRACT_VERSION,
         "repository": REPOSITORY,
         "commit": commit,
-        "observed_at": observed_at_utc,
+        "observed_at": timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
         "status": status,
         "risk_level": risk_level,
         "gate_status": gate_status,
-        "gate_results": normalized_gates,
+        "gate_results": normalized,
         "proof_refs": proof_refs,
         "blockers": blockers,
         "next_gate": next_gate,
@@ -219,11 +211,10 @@ def build_status_envelope(
 
 def write_envelope(envelope: Mapping[str, object], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    output_path.write_text(
+        json.dumps(envelope, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -237,35 +228,31 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
     )
-    parser.add_argument("--observed-at", default=_utc_now())
+    parser.add_argument(
+        "--observed-at",
+        default=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    manifest = load_manifest(args.manifest)
-    gate_results = run_gates()
     envelope = build_status_envelope(
-        manifest,
+        load_manifest(args.manifest),
         commit=args.commit,
         source_run_id=args.run_id,
         source_run_attempt=args.run_attempt,
         observed_at=args.observed_at,
-        gate_results=gate_results,
+        gate_results=run_gates(),
     )
     write_envelope(envelope, args.output)
-    print(
-        json.dumps(
-            {
-                "output": str(args.output),
-                "commit": envelope["commit"],
-                "status": envelope["status"],
-                "risk_level": envelope["risk_level"],
-                "gate_status": envelope["gate_status"],
-            },
-            sort_keys=True,
-        )
-    )
+    print(json.dumps({
+        "output": str(args.output),
+        "commit": envelope["commit"],
+        "status": envelope["status"],
+        "risk_level": envelope["risk_level"],
+        "gate_status": envelope["gate_status"],
+    }, sort_keys=True))
     return 0
 
 
