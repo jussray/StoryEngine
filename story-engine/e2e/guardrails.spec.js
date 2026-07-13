@@ -1,3 +1,7 @@
+/**
+ * GUARDRAILS SPEC — existing tests preserved, no regressions allowed.
+ * Redteam constraint: these must ALWAYS pass regardless of what other PRs add.
+ */
 import { test, expect } from '@playwright/test';
 
 test('publishes L99 vision and runtime guardrails', async ({ page }) => {
