@@ -1,5 +1,9 @@
 # L99
 
+> **Copyright © 2024–2026 Juss Ray. All rights reserved.**
+> This is proprietary software. No license to use, copy, modify, distribute,
+> sublicense, or create derivative works is granted. See [LICENSE](LICENSE).
+
 L99 is an AI runtime and operations layer focused on state integrity, provenance-safe semantic reuse, recovery, shadow validation, and observable promotion controls.
 
 ## AI operating contracts
@@ -43,20 +47,14 @@ The first redteam attacks the premise. The second attacks the selected implement
 - `docs/rivereditor_l99_latency_monitor.md` — L99 tail-latency monitor spec for style-chain operations.
 - `schemas/style_chain_telemetry.schema.json` — telemetry record schema for command and stage latency slices.
 - `runtime/style_chain_l99_analyzer.py` — no-dependency reporter for p50, p95, L99, success, rollback, validation, migration, and registry-block rates.
-- `runtime/rivereditor_l99_latency_monitor.py` — richer chain-rollup L99 report (`summary` + `by_stage` + `by_handler` + `by_chain_id`, ...).
-- `runtime/l99_rolling_window.py` — persists successive L99 reports as rolling window snapshots (`samples/style_chain_l99_windows.ndjson`) and window-over-window trend deltas; emits `latency.window_computed` onto the shared feed.
+- `runtime/rivereditor_l99_latency_monitor.py` — richer chain-rollup L99 report.
+- `runtime/l99_rolling_window.py` — persists successive L99 reports as rolling window snapshots.
 - `runtime/l99_event_bus.py` — shared `validate_event`/`append_event` used by every event producer in this repo.
-- `runtime/artifact_writer.py` — writes machine-readable decision, revocation, incident, Lindymode, and shell artifacts under `artifacts/<category>/`; `build_decision_artifact` applies the provenance decision order from `policies/provenance_rules.json`.
-- `runtime/events_feed_server.py` — zero-dependency HTTP service connecting `dashboards/l99_events_dashboard.html` to the live `samples/events.ndjson` feed.
-- `dashboards/l99_events_dashboard.html` — tenant-first, severity-second, correlation-chain-third live events dashboard with a critical-bucket toggle and incident episode panel.
+- `runtime/artifact_writer.py` — writes machine-readable decision, revocation, incident, Lindymode, and shell artifacts.
+- `runtime/events_feed_server.py` — zero-dependency HTTP service connecting the live events dashboard to the live feed.
+- `dashboards/l99_events_dashboard.html` — tenant-first, severity-second, correlation-chain-third live events dashboard.
 - `runtime/promotion_gates.py` — CI promotion gates for provenance, revocation, partition-boundary, event-schema, Lindymode drift, shell-command, and L99 latency failures.
 - `.github/workflows/l99-promotion-gates.yml` — runs the promotion gates in CI.
-- `samples/style_chain_telemetry.sample.json` — sample style-chain telemetry input.
-- `samples/rivereditor_style_chain_telemetry.sample.json` — sample telemetry input for the chain-rollup L99 report.
-- `samples/style_chain_l99_report.sample.json` — sample latency monitor output.
-- `samples/style_chain_l99_windows.ndjson` — sample rolling L99 window history.
-- `samples/events.sample.json` — sample JSON event array for dashboards and tests.
-- `samples/events.ndjson` — sample live-feed event stream including cache, revocation, containment, Lindymode, shell, and latency-window events.
 
 ## Core invariants
 
@@ -128,3 +126,8 @@ tenant / workspace
 
 1. Add a provenance decision evaluator (`artifact_writer.build_decision_artifact` formats and validates a decision from explicit inputs; it does not yet evaluate live cache candidates).
 2. Add boundary and revocation test fixtures beyond the property checks already covered by `runtime/promotion_gates.py`'s `revocation` and `partition_boundary` gates.
+
+## License
+
+Copyright © 2024–2026 Juss Ray. All rights reserved.
+Proprietary software — see [LICENSE](LICENSE).
