@@ -6,6 +6,7 @@ import * as Chapter from '../models/chapterModel.js';
 import { analyzeChapter } from '../lib/lindymodeProcessor.js';
 import { captureEpisodeFromIncident } from '../lib/learningEngine.js';
 import { log } from '../models/eventModel.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function lindymodeRoutes(router, db) {
   router.get('/api/lindymode/state/:workspace_id', (req, res) => {
@@ -28,6 +29,7 @@ export default function lindymodeRoutes(router, db) {
   router.post('/api/lindymode/analyze/:chapter_id', (req, res) => {
     const chapter = Chapter.get(db, Number(req.params.chapter_id));
     if (!chapter) return json(res, 404, { error: 'Chapter not found' });
+    if (!requireWorkspaceAccess(req, res, chapter.workspace_id)) return;
     json(res, 200, analyzeChapter(db, chapter, req.body || {}));
   });
 
@@ -40,6 +42,10 @@ export default function lindymodeRoutes(router, db) {
   router.post('/api/lindymode/recover/:incident_id', (req, res) => {
     const recoveryAction = req.body?.recovery_action || 'manual_state_review';
     const outcome = req.body?.outcome || 'unknown';
+    const target = Lindy.getIncident(db, req.params.incident_id);
+    if (!target) return json(res, 404, { error: 'Incident not found' });
+    if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
+
     const incident = Lindy.resolveIncident(db, req.params.incident_id, recoveryAction);
     if (!incident) return json(res, 404, { error: 'Incident not found' });
 

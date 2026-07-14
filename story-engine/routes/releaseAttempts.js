@@ -9,6 +9,7 @@ import {
   listReleaseAttempts,
   reconcileStaleReleaseAttempts
 } from '../lib/releaseAttempts.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 function transitionFailure(res, error) {
   if (error?.code === 'INVALID_RELEASE_ATTEMPT_TRANSITION') {
@@ -58,10 +59,15 @@ export default function releaseAttemptRoutes(router, db) {
   router.get('/api/release/attempt/:attempt_id', (req, res) => {
     const attempt = getReleaseAttempt(db, req.params.attempt_id);
     if (!attempt) return json(res, 404, { error: 'Attempt not found' });
+    if (!requireWorkspaceAccess(req, res, attempt.workspace_id)) return;
     json(res, 200, attempt);
   });
 
   router.post('/api/release/attempt/:attempt_id/complete', (req, res) => {
+    const target = getReleaseAttempt(db, req.params.attempt_id);
+    if (!target) return json(res, 404, { error: 'Attempt not found' });
+    if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
+
     try {
       const attempt = completeReleaseAttempt(db, req.params.attempt_id, req.body?.result || {});
       if (!attempt) return json(res, 404, { error: 'Attempt not found' });
@@ -72,6 +78,10 @@ export default function releaseAttemptRoutes(router, db) {
   });
 
   router.post('/api/release/attempt/:attempt_id/fail', (req, res) => {
+    const target = getReleaseAttempt(db, req.params.attempt_id);
+    if (!target) return json(res, 404, { error: 'Attempt not found' });
+    if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
+
     try {
       const attempt = failReleaseAttempt(db, req.params.attempt_id, req.body?.error || 'Operation failed');
       if (!attempt) return json(res, 404, { error: 'Attempt not found' });

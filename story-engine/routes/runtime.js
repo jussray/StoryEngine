@@ -3,6 +3,7 @@
 import { json } from '../lib/miniRouter.js';
 import * as Chapter from '../models/chapterModel.js';
 import { runAutonomousRuntime, getRuntimeRun, listRuntimeRuns } from '../lib/autonomousRuntime.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function runtimeRoutes(router, db) {
   router.post('/api/runtime/run/:workspace_id', (req, res) => {
@@ -26,6 +27,7 @@ export default function runtimeRoutes(router, db) {
   router.get('/api/runtime/run/:run_id', (req, res) => {
     const run = getRuntimeRun(db, req.params.run_id);
     if (!run) return json(res, 404, { error: 'Runtime run not found' });
+    if (!requireWorkspaceAccess(req, res, run.workspace_id)) return;
     json(res, 200, run);
   });
 

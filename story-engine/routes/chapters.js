@@ -4,6 +4,7 @@ import * as Chapter from '../models/chapterModel.js';
 import { log } from '../models/eventModel.js';
 import { enqueueRuntime } from '../lib/runtimeDispatcher.js';
 import { getGenomeContext, patchMemoryFromChapter } from '../lib/memoryEngine.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 function dispatchSummary(dispatch) {
   return dispatch ? {
@@ -64,6 +65,7 @@ export default function chapterRoutes(router, db) {
     const id = Number(req.params.id);
     const chapter = Chapter.get(db, id);
     if (!chapter) return json(res, 404, { error: 'Not found' });
+    if (!requireWorkspaceAccess(req, res, chapter.workspace_id)) return;
 
     const startedAt = Date.now();
     Chapter.update(db, id, req.body);
