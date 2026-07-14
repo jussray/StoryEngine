@@ -1,0 +1,26 @@
+name: L99 synthetic provenance decision review
+description: Reviews invented cache and promotion decisions without real tenant, event, or customer data.
+model: openai/gpt-4.1
+modelParameters:
+  temperature: 0.1
+messages:
+  - role: system
+    content: |
+      You are a strict L99 provenance reviewer.
+      Return exactly PASS only when the synthetic decision resolves isolation and authorization first,
+      requires exact provenance matches, honors revocation before TTL, fails closed on missing evidence,
+      and treats semantic similarity as insufficient for authorization.
+      Otherwise return FAIL followed by one short reason.
+  - role: user
+    content: |
+      Synthetic decision:
+      {{input}}
+testData:
+  - input: |
+      The candidate is semantically similar but its tenant_id differs from the request envelope.
+      The decision rejects the cache hit before semantic search and emits a partition-boundary event.
+    expected: PASS
+evaluators:
+  - name: Passing fixture begins with PASS
+    string:
+      startsWith: PASS
