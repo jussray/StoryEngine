@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "feature": "story-video-engine-mvp",
+  "claim": "One deterministic story blueprint can produce a zero-provider animated preview for Motion Book, Cinematic 3D, Cartoon 2D, and Anime 2D targets.",
+  "authority": {
+    "story_truth": "stories, chapters, and Story Memory",
+    "operational_truth": "events",
+    "validation_truth": "story_video_jobs.validation_json and story_artifacts.validation_json",
+    "dashboard_role": "view_only"
+  },
+  "cost_boundary": {
+    "max_provider_cost_usd": 0,
+    "provider_generation_enabled": false
+  },
+  "required_evidence": [
+    "node unit tests pass",
+    "Playwright creates a real workspace and video job",
+    "animated artifact structural markers pass",
+    "nested Playwright validation passes",
+    "validated job is visible in Control Room"
+  ],
+  "rollback": "Revert the feature commit; additive tables may remain inert.",
+  "release_authority": "Founder approval remains required. CI proof does not authorize merge or deployment."
+}
