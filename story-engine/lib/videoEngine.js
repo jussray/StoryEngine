@@ -236,7 +236,7 @@ export async function validateStoryVideoJob(db, jobId) {
     has_video_artifact_marker: artifact.html.includes('data-testid="l99-video-artifact"'),
     has_video_shot: artifact.html.includes('data-testid="video-shot"'),
     has_video_timeline: artifact.html.includes('data-testid="video-timeline"'),
-    shot_count_matches: (artifact.html.match(/data-testid="video-shot"/g) || []).length === job.blueprint.shot_count,
+    shot_count_matches: (artifact.html.match(/<article[^>]+data-testid="video-shot"/g) || []).length === job.blueprint.shot_count,
     zero_provider_cost: Number(job.estimated_cost_usd || 0) === 0 && Number(job.actual_cost_usd || 0) === 0
   };
   const playwright = await playwrightCheck(artifact.html, job.blueprint);
