@@ -22,18 +22,41 @@
       "status": "active",
       "evidencePaths": [
         "runtime/partition_resolver.py",
+        "runtime/promotion_gates.py",
         "schemas/isolation_envelope.schema.json",
         "policies/multi_tenant_partitioning_strategy.md"
       ],
       "requiredSignals": [
         "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "promotion-gates-import-partition-resolver",
+          "path": "runtime/promotion_gates.py",
+          "marker": "from partition_resolver import IsolationEnvelope, resolve_partition_id",
+          "description": "The CI gate imports the deterministic partition resolver."
+        },
+        {
+          "id": "partition-gate-varies-boundary-fields",
+          "path": "runtime/promotion_gates.py",
+          "marker": "gate_partition_boundary",
+          "description": "Promotion tests identical envelopes and tenant/user/namespace/model/policy separation."
+        },
+        {
+          "id": "resolver-hashes-canonical-envelope",
+          "path": "runtime/partition_resolver.py",
+          "marker": "hashlib.sha256(payload.encode(\"utf-8\"))",
+          "description": "Partition IDs derive from a canonical, stable isolation envelope."
+        }
       ]
     },
     {
       "id": "provenance-and-revocation-contracts",
-      "description": "Defines provenance matching, semantic-cache authorization boundaries, and revocation-over-TTL behavior.",
+      "description": "Defines and executes provenance matching, semantic-cache authorization boundaries, and revocation-over-TTL behavior.",
       "status": "active",
       "evidencePaths": [
+        "runtime/artifact_writer.py",
+        "runtime/promotion_gates.py",
         "policies/cache_contract.schema.json",
         "policies/provenance_rules.json",
         "policies/cache_revocation_triggers.md",
@@ -41,6 +64,26 @@
       ],
       "requiredSignals": [
         "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "promotion-gates-executes-provenance-decisions",
+          "path": "runtime/promotion_gates.py",
+          "marker": "build_decision_artifact",
+          "description": "CI evaluates both an allowed decision and a cross-tenant block."
+        },
+        {
+          "id": "decision-engine-blocks-tenant-mismatch",
+          "path": "runtime/artifact_writer.py",
+          "marker": "return \"block\", \"tenant_mismatch\", False, True",
+          "description": "The decision helper blocks cross-tenant candidates before semantic evaluation."
+        },
+        {
+          "id": "decision-engine-enforces-revocation-epoch",
+          "path": "runtime/artifact_writer.py",
+          "marker": "consumer_revocation_epoch > producer_revocation_epoch",
+          "description": "A newer consumer revocation epoch blocks stale cached evidence."
+        }
       ]
     },
     {
@@ -51,10 +94,31 @@
         "runtime/l99_event_bus.py",
         "schemas/shared_event_bus_schema.json",
         "docs/shared_event_bus_format.md",
-        "runtime/events_feed_server.py"
+        "runtime/events_feed_server.py",
+        "runtime/l99_rolling_window.py"
       ],
       "requiredSignals": [
         "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "event-bus-loads-shared-schema",
+          "path": "runtime/l99_event_bus.py",
+          "marker": "shared_event_bus_schema.json",
+          "description": "All event validation uses the shared versioned schema."
+        },
+        {
+          "id": "rolling-window-emits-through-event-bus",
+          "path": "runtime/l99_rolling_window.py",
+          "marker": "append_event(feed_path, event)",
+          "description": "Latency windows emit operational events through the shared spine."
+        },
+        {
+          "id": "feed-server-serves-ndjson",
+          "path": "runtime/events_feed_server.py",
+          "marker": "path == \"/events.ndjson\"",
+          "description": "The dashboard service exposes the append-only operational feed."
+        }
       ]
     },
     {
@@ -65,10 +129,37 @@
         "runtime/rivereditor_shell_router.py",
         "runtime/rivereditor_handlers.py",
         "configs/rivereditor_command_registry.json",
-        "schemas/rivereditor_command_registry.schema.json"
+        "schemas/rivereditor_command_registry.schema.json",
+        "runtime/promotion_gates.py"
       ],
       "requiredSignals": [
         "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "handlers-resolve-registry-command",
+          "path": "runtime/rivereditor_handlers.py",
+          "marker": "resolved = resolve_command(raw_command, registry)",
+          "description": "Dispatch resolves each raw command against the registry."
+        },
+        {
+          "id": "handlers-execute-registered-handler",
+          "path": "runtime/rivereditor_handlers.py",
+          "marker": "result = handler(**merged_args)",
+          "description": "Resolved handlers execute with shell context and explicit arguments."
+        },
+        {
+          "id": "handlers-emit-completion-event",
+          "path": "runtime/rivereditor_handlers.py",
+          "marker": "event_type=\"shell.command_completed\"",
+          "description": "Successful command execution emits a correlated completion event."
+        },
+        {
+          "id": "promotion-gates-roundtrip-command-registry",
+          "path": "runtime/promotion_gates.py",
+          "marker": "gate_shell_command",
+          "description": "CI verifies every command pattern resolves to a registered handler."
+        }
       ]
     },
     {
@@ -84,6 +175,32 @@
       ],
       "requiredSignals": [
         "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "workflow-executes-promotion-gates",
+          "path": ".github/workflows/l99-promotion-gates.yml",
+          "marker": "python runtime/promotion_gates.py",
+          "description": "GitHub Actions executes the seven-gate Python entrypoint."
+        },
+        {
+          "id": "promotion-entrypoint-iterates-gates",
+          "path": "runtime/promotion_gates.py",
+          "marker": "for name, gate in GATES.items()",
+          "description": "The entrypoint runs every registered gate and exits non-zero on failure."
+        },
+        {
+          "id": "latency-gate-builds-chain-report",
+          "path": "runtime/promotion_gates.py",
+          "marker": "report = build_report(records)",
+          "description": "Promotion uses actual telemetry records to calculate chain tail latency."
+        },
+        {
+          "id": "rolling-window-uses-latency-monitor",
+          "path": "runtime/l99_rolling_window.py",
+          "marker": "from rivereditor_l99_latency_monitor import build_report, load_records",
+          "description": "Successive windows use the same rich latency report implementation."
+        }
       ]
     },
     {
@@ -91,7 +208,8 @@
       "description": "Evaluates live semantic-cache candidates against authorization and provenance rules rather than only formatting explicit decisions.",
       "status": "planned",
       "evidencePaths": [],
-      "requiredSignals": []
+      "requiredSignals": [],
+      "usageAssertions": []
     }
   ],
   "buildAssist": {
@@ -120,6 +238,8 @@
       "capabilities.claimedStatus",
       "capabilities.observedStatus",
       "capabilities.evidencePaths",
+      "capabilities.usageAssertionIds",
+      "capabilities.failedUsageAssertionIds",
       "capabilities.reason"
     ],
     "forbiddenData": [
@@ -130,7 +250,8 @@
       "authorization tokens",
       "provider credentials",
       "unredacted event payloads",
-      "private incident artifacts"
+      "private incident artifacts",
+      "usage assertion marker text in runner packets"
     ]
   }
 }
