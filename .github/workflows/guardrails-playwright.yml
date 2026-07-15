@@ -30,15 +30,22 @@ jobs:
           cache: 'npm'
           cache-dependency-path: story-engine/package-lock.json
       - run: npm ci
-      - run: npm test
+      - name: Run Node tests with retained evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee node-test-output.log
       - run: npx playwright install --with-deps chromium
       - run: npm run test:guardrails
       - name: Verify Story Video Engine in Control Room
         run: npx playwright test e2e/video_engine.spec.js
-      - name: Upload Playwright report
+      - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: l99-playwright-report
-          path: story-engine/playwright-report/
+          name: l99-test-evidence
+          path: |
+            story-engine/node-test-output.log
+            story-engine/playwright-report/
+            story-engine/test-results/
           if-no-files-found: ignore
