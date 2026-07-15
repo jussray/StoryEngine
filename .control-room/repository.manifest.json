@@ -1,0 +1,136 @@
+{
+  "schemaVersion": "1.0",
+  "projectId": "l99",
+  "repository": {
+    "provider": "github",
+    "identifier": "jussray/l99-StoryEngine",
+    "defaultBranch": "main"
+  },
+  "verification": {
+    "requiredSignals": [
+      {
+        "id": "promotion-gates",
+        "name": "Promotion gates",
+        "required": true
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "tenant-first-partition-resolution",
+      "description": "Resolves deterministic isolation partitions before semantic lookup.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/partition_resolver.py",
+        "schemas/isolation_envelope.schema.json",
+        "policies/multi_tenant_partitioning_strategy.md"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ]
+    },
+    {
+      "id": "provenance-and-revocation-contracts",
+      "description": "Defines provenance matching, semantic-cache authorization boundaries, and revocation-over-TTL behavior.",
+      "status": "active",
+      "evidencePaths": [
+        "policies/cache_contract.schema.json",
+        "policies/provenance_rules.json",
+        "policies/cache_revocation_triggers.md",
+        "docs/provenance_engine.md"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ]
+    },
+    {
+      "id": "shared-operational-event-spine",
+      "description": "Validates and appends tenant-scoped operational events for dashboards, incidents, shell commands, and Lindymode producers.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/l99_event_bus.py",
+        "schemas/shared_event_bus_schema.json",
+        "docs/shared_event_bus_format.md",
+        "runtime/events_feed_server.py"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ]
+    },
+    {
+      "id": "rivereditor-command-runtime",
+      "description": "Routes and executes registered RiverEditor commands while emitting shared operational events.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/rivereditor_shell_router.py",
+        "runtime/rivereditor_handlers.py",
+        "configs/rivereditor_command_registry.json",
+        "schemas/rivereditor_command_registry.schema.json"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ]
+    },
+    {
+      "id": "tail-latency-and-promotion-controls",
+      "description": "Analyzes L99 tail latency and blocks promotion on provenance, revocation, partition, schema, drift, shell, and latency failures.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/style_chain_l99_analyzer.py",
+        "runtime/rivereditor_l99_latency_monitor.py",
+        "runtime/l99_rolling_window.py",
+        "runtime/promotion_gates.py",
+        ".github/workflows/l99-promotion-gates.yml"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ]
+    },
+    {
+      "id": "live-provenance-candidate-evaluator",
+      "description": "Evaluates live semantic-cache candidates against authorization and provenance rules rather than only formatting explicit decisions.",
+      "status": "planned",
+      "evidencePaths": [],
+      "requiredSignals": []
+    }
+  ],
+  "buildAssist": {
+    "enabled": true,
+    "preferredBuilder": "codex",
+    "riskLevel": "high"
+  },
+  "privacy": {
+    "allowlistedPacketFields": [
+      "projectId",
+      "repository.provider",
+      "repository.identifier",
+      "commitSha",
+      "branch",
+      "manifestHash",
+      "generatedAt",
+      "runner.provider",
+      "runner.runId",
+      "runner.detailsUrl",
+      "checks.id",
+      "checks.name",
+      "checks.required",
+      "checks.status",
+      "checks.detailsUrl",
+      "capabilities.id",
+      "capabilities.claimedStatus",
+      "capabilities.observedStatus",
+      "capabilities.evidencePaths",
+      "capabilities.reason"
+    ],
+    "forbiddenData": [
+      "tenant payload contents",
+      "semantic cache values",
+      "raw prompts or model responses",
+      "user identities",
+      "authorization tokens",
+      "provider credentials",
+      "unredacted event payloads",
+      "private incident artifacts"
+    ]
+  }
+}
