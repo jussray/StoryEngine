@@ -33,6 +33,8 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:guardrails
+      - name: Verify Story Video Engine in Control Room
+        run: npx playwright test e2e/video_engine.spec.js
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
