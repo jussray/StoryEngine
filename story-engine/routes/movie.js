@@ -8,6 +8,7 @@ import {
   failReleaseAttempt
 } from '../lib/releaseAttempts.js';
 import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import videoEngineRoutes from './videoEngine.js';
 
 export default function movieRoutes(router, db) {
   router.get('/api/movie/beats/:workspace_id', (req, res) => {
@@ -82,4 +83,7 @@ export default function movieRoutes(router, db) {
     });
     json(res, 200, { ok: true });
   });
+
+  // Video adapts the same story source; it is not a second story engine.
+  videoEngineRoutes(router, db);
 }
