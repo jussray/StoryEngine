@@ -1,11 +1,25 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "feature": "story-video-engine-mvp",
-  "claim": "One deterministic story blueprint can produce a zero-provider animated preview for Motion Book, Cinematic 3D, Cartoon 2D, and Anime 2D targets.",
+  "claim": "One deterministic story blueprint can combine independent render modes and visual styles while producing a zero-provider animated preview.",
+  "render_modes": [
+    "motion_book",
+    "cinematic_3d",
+    "animation_2d",
+    "stop_motion"
+  ],
+  "required_visual_styles": [
+    "cinematic_realism",
+    "hand_drawn_cartoon",
+    "watercolor_storybook",
+    "clay_stop_motion",
+    "anime"
+  ],
   "authority": {
     "story_truth": "stories, chapters, and Story Memory",
     "operational_truth": "events",
     "validation_truth": "story_video_jobs.validation_json and story_artifacts.validation_json",
+    "visual_style_role": "adaptation instruction, not canon",
     "dashboard_role": "view_only"
   },
   "cost_boundary": {
@@ -13,12 +27,13 @@
     "provider_generation_enabled": false
   },
   "required_evidence": [
-    "node unit tests pass",
-    "Playwright creates a real workspace and video job",
-    "animated artifact structural markers pass",
-    "nested Playwright validation passes",
-    "validated job is visible in Control Room"
+    "unit tests prove render mode and visual style are separate",
+    "unit tests prove at least ten built-in visual styles exist",
+    "legacy anime_2d and cartoon_2d inputs remain compatible",
+    "Playwright creates and validates Cinematic Realism and Watercolor Storybook jobs",
+    "animated artifact mode and style markers pass",
+    "both non-anime styles are visible in Control Room"
   ],
-  "rollback": "Revert the feature commit; additive tables may remain inert.",
+  "rollback": "Revert the feature commit; additive tables and columns may remain inert.",
   "release_authority": "Founder approval remains required. CI proof does not authorize merge or deployment."
 }
