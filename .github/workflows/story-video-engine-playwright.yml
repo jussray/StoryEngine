@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'story-engine/lib/videoEngine.js'
+      - 'story-engine/lib/visualStyleCatalog.js'
       - 'story-engine/routes/videoEngine.js'
       - 'story-engine/routes/movie.js'
       - 'story-engine/public/video_*'
