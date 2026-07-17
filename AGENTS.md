@@ -1,5 +1,10 @@
 # L99 Agent Instructions
 
+## Required repository skill
+
+Read `.agents/skills/l99-operator/SKILL.md` before nontrivial work. Use its 5W1H contract as active reasoning: establish who, what, where, when, why, and how; inspect missing answers; and ask only when an unknown materially changes the safe action or authority.
+
+
 Read [`GLOBAL_AI.md`](./GLOBAL_AI.md) before changing runtime code, schemas, policies, dashboards, tests, or documentation.
 
 Use:
