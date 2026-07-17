@@ -33,6 +33,12 @@ Use:
 - Do not weaken auth, page guards, revocation, provenance, validation, or promotion gates to make CI green.
 - Do not merge, deploy, alter access, rotate credentials, or perform destructive changes without explicit founder approval.
 
+## Figma build and implementation
+
+For every Figma, creator-studio design, design-system, design-to-code, Code Connect, prototype, or visual QA task, also read `.agents/skills/figma-build-implement/SKILL.md` and `.figma/repository-profile.json`.
+
+Figma may specify creator and artifact workflows with synthetic content, but it is not canon, Story Memory, an event bus, artifact provenance, a renderer, validation evidence, or promotion authority.
+
 ## Evidence report
 
 List files changed, contracts changed, tests run, artifacts produced, failures or skips, isolation impact, release impact, rollback, residual risk, and next gate.
