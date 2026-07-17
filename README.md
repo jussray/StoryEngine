@@ -6,6 +6,13 @@
 
 L99 is an AI runtime and operations layer focused on state integrity, provenance-safe semantic reuse, recovery, shadow validation, and observable promotion controls.
 
+## Code audit status
+
+A repository-wide code audit is in progress. The runtime and promotion-gate foundations are substantial, but the system is not yet verified as production-safe.
+
+Known release blockers include cryptographic Stripe webhook verification, replacing browser-readable API-key persistence with a hardened authentication/session design, tightening the browser Content Security Policy, proving workspace authorization on every read and mutation path, and rebuilding stale feature branches on current `main` before merge. A present header is not proof of a valid Stripe signature, and passing isolated tests is not a production-readiness claim.
+
+
 ## AI operating contracts
 
 - [`GLOBAL_AI.md`](GLOBAL_AI.md) — provider-neutral founder contract
