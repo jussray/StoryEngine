@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "repository": "jussray/l99-StoryEngine",
   "defaultPolicy": "deny-undeclared",
-  "scanRoots": ["runtime", "dashboards"],
+  "scanRoots": ["runtime", "dashboards", "story-engine/public"],
   "allowedCookieWriters": [],
   "cookies": [],
   "nonCookieState": [
@@ -11,11 +11,18 @@
       "mechanism": "append-only files and explicit runtime stores",
       "purpose": "Keep tenant, provenance, event, promotion, and recovery state out of browser cookies.",
       "sensitive": true
+    },
+    {
+      "name": "transitional-browser-api-key",
+      "mechanism": "sessionStorage plus explicit x-api-key request header",
+      "purpose": "Limit the existing browser-readable development key to the current tab session without attaching it to every request as a cookie.",
+      "sensitive": true
     }
   ],
   "externalCookieProviders": [],
   "prohibited": [
     "tenant, user, authorization, provenance, revocation, or canon state in cookies",
+    "API keys or model credentials in cookies",
     "dashboard authentication claims without a server identity layer",
     "tracking or advertising cookies",
     "cookie state becoming a second event bus or source of operational truth"
