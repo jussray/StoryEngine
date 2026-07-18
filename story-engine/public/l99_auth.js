@@ -8,17 +8,16 @@
   function persistKey(value) {
     const key = String(value || '').trim();
     if (!key) return '';
+    // Transitional session-only storage. This repository already treats
+    // browser-readable API-key persistence as a production blocker; do not
+    // widen exposure by attaching the key to every same-origin request cookie.
     sessionStorage.setItem(STORAGE_KEY, key);
-    document.cookie = `l99_api_key=${encodeURIComponent(key)}; Path=/; SameSite=Strict`;
     return key;
   }
 
   function ensureKey() {
     const existing = readKey();
-    if (existing) {
-      persistKey(existing);
-      return existing;
-    }
+    if (existing) return existing;
     const entered = window.prompt('Enter the L99 API key for this session:');
     return persistKey(entered);
   }
