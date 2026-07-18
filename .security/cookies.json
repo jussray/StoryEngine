@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "repository": "jussray/l99-StoryEngine",
+  "defaultPolicy": "deny-undeclared",
+  "scanRoots": ["runtime", "dashboards"],
+  "allowedCookieWriters": [],
+  "cookies": [],
+  "nonCookieState": [
+    {
+      "name": "l99-event-and-provenance-state",
+      "mechanism": "append-only files and explicit runtime stores",
+      "purpose": "Keep tenant, provenance, event, promotion, and recovery state out of browser cookies.",
+      "sensitive": true
+    }
+  ],
+  "externalCookieProviders": [],
+  "prohibited": [
+    "tenant, user, authorization, provenance, revocation, or canon state in cookies",
+    "dashboard authentication claims without a server identity layer",
+    "tracking or advertising cookies",
+    "cookie state becoming a second event bus or source of operational truth"
+  ]
+}
