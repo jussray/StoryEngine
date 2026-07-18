@@ -15,6 +15,7 @@ WRITER_PATTERNS = (
 )
 SOURCE_SUFFIXES = {".py", ".js", ".mjs", ".ts", ".tsx", ".html"}
 IGNORED_PARTS = {".git", "node_modules", "dist", "build", "coverage", "__pycache__"}
+VERIFIER_PATH = "runtime/cookie_contract.py"
 
 
 def verify_cookie_contract(root: Path) -> list[str]:
@@ -62,6 +63,8 @@ def verify_cookie_contract(root: Path) -> list[str]:
             if any(part in IGNORED_PARTS for part in path.parts):
                 continue
             repo_path = path.relative_to(root).as_posix()
+            if repo_path == VERIFIER_PATH:
+                continue
             if "/tests/" in f"/{repo_path}/" or path.name.startswith("test_"):
                 continue
             source = path.read_text(encoding="utf-8", errors="replace")
