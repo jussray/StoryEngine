@@ -45,5 +45,8 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Verify zero-cookie authority
+        run: python runtime/verify_cookie_contract.py
+
       - name: Run L99 promotion gates
         run: python runtime/promotion_gates.py
