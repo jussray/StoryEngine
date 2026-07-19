@@ -2,6 +2,8 @@
 
 Read [`GLOBAL_AI.md`](./GLOBAL_AI.md) before changing runtime code, schemas, policies, dashboards, tests, or documentation.
 
+Read [`skills/typescript-debugging-chain/SKILL.md`](./skills/typescript-debugging-chain/SKILL.md) before TypeScript, TSX, JavaScript, Node, build, test, PR, draft PR, mergeability, or feature-debugging work.
+
 Use:
 
 ```text
@@ -10,7 +12,7 @@ Use:
 
 ## Required loop
 
-1. Inspect the exact subsystem and current evidence.
+1. Inspect the exact subsystem, current evidence, open PRs, and draft PRs.
 2. Attack the premise.
 3. Map provenance, isolation, event history, state, compatibility, promotion, and rollback.
 4. Attack the selected plan.
