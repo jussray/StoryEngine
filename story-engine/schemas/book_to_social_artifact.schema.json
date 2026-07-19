@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://l99.story-engine.local/schemas/book_to_social_artifact.schema.json",
+  "title": "Book-to-social artifact contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "workspace_id",
+    "source_hash",
+    "source_rights_state",
+    "platform",
+    "artifact_kind",
+    "approval_status",
+    "publishing_status",
+    "generated_by_surface"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "book_to_social_artifact.v1"
+    },
+    "artifact_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": ["string", "null"]
+    },
+    "source_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "source_rights_state": {
+      "type": "string",
+      "enum": ["founder_owned", "licensed", "public_domain", "approved_external"]
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["tiktok", "instagram", "facebook"]
+    },
+    "artifact_kind": {
+      "type": "string",
+      "enum": [
+        "short_video_script",
+        "voiceover_draft",
+        "caption_pack",
+        "carousel_outline",
+        "thumbnail_prompt",
+        "platform_post_variant",
+        "content_calendar_item"
+      ]
+    },
+    "content_pillar": {
+      "type": ["string", "null"],
+      "maxLength": 120
+    },
+    "audience_intent": {
+      "type": ["string", "null"],
+      "maxLength": 240
+    },
+    "approval_status": {
+      "type": "string",
+      "enum": ["draft", "needs_review", "approved", "rejected"]
+    },
+    "publishing_status": {
+      "type": "string",
+      "enum": ["not_published", "handoff_ready", "published_by_separate_integration"]
+    },
+    "generated_by_surface": {
+      "type": "string",
+      "enum": ["playground_meta_model_api", "manual", "other_reviewed_model_surface"]
+    },
+    "secrets_present": {
+      "type": "boolean",
+      "const": false
+    },
+    "raw_source_persisted": {
+      "type": "boolean",
+      "const": false
+    },
+    "private_teen_data_present": {
+      "type": "boolean",
+      "const": false
+    },
+    "platform_handoff_notes": {
+      "type": ["string", "null"],
+      "maxLength": 2000
+    }
+  }
+}
