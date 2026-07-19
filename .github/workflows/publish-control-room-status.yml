@@ -1,8 +1,6 @@
 name: Publish L99 Control Room Status
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +8,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: l99-control-room-status-main
+  group: l99-control-room-status-${{ github.ref }}
   cancel-in-progress: true
 
 env:
