@@ -2,7 +2,9 @@
 
 Read [`GLOBAL_AI.md`](./GLOBAL_AI.md) before changing runtime code, schemas, policies, dashboards, tests, or documentation.
 
-Read [`skills/typescript-debugging-chain/SKILL.md`](./skills/typescript-debugging-chain/SKILL.md) before TypeScript, TSX, JavaScript, Node, build, test, PR, draft PR, mergeability, or feature-debugging work.
+Read [`skills/typescript-debugging-chain/SKILL.md`](./skills/typescript-debugging-chain/SKILL.md) before TypeScript, TSX, JavaScript, Node, build, PR, draft PR, mergeability, or feature-debugging work.
+
+Read [`skills/typescript-behavior-tests/SKILL.md`](./skills/typescript-behavior-tests/SKILL.md) before writing, replacing, or retiring Jest/Vitest behavior tests.
 
 Use:
 
@@ -17,7 +19,7 @@ Use:
 3. Map provenance, isolation, event history, state, compatibility, promotion, and rollback.
 4. Attack the selected plan.
 5. Make the smallest coherent change.
-6. Verify with tests, artifacts, schemas, logs, or event replay.
+6. Verify with behavior tests, artifacts, schemas, logs, or event replay.
 7. Report the next approval gate.
 
 ## Non-negotiable boundaries
@@ -28,6 +30,7 @@ Use:
 - Do not create a second event bus, memory source, provenance engine, or release authority without an approved replacement plan.
 - Keep provider, payment, notification, and operator secrets off public clients and logs.
 - Do not weaken auth, page guards, revocation, provenance, validation, or promotion gates to make CI green.
+- Do not delete stale tests unless replacement behavior coverage or intentional behavior retirement is documented.
 - Do not merge, deploy, alter access, rotate credentials, or perform destructive changes without explicit founder approval.
 
 ## Evidence report
