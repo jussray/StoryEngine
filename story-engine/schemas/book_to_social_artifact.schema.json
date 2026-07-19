@@ -53,7 +53,8 @@
         "carousel_outline",
         "thumbnail_prompt",
         "platform_post_variant",
-        "content_calendar_item"
+        "content_calendar_item",
+        "circle_entry_prompt"
       ]
     },
     "content_pillar": {
@@ -75,6 +76,15 @@
     "generated_by_surface": {
       "type": "string",
       "enum": ["playground_meta_model_api", "manual", "other_reviewed_model_surface"]
+    },
+    "circle_entry_mode": {
+      "type": "string",
+      "enum": ["none", "prompt", "parent_prompt", "community_prompt"],
+      "default": "none"
+    },
+    "circle_contract_repo": {
+      "type": ["string", "null"],
+      "enum": ["jussray/Sekret-Bip", null]
     },
     "secrets_present": {
       "type": "boolean",
