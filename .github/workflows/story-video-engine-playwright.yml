@@ -1,0 +1,53 @@
+name: Story Video Engine Playwright
+
+on:
+  pull_request:
+    paths:
+      - 'story-engine/lib/videoEngine.js'
+      - 'story-engine/lib/visualStyleCatalog.js'
+      - 'story-engine/routes/videoEngine.js'
+      - 'story-engine/routes/movie.js'
+      - 'story-engine/public/video_*'
+      - 'story-engine/public/control_room.html'
+      - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/test/videoEngine.test.js'
+      - 'story-engine/lib/lindymodeProcessor.js'
+      - 'story-engine/lib/ipStudio.js'
+      - '.github/workflows/story-video-engine-playwright.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify-story-video-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: story-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: story-engine/package-lock.json
+      - run: npm ci
+      - name: Verify deterministic blueprint and artifact unit contracts
+        run: node --test test/videoEngine.test.js
+      - run: npx playwright install --with-deps chromium
+      - name: Verify Story Video Engine and Control Room end to end
+        run: npx playwright test e2e/video_engine.spec.js
+      - name: Upload Story Video Engine proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: story-video-engine-playwright-proof
+          path: |
+            story-engine/playwright-report/
+            story-engine/test-results/
+          if-no-files-found: ignore

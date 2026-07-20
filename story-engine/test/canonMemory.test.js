@@ -8,7 +8,16 @@ import {
 
 function makeDb() {
   const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE IF NOT EXISTS events (event_id TEXT, workspace_id TEXT, mode TEXT, event_type TEXT, payload TEXT, created_at INTEGER)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    mode TEXT,
+    event_type TEXT NOT NULL,
+    payload TEXT,
+    duration_ms INTEGER,
+    rollback INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER
+  )`);
   return db;
 }
 
