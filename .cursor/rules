@@ -1,0 +1,29 @@
+# Cursor Rules — l99-StoryEngine
+
+## 5W1H Operating Contract
+
+Before every nontrivial edit, establish and state:
+
+- **Who** — requester, decision owner, affected creators/community, data subjects, execution authority
+- **What** — exact outcome, deliverable, non-goals, preserved engine work
+- **Where** — `jussray/l99-StoryEngine`, exact branch, environment, story-data boundary
+- **When** — lifecycle state, ordering constraint, rollback window
+- **Why** — verified creator/community problem and evidence
+- **How** — smallest safe implementation, verification plan, rollback
+
+## Repository Identity
+
+Story engine for L99 — narrative tools, content pipelines, story-data schemas, community publishing. Separate from Se’kret Bip, JBH, Think Tank, and Untold Stories in all dimensions.
+
+## Rules
+
+- Keep creator-submitted stories, community data, unpublished content, and moderation records out of all model-visible contexts.
+- Do not cross-contaminate Se’kret Bip IP in L99 pipelines.
+- All changes via branch + PR, never direct to `main`.
+- Credentials and signing keys must stay in vault.
+- Run `typecheck` and `build` before PR.
+- Story publishing and moderation changes require explicit founder approval.
+
+## Approval Gates
+
+Require explicit founder approval before: merging, deploying, publishing stories, moderation policy changes, rotating secrets, or external communications.

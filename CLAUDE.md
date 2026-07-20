@@ -1,34 +1,43 @@
-# L99 Claude Instructions
+# Claude Operating Contract — l99-StoryEngine
 
-Read [`GLOBAL_AI.md`](./GLOBAL_AI.md) before nontrivial work.
+This file governs Claude (claude.ai, Claude Code, MCP-connected sessions) when working in `jussray/l99-StoryEngine`.
 
-Use the exact founder stack:
+## 5W1H — Required Before Every Nontrivial Action
 
-```text
-/garyvee lindymode redteam l99 redteam ooda
-```
+- **Who** — requester, decision owner, affected users, data subjects, execution authority.
+- **What** — requested outcome, deliverable, non-goals, existing engine work to preserve.
+- **Where** — `jussray/l99-StoryEngine`, exact branch, environment, runtime, story-data boundary, and provider.
+- **When** — current lifecycle/release state, ordering, timing, rollback window.
+- **Why** — verified creator or audience problem and evidence.
+- **How** — smallest safe implementation, permissions, verification, rollout, rollback.
 
-The first redteam attacks the premise. The second attacks the chosen plan.
+## Repository Identity
 
-## Required start
+**Repository:** `jussray/l99-StoryEngine`
+**Role:** Story engine powering the L99 creator and community ecosystem — narrative tools, content pipelines, story-data schemas, and community publishing layer.
+**Separation:** Strictly separate from Se’kret Bip IP, JBH operations, Think Tank, and Untold Stories storefronts.
 
-1. Confirm whether the task targets the root Python runtime, `story-engine/`, dashboards, schemas, policies, or shared documentation.
-2. Inspect current producers, consumers, schemas, event samples, tests, CI gates, and recent changes.
-3. Identify tenant, workspace, user, policy, model, and provenance boundaries.
-4. Separate verified facts, inference, and unknowns.
-5. State migration, compatibility, and rollback implications before changing contracts.
+## Non-Negotiable Boundaries
 
-## Project rules
+- Keep creator-submitted stories, community member data, unpublished content, and moderation records out of model-visible or public outputs.
+- Do not expose or cross-contaminate Se’kret Bip IP in L99 story pipelines.
+- Story moderation, publishing, and community-safety decisions require explicit founder approval.
+- Credentials and signing keys must stay in vault — never in code or PR descriptions.
+- All production-touching actions require explicit founder approval.
 
-- The event bus owns operational truth; dashboards are views.
-- Isolation and authorization resolve before semantic reuse.
-- Revocation beats TTL.
-- Do not silently change event types, artifact formats, correlation rules, memory contracts, or promotion gates.
-- Do not expose operator machinery, credentials, or private state through creator-facing surfaces.
-- Do not merge, deploy, alter access, rotate secrets, or perform destructive migrations without explicit founder approval.
+## Required Loop
 
-## Required completion report
+1. Observe exact branch, story schema version, content pipeline state, and deployment boundary.
+2. Complete 5W1H and identify authority, safety, or community-safety gaps.
+3. Red-team data exposure, IP separation, moderation bypass, and rollback.
+4. Choose smallest reversible action preserving existing engine and content.
+5. Run typecheck, build, and content-boundary tests.
+6. Report proven, inferred, blocked, and next owner.
 
-Reality, premise risk, L99 system view, decision, plan risk, action, proof, rollback, and next gate.
+## Approval Gates
 
-Claude may reason across a large system. It still has to prove which system it actually touched.
+Require explicit founder approval before: merging, deploying, publishing stories, changing moderation policy, rotating secrets, or external communications.
+
+## Output Format
+
+Return: completed 5W1H · repo/branch/SHA · files touched · checks run · preserved work · rollback path · blocker and next owner.
