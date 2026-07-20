@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "repository": "jussray/l99-StoryEngine",
+  "runtimeClass": "runtime_service",
+  "firstPartyCookies": [],
+  "platformManagedCookies": [],
+  "browserStorage": [],
+  "forbidden": [
+    "using cookies as canon, Story Memory, artifact, provenance, promotion, tenant, workspace, or release authority",
+    "document.cookie, Cookie Store API, or custom Set-Cookie handling in dashboards or runtime services",
+    "analytics, advertising, fingerprinting, replay, or cross-site tracking cookies",
+    "story content, creator drafts, tenant identifiers, credentials, provider tokens, or unpublished artifacts in cookies",
+    "claiming authenticated multi-user isolation before identity and workspace authorization are proven"
+  ],
+  "notes": [
+    "The event bus, provenance engine, partition resolver, artifacts, and promotion gates remain operational authority.",
+    "The current dashboards are views and do not own identity state.",
+    "A future authenticated studio must add a separate server session contract without becoming a second canon or event spine."
+  ]
+}

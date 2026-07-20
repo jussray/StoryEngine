@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "repository": "jussray/l99-StoryEngine",
+  "role": "creator, canon, artifact, and production studio",
+  "figmaMode": "creative_studio_and_artifact_review",
+  "runtime": ["current root runtime", "story-engine boundary", "event and artifact contracts"],
+  "designTargets": ["creator workspace", "Story Memory review", "artifact inspection", "video and shot planning", "style and render-mode selection", "event history", "validation", "promotion status"],
+  "implementationTargets": ["current studio UI paths", "current artifact and event view models", "current validation and promotion surfaces"],
+  "requiredSkills": ["figma-use", "figma-generate-library"],
+  "conditionalSkills": ["figma-generate-design", "figma-code-connect", "product-design-design-qa"],
+  "prohibitedData": ["unpublished story text", "creator-private content", "tenant identifiers", "provider credentials", "payment data", "notification data", "raw events"],
+  "codeConnectPolicy": "published_reusable_studio_components_only",
+  "verification": ["unit and contract tests", "artifact validation", "promotion gates", "Playwright", "synthetic evidence"],
+  "truthBoundary": "Figma is not canon, Story Memory, an event bus, an artifact ledger, a renderer, or promotion proof."
+}
