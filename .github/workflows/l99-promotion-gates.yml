@@ -1,35 +1,14 @@
 name: L99 Promotion Gates
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'runtime/**'
-      - 'policies/**'
-      - 'schemas/**'
-      - 'configs/**'
-      - 'samples/**'
-      - 'docs/**'
-      - 'artifacts/**'
-      - 'dashboards/**'
-      - '.control-room/**'
-      - '.github/workflows/l99-promotion-gates.yml'
-  pull_request:
-    paths:
-      - 'runtime/**'
-      - 'policies/**'
-      - 'schemas/**'
-      - 'configs/**'
-      - 'samples/**'
-      - 'docs/**'
-      - 'artifacts/**'
-      - 'dashboards/**'
-      - '.control-room/**'
-      - '.github/workflows/l99-promotion-gates.yml'
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: l99-promotion-gates-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   gates:
