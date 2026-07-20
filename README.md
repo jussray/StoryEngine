@@ -62,6 +62,8 @@ The first redteam attacks the premise. The second attacks the selected implement
 - `dashboards/l99_events_dashboard.html` — tenant-first, severity-second, correlation-chain-third live events dashboard.
 - `runtime/promotion_gates.py` — CI promotion gates for provenance, revocation, partition-boundary, event-schema, Lindymode drift, shell-command, and L99 latency failures.
 - `.github/workflows/l99-promotion-gates.yml` — runs the promotion gates in CI.
+- `story-engine/BOOK_TO_SOCIAL_GATE_NOTES.md` — book-to-social creation gate for turning approved source material into TikTok, Instagram, and Facebook-ready draft artifacts without direct publishing.
+- `story-engine/schemas/book_to_social_artifact.schema.json` — reduced metadata contract for book-to-social artifacts.
 
 ## Core invariants
 
@@ -78,6 +80,8 @@ The first redteam attacks the premise. The second attacks the selected implement
 > One shell, many modes, one event spine.
 
 > Tail latency is where chain failure hides.
+
+> Draft generation is not publishing.
 
 ## Request path
 
@@ -133,6 +137,7 @@ tenant / workspace
 
 1. Add a provenance decision evaluator (`artifact_writer.build_decision_artifact` formats and validates a decision from explicit inputs; it does not yet evaluate live cache candidates).
 2. Add boundary and revocation test fixtures beyond the property checks already covered by `runtime/promotion_gates.py`'s `revocation` and `partition_boundary` gates.
+3. Add a runtime book-to-social artifact producer that implements `story-engine/BOOK_TO_SOCIAL_GATE_NOTES.md`, validates `story-engine/schemas/book_to_social_artifact.schema.json`, and proves any user-visible preview with Playwright before promotion.
 
 ## License
 
