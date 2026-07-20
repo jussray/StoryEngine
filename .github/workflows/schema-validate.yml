@@ -1,0 +1,40 @@
+# Schema Validation CI — l99-StoryEngine
+# Runs on every push + PR. Fails if any schema JSON is malformed or missing required fields.
+name: Schema Validation
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'schemas/**'
+      - 'scripts/reconcile.ts'
+      - 'schemas/validate.ts'
+  pull_request:
+    paths:
+      - 'schemas/**'
+      - 'scripts/reconcile.ts'
+      - 'schemas/validate.ts'
+
+jobs:
+  validate-schemas:
+    name: Validate Story Schemas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run schema validation
+        run: npx tsx schemas/validate.ts ./schemas
+
+      - name: Run reconciliation check
+        run: npx tsx scripts/reconcile.ts
+        env:
+          NODE_ENV: ci
