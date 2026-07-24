@@ -1,19 +1,27 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
+import tempfile
 import unittest
 
-from portfolio_status import PortfolioStatusError, build_status_envelope
+from portfolio_status import (
+    GATES,
+    PortfolioStatusError,
+    build_status_envelope,
+    load_manifest,
+)
 
 
 COMMIT = "a" * 40
-OBSERVED_AT = "2026-07-13T05:00:00Z"
+OBSERVED_AT = "2026-07-24T23:55:00Z"
 
 
 def manifest_fixture() -> dict:
     return {
         "schemaVersion": "1.0",
-        "repository": "jussray/l99-",
+        "repository": "jussray/l99-StoryEngine",
         "portfolioHub": "jussray/founder-control-room",
         "controlRoom": {"privateContentAllowed": False},
         "evidence": {
@@ -29,6 +37,10 @@ def manifest_fixture() -> dict:
 
 
 class PortfolioStatusTests(unittest.TestCase):
+    def test_current_gate_registry_includes_cookie_contract(self) -> None:
+        self.assertIn("cookie_contract", GATES)
+        self.assertGreaterEqual(len(GATES), 8)
+
     def test_passed_gates_preserve_manifest_status(self) -> None:
         envelope = build_status_envelope(
             manifest_fixture(),
@@ -38,13 +50,15 @@ class PortfolioStatusTests(unittest.TestCase):
             observed_at=OBSERVED_AT,
             gate_results=[
                 {"gate": "provenance", "passed": True},
-                {"gate": "revocation", "passed": True},
+                {"gate": "cookie_contract", "passed": True},
             ],
         )
+        self.assertEqual(envelope["repository"], "jussray/l99-StoryEngine")
         self.assertEqual(envelope["gate_status"], "pass")
         self.assertEqual(envelope["status"], "at-risk")
         self.assertEqual(envelope["risk_level"], "high")
-        self.assertIn("runtime/promotion_gates.py", envelope["proof_refs"])
+        self.assertIn("runtime/promotion_gates_all.py", envelope["proof_refs"])
+        self.assertIn("runtime/cookie_contract.py", envelope["proof_refs"])
 
     def test_failed_gate_blocks_status_without_downgrading_risk(self) -> None:
         envelope = build_status_envelope(
@@ -100,6 +114,41 @@ class PortfolioStatusTests(unittest.TestCase):
                 observed_at=OBSERVED_AT,
                 gate_results=[{"gate": "provenance", "passed": True}],
             )
+
+    def test_observed_at_requires_timezone(self) -> None:
+        with self.assertRaisesRegex(PortfolioStatusError, "timezone_required"):
+            build_status_envelope(
+                manifest_fixture(),
+                commit=COMMIT,
+                source_run_id="128",
+                source_run_attempt=1,
+                observed_at="2026-07-24T23:55:00",
+                gate_results=[{"gate": "provenance", "passed": True}],
+            )
+
+    def test_old_repository_identity_is_rejected_by_manifest_loader(self) -> None:
+        manifest = manifest_fixture()
+        manifest["repository"] = "jussray/l99-"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(
+                PortfolioStatusError,
+                "manifest_repository_invalid",
+            ):
+                load_manifest(path)
+
+    def test_private_content_must_remain_denied(self) -> None:
+        manifest = manifest_fixture()
+        manifest["controlRoom"]["privateContentAllowed"] = True
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(
+                PortfolioStatusError,
+                "manifest_private_content_must_be_denied",
+            ):
+                load_manifest(path)
 
 
 if __name__ == "__main__":
