@@ -1,29 +1,47 @@
 name: Publish L99 Control Room Status
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-
-permissions:
-  contents: read
-  id-token: write
+  pull_request:
+    branches: [main]
+    paths:
+      - 'control-room.manifest.json'
+      - 'runtime/**'
+      - '.security/**'
+      - '.github/workflows/publish-control-room-status.yml'
 
 concurrency:
   group: l99-control-room-status-${{ github.ref }}
   cancel-in-progress: true
 
 env:
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   STATUS_PATH: artifacts/control-room/l99-status.json
+  STATUS_ARTIFACT: l99-control-room-status-${{ github.event.pull_request.head.sha || github.sha }}
   FOUNDER_CONTROL_ROOM_URL: https://oojzfmmywbvficgybaxd.supabase.co/functions/v1/ingest-l99-status
 
 jobs:
-  observe:
+  build-status:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact head
+        uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
           fetch-depth: 1
+
+      - name: Verify immutable head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED_HEAD_SHA" "$actual"
+          test "$actual" = "$EXPECTED_HEAD_SHA"
 
       - uses: actions/setup-python@v5
         with:
@@ -35,7 +53,7 @@ jobs:
       - name: Build exact-head sanitized status
         run: |
           python runtime/portfolio_status.py \
-            --commit "$GITHUB_SHA" \
+            --commit "$EXPECTED_HEAD_SHA" \
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --output "$STATUS_PATH"
@@ -43,10 +61,27 @@ jobs:
       - name: Upload status evidence
         uses: actions/upload-artifact@v4
         with:
-          name: l99-control-room-status-${{ github.sha }}
+          name: ${{ env.STATUS_ARTIFACT }}
           path: ${{ env.STATUS_PATH }}
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
+    needs: build-status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download exact-head status evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STATUS_ARTIFACT }}
+          path: artifacts/control-room
 
       - name: Request GitHub OIDC token
         id: oidc
@@ -74,14 +109,36 @@ jobs:
             -H "Content-Type: application/json" \
             --data-binary "@$STATUS_PATH"
 
+  enforce-gates:
+    needs: build-status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Download exact-head status evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STATUS_ARTIFACT }}
+          path: artifacts/control-room
+
       - name: Keep failed promotion gates red
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          payload = json.loads(Path('artifacts/control-room/l99-status.json').read_text())
+
+          payload = json.loads(
+              Path('artifacts/control-room/l99-status.json').read_text()
+          )
           if payload['gate_status'] != 'pass':
-              failed = [item['gate'] for item in payload['gate_results'] if not item['passed']]
-              raise SystemExit(f"Promotion gates failed: {', '.join(failed)}")
-          print('All promotion gates passed; sanitized observation published.')
+              failed = [
+                  item['gate']
+                  for item in payload['gate_results']
+                  if not item['passed']
+              ]
+              raise SystemExit(
+                  f"Promotion gates failed: {', '.join(failed)}"
+              )
+          print('All promotion gates passed; sanitized observation is valid.')
           PY
