@@ -1,10 +1,49 @@
 name: L99 Promotion Gates
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'runtime/**'
+      - 'policies/**'
+      - 'schemas/**'
+      - 'configs/**'
+      - 'samples/**'
+      - 'docs/**'
+      - 'artifacts/**'
+      - 'dashboards/**'
+      - '.security/**'
+      - '.control-room/**'
+      - 'story-engine/public/l99_auth.js'
+      - 'story-engine/lib/securityContext.js'
+      - 'story-engine/test/securityContext.test.js'
+      - '.github/workflows/l99-promotion-gates.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'runtime/**'
+      - 'policies/**'
+      - 'schemas/**'
+      - 'configs/**'
+      - 'samples/**'
+      - 'docs/**'
+      - 'artifacts/**'
+      - 'dashboards/**'
+      - '.security/**'
+      - '.control-room/**'
+      - 'story-engine/public/l99_auth.js'
+      - 'story-engine/lib/securityContext.js'
+      - 'story-engine/test/securityContext.test.js'
+      - '.github/workflows/l99-promotion-gates.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 concurrency:
   group: l99-promotion-gates-${{ github.ref }}
@@ -12,17 +51,37 @@ concurrency:
 
 jobs:
   gates:
-    name: Promotion gates
+    name: Promotion and cookie-auth gates
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - name: Checkout
+      - name: Checkout exact head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+
+      - name: Verify immutable head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED_HEAD_SHA" "$actual"
+          test "$actual" = "$EXPECTED_HEAD_SHA"
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Run L99 promotion gates
-        run: python runtime/promotion_gates.py
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run all L99 promotion gates
+        run: python runtime/promotion_gates_all.py
+
+      - name: Verify header auth and cookie rejection
+        working-directory: story-engine
+        run: node --test test/securityContext.test.js
