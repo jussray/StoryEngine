@@ -1,6 +1,12 @@
 (() => {
   const STORAGE_KEY = 'l99_api_key';
 
+  function clearLegacyCookie() {
+    // Older builds copied the API key into a same-origin cookie. Expire that
+    // exact host/path cookie while the server transition rejects cookie auth.
+    document.cookie = 'l99_api_key=; Path=/; Max-Age=0; SameSite=Strict';
+  }
+
   function readKey() {
     return sessionStorage.getItem(STORAGE_KEY) || '';
   }
@@ -8,17 +14,15 @@
   function persistKey(value) {
     const key = String(value || '').trim();
     if (!key) return '';
+    // Transitional session-only storage. Browser-readable API-key persistence
+    // remains a production blocker, but it must not become ambient cookie state.
     sessionStorage.setItem(STORAGE_KEY, key);
-    document.cookie = `l99_api_key=${encodeURIComponent(key)}; Path=/; SameSite=Strict`;
     return key;
   }
 
   function ensureKey() {
     const existing = readKey();
-    if (existing) {
-      persistKey(existing);
-      return existing;
-    }
+    if (existing) return existing;
     const entered = window.prompt('Enter the L99 API key for this session:');
     return persistKey(entered);
   }
@@ -35,5 +39,6 @@
     return originalFetch(input, { ...init, headers });
   };
 
+  clearLegacyCookie();
   ensureKey();
 })();
