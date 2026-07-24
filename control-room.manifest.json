@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.0",
-  "repository": "jussray/l99-",
+  "repository": "jussray/l99-StoryEngine",
   "portfolioHub": "jussray/founder-control-room",
   "role": "runtime-control-room",
   "authority": {
-    "sourceOfTruth": "Current main event spine, Story Engine state, artifacts, promotion gates, and repository CI evidence",
+    "sourceOfTruth": "Current main event spine, Story Engine state, artifacts, full promotion gates, and repository CI evidence",
     "portfolioMode": "sanitized-read-only-observer",
     "productionMutation": "separate-founder-gate"
   },
@@ -20,21 +20,27 @@
   },
   "evidence": {
     "status": "at-risk",
-    "commit": "7e035abb7e944dbedcb794991d564ec7be9198a9",
-    "observedAt": "2026-07-12",
+    "commit": "3a6b8ca6be3148876f4e62fac7440b92682b5eec",
+    "observedAt": "2026-07-24",
     "proofRefs": [
       "GLOBAL_AI.md",
       "docs/GUARDRAILS.md",
-      "story-engine/routes/controlRoom.js"
+      "story-engine/routes/controlRoom.js",
+      "runtime/promotion_gates.py",
+      "runtime/promotion_gates_all.py",
+      "runtime/cookie_contract.py",
+      "runtime/portfolio_status.py",
+      ".github/workflows/publish-control-room-status.yml"
     ]
   },
   "risk": {
     "level": "high",
     "blockers": [
-      "Tenant-safe authentication and resource ownership remain release blockers",
+      "Tenant-safe identity and resource ownership remain release blockers",
+      "Browser-readable development credentials remain a production blocker",
       "Creator and operator surfaces are not fully separated",
-      "Stale feature PR branches still require closure or reconstruction from current main"
+      "Remaining old runtime pull requests require current-main reconstruction or closure"
     ]
   },
-  "nextGate": "Complete tenant-safe authorization and close stale stacked PRs before production release or portfolio write integration."
+  "nextGate": "Verify one exact-main OIDC status receipt in Founder Control Room, then continue tenant-safe identity and creator-operator separation work."
 }
