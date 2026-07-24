@@ -29,7 +29,7 @@ Story systems must expand human imagination and authorship without stealing agen
 
 ## /futureyou
 
-Ask: **How would Future You remember building this?**
+Ask: **How would it be remembered by building this?**
 
 Preserve story purpose, authorship, permissions, source material, transformations, safety boundaries, assumptions, failure modes, evidence, and rollback. Future creators should inherit a map, not a maze.
 
