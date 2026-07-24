@@ -79,6 +79,30 @@ test('security context rejects a valid key supplied only through cookies', () =>
   });
 });
 
+test('cookie credentials cannot replace an explicit lower-privilege header identity', () => {
+  withRegistry([
+    { key: 'security-test-header', actor_id: 'actor-header', tenant_id: 'tenant-header', role: 'viewer', workspace_ids: ['workspace_header'] },
+    { key: 'security-test-cookie-admin', actor_id: 'actor-cookie-admin', tenant_id: 'tenant-cookie', role: 'administrator', workspace_ids: ['*'] }
+  ], () => {
+    const req = {
+      method: 'GET',
+      headers: {
+        'x-api-key': 'security-test-header',
+        cookie: 'l99_api_key=security-test-cookie-admin'
+      },
+      request_id: 'req_mixed'
+    };
+    const res = mockRes();
+    let nextCalled = false;
+
+    requireAuth(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, true);
+    assert.equal(req.auth.actor_id, 'actor-header');
+    assert.equal(req.auth.role, 'viewer');
+  });
+});
+
 test('security context refreshes cached registry when env source changes', () => {
   const prior = process.env.L99_API_KEYS_JSON;
   try {
