@@ -26,9 +26,7 @@
         "schemas/isolation_envelope.schema.json",
         "policies/multi_tenant_partitioning_strategy.md"
       ],
-      "requiredSignals": [
-        "promotion-gates"
-      ],
+      "requiredSignals": ["promotion-gates"],
       "usageAssertions": [
         {
           "id": "promotion-gates-import-partition-resolver",
@@ -62,9 +60,7 @@
         "policies/cache_revocation_triggers.md",
         "docs/provenance_engine.md"
       ],
-      "requiredSignals": [
-        "promotion-gates"
-      ],
+      "requiredSignals": ["promotion-gates"],
       "usageAssertions": [
         {
           "id": "promotion-gates-executes-provenance-decisions",
@@ -97,9 +93,7 @@
         "runtime/events_feed_server.py",
         "runtime/l99_rolling_window.py"
       ],
-      "requiredSignals": [
-        "promotion-gates"
-      ],
+      "requiredSignals": ["promotion-gates"],
       "usageAssertions": [
         {
           "id": "event-bus-loads-shared-schema",
@@ -132,9 +126,7 @@
         "schemas/rivereditor_command_registry.schema.json",
         "runtime/promotion_gates.py"
       ],
-      "requiredSignals": [
-        "promotion-gates"
-      ],
+      "requiredSignals": ["promotion-gates"],
       "usageAssertions": [
         {
           "id": "handlers-resolve-registry-command",
@@ -164,7 +156,7 @@
     },
     {
       "id": "tail-latency-and-promotion-controls",
-      "description": "Analyzes L99 tail latency and blocks promotion on provenance, revocation, partition, schema, drift, shell, latency, cookie-auth, and Control Room federation failures.",
+      "description": "Analyzes L99 tail latency and blocks promotion on provenance, revocation, partition, schema, drift, shell, latency, cookie-auth, Control Room federation, and operator-authority failures.",
       "status": "active",
       "evidencePaths": [
         "runtime/style_chain_l99_analyzer.py",
@@ -176,15 +168,13 @@
         "runtime/control_room_contract.py",
         ".github/workflows/l99-promotion-gates.yml"
       ],
-      "requiredSignals": [
-        "promotion-gates"
-      ],
+      "requiredSignals": ["promotion-gates"],
       "usageAssertions": [
         {
           "id": "workflow-executes-promotion-gates",
           "path": ".github/workflows/l99-promotion-gates.yml",
           "marker": "python runtime/promotion_gates_all.py",
-          "description": "GitHub Actions executes the full base, cookie-auth, and Control Room federation registry."
+          "description": "GitHub Actions executes the full promotion registry."
         },
         {
           "id": "promotion-entrypoint-iterates-gates",
@@ -218,9 +208,7 @@
         "story-engine/lib/securityContext.js",
         "story-engine/test/securityContext.test.js"
       ],
-      "requiredSignals": [
-        "promotion-gates"
-      ],
+      "requiredSignals": ["promotion-gates"],
       "usageAssertions": [
         {
           "id": "full-registry-registers-cookie-contract",
@@ -260,9 +248,7 @@
         ".github/workflows/l99-promotion-gates.yml",
         ".github/workflows/publish-control-room-status.yml"
       ],
-      "requiredSignals": [
-        "promotion-gates"
-      ],
+      "requiredSignals": ["promotion-gates"],
       "usageAssertions": [
         {
           "id": "full-registry-registers-control-room-contract",
@@ -281,6 +267,66 @@
           "path": "control-room.manifest.json",
           "marker": "\"canonicalIntegration\": \".control-room/repository.manifest.json\"",
           "description": "The historical manifest points builders to the provider-neutral federation contract."
+        }
+      ]
+    },
+    {
+      "id": "operator-api-authority",
+      "description": "Restricts cross-workspace operational visibility to administrators and requires reviewer or release-manager authority before decision, queue, retention, audit, or release mutations.",
+      "status": "active",
+      "evidencePaths": [
+        "story-engine/routes/missionControl.js",
+        "story-engine/routes/ooda.js",
+        "story-engine/routes/performance.js",
+        "story-engine/routes/learning.js",
+        "story-engine/routes/decision.js",
+        "story-engine/routes/releaseGate.js",
+        "story-engine/test/operatorAuthorization.test.js",
+        ".github/workflows/l99-promotion-gates.yml"
+      ],
+      "requiredSignals": ["promotion-gates"],
+      "usageAssertions": [
+        {
+          "id": "mission-control-requires-release-manager",
+          "path": "story-engine/routes/missionControl.js",
+          "marker": "requireRole('release_manager')",
+          "description": "Global runtime and retention mutations require release-manager authority."
+        },
+        {
+          "id": "ooda-cross-workspace-requires-administrator",
+          "path": "story-engine/routes/ooda.js",
+          "marker": "requireRole('administrator')",
+          "description": "Cross-workspace OODA state and timelines require administrator authority."
+        },
+        {
+          "id": "performance-requires-administrator",
+          "path": "story-engine/routes/performance.js",
+          "marker": "requireRole('administrator')",
+          "description": "Global performance overview and stream require administrator authority."
+        },
+        {
+          "id": "decision-persistence-requires-reviewer",
+          "path": "story-engine/routes/decision.js",
+          "marker": "requireRole('reviewer')",
+          "description": "Persisting an OODA decision requires reviewer authority."
+        },
+        {
+          "id": "release-authorization-requires-manager",
+          "path": "story-engine/routes/releaseGate.js",
+          "marker": "requireRole('release_manager')",
+          "description": "Release audits and authorization require release-manager authority."
+        },
+        {
+          "id": "operator-tests-deny-before-database",
+          "path": "story-engine/test/operatorAuthorization.test.js",
+          "marker": "database operation executed before authorization",
+          "description": "Behavior tests fail if a low-authority request reaches a database or runtime operation."
+        },
+        {
+          "id": "promotion-workflow-runs-operator-tests",
+          "path": ".github/workflows/l99-promotion-gates.yml",
+          "marker": "test/operatorAuthorization.test.js",
+          "description": "The stable Promotion gates signal executes operator authorization tests."
         }
       ]
     },
