@@ -12,11 +12,16 @@ from control_room_contract import (
     LEGACY_WORKFLOW,
     REQUIRED_COOKIE_EVIDENCE,
     REQUIRED_FEDERATION_EVIDENCE,
+    REQUIRED_OPERATOR_EVIDENCE,
     verify_control_room_contract,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-REQUIRED_FILES = REQUIRED_COOKIE_EVIDENCE | REQUIRED_FEDERATION_EVIDENCE
+REQUIRED_FILES = (
+    REQUIRED_COOKIE_EVIDENCE
+    | REQUIRED_FEDERATION_EVIDENCE
+    | REQUIRED_OPERATOR_EVIDENCE
+)
 
 
 def copy_contract_tree(destination: Path) -> None:
@@ -80,6 +85,22 @@ class ControlRoomContractTests(unittest.TestCase):
 
             errors = verify_control_room_contract(root)
             self.assertIn("legacy manifest repository identity is stale", errors)
+
+    def test_operator_authority_capability_cannot_be_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_contract_tree(root)
+            path = root / FEDERATED_MANIFEST
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["capabilities"] = [
+                item
+                for item in manifest["capabilities"]
+                if item["id"] != "operator-api-authority"
+            ]
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            errors = verify_control_room_contract(root)
+            self.assertIn("operator-api-authority capability is missing", errors)
 
 
 if __name__ == "__main__":
