@@ -15,10 +15,12 @@ on:
       - 'dashboards/**'
       - '.security/**'
       - '.control-room/**'
+      - 'control-room.manifest.json'
       - 'story-engine/public/l99_auth.js'
       - 'story-engine/lib/securityContext.js'
       - 'story-engine/test/securityContext.test.js'
       - '.github/workflows/l99-promotion-gates.yml'
+      - '.github/workflows/publish-control-room-status.yml'
   pull_request:
     branches: [main]
     paths:
@@ -32,10 +34,12 @@ on:
       - 'dashboards/**'
       - '.security/**'
       - '.control-room/**'
+      - 'control-room.manifest.json'
       - 'story-engine/public/l99_auth.js'
       - 'story-engine/lib/securityContext.js'
       - 'story-engine/test/securityContext.test.js'
       - '.github/workflows/l99-promotion-gates.yml'
+      - '.github/workflows/publish-control-room-status.yml'
   workflow_dispatch:
 
 permissions:
@@ -51,7 +55,7 @@ concurrency:
 
 jobs:
   gates:
-    name: Promotion and cookie-auth gates
+    name: Promotion, cookie-auth, and Control Room gates
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
