@@ -9,7 +9,7 @@ import {
   predictWorkspaceRisk
 } from '../lib/learningEngine.js';
 import { getIncident } from '../models/lindymodeModel.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function learningRoutes(router, db) {
   router.post('/api/ooda/episodes/from-incident/:incident_id', (req, res) => {
@@ -43,7 +43,9 @@ export default function learningRoutes(router, db) {
   });
 
   router.get('/api/ooda/learned-recoveries', (req, res) => {
-    json(res, 200, learnedRecoveries(db, req.query.trigger_type || null, Math.min(Number(req.query.limit) || 20, 100)));
+    requireRole('administrator')(req, res, () => {
+      json(res, 200, learnedRecoveries(db, req.query.trigger_type || null, Math.min(Number(req.query.limit) || 20, 100)));
+    });
   });
 
   router.post('/api/ooda/predict/:workspace_id', (req, res) => {
