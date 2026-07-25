@@ -1,0 +1,188 @@
+/**
+ * CSS for Story Engine
+ * Modern, accessible story reading experience
+ */
+
+:root {
+  --color-text: #333;
+  --color-text-light: #666;
+  --color-background: #fff;
+  --color-accent: #0066cc;
+  --font-serif: 'Georgia', 'Garamond', serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --line-height-reading: 1.8;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #f0f0f0;
+    --color-text-light: #bbb;
+    --color-background: #1a1a1a;
+  }
+}
+
+/* Story Article - Semantic HTML */
+.story-article {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+  color: var(--color-text);
+  background: var(--color-background);
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  line-height: var(--line-height-reading);
+}
+
+/* Story Header */
+.story-article header {
+  margin-bottom: 3rem;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 2rem;
+}
+
+.story-title {
+  font-size: 2.5rem;
+  font-weight: bold;
+  line-height: 1.2;
+  margin: 0 0 1.5rem 0;
+}
+
+.story-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  font-size: 0.95rem;
+  color: var(--color-text-light);
+  font-family: var(--font-sans);
+}
+
+time {
+  display: flex;
+  align-items: center;
+}
+
+.story-reading-time {
+  background: var(--color-accent);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.875rem;
+}
+
+/* Story Tags */
+.story-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.story-tags .tag {
+  display: inline-block;
+  background: #f0f0f0;
+  color: var(--color-accent);
+  padding: 0.5rem 1rem;
+  border-radius: 1rem;
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: background 0.3s ease;
+}
+
+.story-tags .tag:hover {
+  background: var(--color-accent);
+  color: white;
+}
+
+/* Story Content */
+.story-content {
+  margin: 2rem 0;
+}
+
+.story-content p {
+  margin: 1.5rem 0;
+  text-align: justify;
+  hyphens: auto;
+}
+
+.story-content strong {
+  font-weight: bold;
+}
+
+.story-content em {
+  font-style: italic;
+}
+
+.story-content code {
+  background: #f5f5f5;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.story-content a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.story-content a:hover {
+  color: #004499;
+}
+
+/* Story Footer */
+.story-footer {
+  display: flex;
+  gap: 1rem;
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e0e0e0;
+  font-family: var(--font-sans);
+}
+
+.btn-bookmark,
+.btn-share {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 0.5rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.btn-bookmark:hover,
+.btn-share:hover {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .story-article {
+    padding: 1rem;
+    font-size: 1rem;
+  }
+
+  .story-title {
+    font-size: 1.75rem;
+  }
+
+  .story-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .story-tags .tag,
+  .btn-bookmark,
+  .btn-share,
+  .story-content a {
+    transition: none;
+  }
+}
