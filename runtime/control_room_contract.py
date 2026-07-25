@@ -35,6 +35,25 @@ REQUIRED_FEDERATION_EVIDENCE = {
     PROMOTION_WORKFLOW,
     LEGACY_WORKFLOW,
 }
+REQUIRED_OPERATOR_EVIDENCE = {
+    "story-engine/routes/missionControl.js",
+    "story-engine/routes/ooda.js",
+    "story-engine/routes/performance.js",
+    "story-engine/routes/learning.js",
+    "story-engine/routes/decision.js",
+    "story-engine/routes/releaseGate.js",
+    "story-engine/test/operatorAuthorization.test.js",
+    PROMOTION_WORKFLOW,
+}
+REQUIRED_OPERATOR_ASSERTIONS = {
+    "mission-control-requires-release-manager",
+    "ooda-cross-workspace-requires-administrator",
+    "performance-requires-administrator",
+    "decision-persistence-requires-reviewer",
+    "release-authorization-requires-manager",
+    "operator-tests-deny-before-database",
+    "promotion-workflow-runs-operator-tests",
+}
 FORBIDDEN_LEGACY_AUTHORITY = (
     "id-token: write",
     "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
@@ -175,9 +194,28 @@ def verify_control_room_contract(root: Path) -> list[str]:
             if _usage_assertion(federation_capability, assertion_id) is None:
                 errors.append(f"federation assertion is missing: {assertion_id}")
 
-    for relative_path in sorted(
-        REQUIRED_COOKIE_EVIDENCE | REQUIRED_FEDERATION_EVIDENCE
-    ):
+    operator_capability = _capability(manifest, "operator-api-authority")
+    if operator_capability is None:
+        errors.append("operator-api-authority capability is missing")
+    else:
+        missing = sorted(REQUIRED_OPERATOR_EVIDENCE - _evidence(operator_capability))
+        if missing:
+            errors.append(
+                "operator capability is missing evidence paths: "
+                + ", ".join(missing)
+            )
+        if not _requires_promotion(operator_capability):
+            errors.append("operator capability must require promotion-gates")
+        for assertion_id in sorted(REQUIRED_OPERATOR_ASSERTIONS):
+            if _usage_assertion(operator_capability, assertion_id) is None:
+                errors.append(f"operator assertion is missing: {assertion_id}")
+
+    declared_evidence = (
+        REQUIRED_COOKIE_EVIDENCE
+        | REQUIRED_FEDERATION_EVIDENCE
+        | REQUIRED_OPERATOR_EVIDENCE
+    )
+    for relative_path in sorted(declared_evidence):
         if not (root / relative_path).is_file():
             errors.append(f"declared federation evidence is missing: {relative_path}")
 
@@ -187,6 +225,8 @@ def verify_control_room_contract(root: Path) -> list[str]:
     )
     if EXPECTED_PROMOTION_COMMAND not in promotion_workflow:
         errors.append("promotion workflow does not execute the full gate registry")
+    if "test/operatorAuthorization.test.js" not in promotion_workflow:
+        errors.append("promotion workflow does not execute operator authorization tests")
 
     full_registry = (root / FULL_REGISTRY).read_text(
         encoding="utf-8",
