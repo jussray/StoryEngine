@@ -10,13 +10,19 @@ FEDERATED_MANIFEST = ".control-room/repository.manifest.json"
 LEGACY_MANIFEST = "control-room.manifest.json"
 LEGACY_WORKFLOW = ".github/workflows/publish-control-room-status.yml"
 PROMOTION_WORKFLOW = ".github/workflows/l99-promotion-gates.yml"
+FULL_REGISTRY = "runtime/promotion_gates_all.py"
 EXPECTED_REPOSITORY = "jussray/l99-StoryEngine"
 EXPECTED_PROJECT = "l99"
 EXPECTED_PROMOTION_COMMAND = "python runtime/promotion_gates_all.py"
+COOKIE_REGISTRATION = 'promotion_gates.GATES["cookie_contract"] = gate_cookie_contract'
+FEDERATION_REGISTRATION = (
+    'promotion_gates.GATES["control_room_federation"] = '
+    "gate_control_room_federation"
+)
 REQUIRED_COOKIE_EVIDENCE = {
     ".security/cookies.json",
     "runtime/cookie_contract.py",
-    "runtime/promotion_gates_all.py",
+    FULL_REGISTRY,
     "story-engine/public/l99_auth.js",
     "story-engine/lib/securityContext.js",
     "story-engine/test/securityContext.test.js",
@@ -25,7 +31,7 @@ REQUIRED_FEDERATION_EVIDENCE = {
     FEDERATED_MANIFEST,
     LEGACY_MANIFEST,
     "runtime/control_room_contract.py",
-    "runtime/promotion_gates_all.py",
+    FULL_REGISTRY,
     PROMOTION_WORKFLOW,
     LEGACY_WORKFLOW,
 }
@@ -169,12 +175,27 @@ def verify_control_room_contract(root: Path) -> list[str]:
             if _usage_assertion(federation_capability, assertion_id) is None:
                 errors.append(f"federation assertion is missing: {assertion_id}")
 
+    for relative_path in sorted(
+        REQUIRED_COOKIE_EVIDENCE | REQUIRED_FEDERATION_EVIDENCE
+    ):
+        if not (root / relative_path).is_file():
+            errors.append(f"declared federation evidence is missing: {relative_path}")
+
     promotion_workflow = (root / PROMOTION_WORKFLOW).read_text(
         encoding="utf-8",
         errors="replace",
     )
     if EXPECTED_PROMOTION_COMMAND not in promotion_workflow:
         errors.append("promotion workflow does not execute the full gate registry")
+
+    full_registry = (root / FULL_REGISTRY).read_text(
+        encoding="utf-8",
+        errors="replace",
+    )
+    if COOKIE_REGISTRATION not in full_registry:
+        errors.append("full registry does not register cookie_contract")
+    if FEDERATION_REGISTRATION not in full_registry:
+        errors.append("full registry does not register control_room_federation")
 
     legacy_workflow = (root / LEGACY_WORKFLOW).read_text(
         encoding="utf-8",
