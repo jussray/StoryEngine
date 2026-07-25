@@ -164,13 +164,16 @@
     },
     {
       "id": "tail-latency-and-promotion-controls",
-      "description": "Analyzes L99 tail latency and blocks promotion on provenance, revocation, partition, schema, drift, shell, and latency failures.",
+      "description": "Analyzes L99 tail latency and blocks promotion on provenance, revocation, partition, schema, drift, shell, latency, cookie-auth, and Control Room federation failures.",
       "status": "active",
       "evidencePaths": [
         "runtime/style_chain_l99_analyzer.py",
         "runtime/rivereditor_l99_latency_monitor.py",
         "runtime/l99_rolling_window.py",
         "runtime/promotion_gates.py",
+        "runtime/promotion_gates_all.py",
+        "runtime/cookie_contract.py",
+        "runtime/control_room_contract.py",
         ".github/workflows/l99-promotion-gates.yml"
       ],
       "requiredSignals": [
@@ -180,8 +183,8 @@
         {
           "id": "workflow-executes-promotion-gates",
           "path": ".github/workflows/l99-promotion-gates.yml",
-          "marker": "python runtime/promotion_gates.py",
-          "description": "GitHub Actions executes the seven-gate Python entrypoint."
+          "marker": "python runtime/promotion_gates_all.py",
+          "description": "GitHub Actions executes the full base, cookie-auth, and Control Room federation registry."
         },
         {
           "id": "promotion-entrypoint-iterates-gates",
@@ -200,6 +203,84 @@
           "path": "runtime/l99_rolling_window.py",
           "marker": "from rivereditor_l99_latency_monitor import build_report, load_records",
           "description": "Successive windows use the same rich latency report implementation."
+        }
+      ]
+    },
+    {
+      "id": "cookie-free-auth-transport",
+      "description": "Keeps the transitional browser API key tab-scoped and explicit while rejecting ambient cookie authentication.",
+      "status": "active",
+      "evidencePaths": [
+        ".security/cookies.json",
+        "runtime/cookie_contract.py",
+        "runtime/promotion_gates_all.py",
+        "story-engine/public/l99_auth.js",
+        "story-engine/lib/securityContext.js",
+        "story-engine/test/securityContext.test.js"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "full-registry-registers-cookie-contract",
+          "path": "runtime/promotion_gates_all.py",
+          "marker": "promotion_gates.GATES[\"cookie_contract\"] = gate_cookie_contract",
+          "description": "The full promotion registry enforces the cookie-free contract."
+        },
+        {
+          "id": "browser-auth-sends-explicit-header",
+          "path": "story-engine/public/l99_auth.js",
+          "marker": "headers.set('x-api-key', key)",
+          "description": "The browser sends the tab-scoped credential through an explicit request header."
+        },
+        {
+          "id": "server-auth-prefers-explicit-api-key",
+          "path": "story-engine/lib/securityContext.js",
+          "marker": "const direct = req.headers?.['x-api-key'];",
+          "description": "Server authentication reads the explicit API-key header."
+        },
+        {
+          "id": "cookie-contract-rejects-server-cookie-paths",
+          "path": "runtime/cookie_contract.py",
+          "marker": "for forbidden in (\"cookieCredential\", \"headers?.cookie\", \"headers.cookie\", \"l99_api_key\")",
+          "description": "The cookie contract rejects any restored server cookie credential path."
+        }
+      ]
+    },
+    {
+      "id": "founder-control-room-federation",
+      "description": "Publishes bounded repository evidence through the provider-neutral Founder Control Room federation path without a second L99-only observer.",
+      "status": "active",
+      "evidencePaths": [
+        ".control-room/repository.manifest.json",
+        "control-room.manifest.json",
+        "runtime/control_room_contract.py",
+        "runtime/promotion_gates_all.py",
+        ".github/workflows/l99-promotion-gates.yml",
+        ".github/workflows/publish-control-room-status.yml"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "full-registry-registers-control-room-contract",
+          "path": "runtime/promotion_gates_all.py",
+          "marker": "promotion_gates.GATES[\"control_room_federation\"] = gate_control_room_federation",
+          "description": "The full promotion registry enforces the canonical federation boundary."
+        },
+        {
+          "id": "legacy-direct-observer-is-retired",
+          "path": ".github/workflows/publish-control-room-status.yml",
+          "marker": "Legacy L99 Direct Status Bridge (Retired)",
+          "description": "The historical direct observer remains visible but has no execution or OIDC authority."
+        },
+        {
+          "id": "legacy-manifest-points-to-federation",
+          "path": "control-room.manifest.json",
+          "marker": "\"canonicalIntegration\": \".control-room/repository.manifest.json\"",
+          "description": "The historical manifest points builders to the provider-neutral federation contract."
         }
       ]
     },
