@@ -83,6 +83,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Run Control Room federation contract tests
+        run: python runtime/test_control_room_contract.py
+
       - name: Run all L99 promotion gates
         run: python runtime/promotion_gates_all.py
 
