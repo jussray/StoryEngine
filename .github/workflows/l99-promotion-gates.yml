@@ -55,7 +55,7 @@ concurrency:
 
 jobs:
   gates:
-    name: Promotion, cookie-auth, and Control Room gates
+    name: Promotion gates
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
