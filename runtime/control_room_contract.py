@@ -21,6 +21,14 @@ REQUIRED_COOKIE_EVIDENCE = {
     "story-engine/lib/securityContext.js",
     "story-engine/test/securityContext.test.js",
 }
+REQUIRED_FEDERATION_EVIDENCE = {
+    FEDERATED_MANIFEST,
+    LEGACY_MANIFEST,
+    "runtime/control_room_contract.py",
+    "runtime/promotion_gates_all.py",
+    PROMOTION_WORKFLOW,
+    LEGACY_WORKFLOW,
+}
 FORBIDDEN_LEGACY_AUTHORITY = (
     "id-token: write",
     "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
@@ -60,6 +68,16 @@ def _usage_assertion(capability: dict, assertion_id: str) -> dict | None:
         if isinstance(assertion, dict) and assertion.get("id") == assertion_id:
             return assertion
     return None
+
+
+def _evidence(capability: dict) -> set[str]:
+    paths = capability.get("evidencePaths")
+    return set(paths) if isinstance(paths, list) else set()
+
+
+def _requires_promotion(capability: dict) -> bool:
+    required = capability.get("requiredSignals")
+    return isinstance(required, list) and "promotion-gates" in required
 
 
 def verify_control_room_contract(root: Path) -> list[str]:
@@ -115,16 +133,41 @@ def verify_control_room_contract(root: Path) -> list[str]:
     if cookie_capability is None:
         errors.append("cookie-free-auth-transport capability is missing")
     else:
-        evidence_paths = cookie_capability.get("evidencePaths")
-        evidence = set(evidence_paths) if isinstance(evidence_paths, list) else set()
-        missing = sorted(REQUIRED_COOKIE_EVIDENCE - evidence)
+        missing = sorted(REQUIRED_COOKIE_EVIDENCE - _evidence(cookie_capability))
         if missing:
             errors.append(
                 "cookie capability is missing evidence paths: " + ", ".join(missing)
             )
-        required = cookie_capability.get("requiredSignals")
-        if not isinstance(required, list) or "promotion-gates" not in required:
+        if not _requires_promotion(cookie_capability):
             errors.append("cookie capability must require promotion-gates")
+        assertion = _usage_assertion(
+            cookie_capability,
+            "full-registry-registers-cookie-contract",
+        )
+        if assertion is None:
+            errors.append("cookie contract registration assertion is missing")
+
+    federation_capability = _capability(manifest, "founder-control-room-federation")
+    if federation_capability is None:
+        errors.append("founder-control-room-federation capability is missing")
+    else:
+        missing = sorted(
+            REQUIRED_FEDERATION_EVIDENCE - _evidence(federation_capability)
+        )
+        if missing:
+            errors.append(
+                "federation capability is missing evidence paths: "
+                + ", ".join(missing)
+            )
+        if not _requires_promotion(federation_capability):
+            errors.append("federation capability must require promotion-gates")
+        for assertion_id in (
+            "full-registry-registers-control-room-contract",
+            "legacy-direct-observer-is-retired",
+            "legacy-manifest-points-to-federation",
+        ):
+            if _usage_assertion(federation_capability, assertion_id) is None:
+                errors.append(f"federation assertion is missing: {assertion_id}")
 
     promotion_workflow = (root / PROMOTION_WORKFLOW).read_text(
         encoding="utf-8",
