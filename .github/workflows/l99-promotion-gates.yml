@@ -18,7 +18,9 @@ on:
       - 'control-room.manifest.json'
       - 'story-engine/public/l99_auth.js'
       - 'story-engine/lib/securityContext.js'
+      - 'story-engine/routes/**'
       - 'story-engine/test/securityContext.test.js'
+      - 'story-engine/test/operatorAuthorization.test.js'
       - '.github/workflows/l99-promotion-gates.yml'
       - '.github/workflows/publish-control-room-status.yml'
   pull_request:
@@ -37,7 +39,9 @@ on:
       - 'control-room.manifest.json'
       - 'story-engine/public/l99_auth.js'
       - 'story-engine/lib/securityContext.js'
+      - 'story-engine/routes/**'
       - 'story-engine/test/securityContext.test.js'
+      - 'story-engine/test/operatorAuthorization.test.js'
       - '.github/workflows/l99-promotion-gates.yml'
       - '.github/workflows/publish-control-room-status.yml'
   workflow_dispatch:
@@ -89,6 +93,6 @@ jobs:
       - name: Run all L99 promotion gates
         run: python runtime/promotion_gates_all.py
 
-      - name: Verify header auth and cookie rejection
+      - name: Verify authentication and operator authorization
         working-directory: story-engine
-        run: node --test test/securityContext.test.js
+        run: node --test test/securityContext.test.js test/operatorAuthorization.test.js
