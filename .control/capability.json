@@ -6,25 +6,26 @@
   "owner": "Juss Ray",
   "repository": "jussray/l99-StoryEngine",
   "capabilities": [
-    { "id": "BUILD", "status": "partial", "evidence_ids": [], "notes": "Repository contains executable Python and Node components, but no single canonical full-repository build artifact is established." },
-    { "id": "TEST", "status": "partial", "evidence_ids": [], "notes": "Promotion-gate and security tests exist; exact-head passing evidence must be attached before verification." },
-    { "id": "VERIFY", "status": "partial", "evidence_ids": [], "notes": "Exact-head promotion gates are defined, but this contract does not claim a passing run." },
-    { "id": "DEPLOY", "status": "unverified", "evidence_ids": [], "notes": "No deployment artifact is attached to this contract." },
-    { "id": "ROLLBACK", "status": "partial", "evidence_ids": [], "notes": "Rollback concepts and events exist, but an executed rollback proof is not attached." },
-    { "id": "HEALTH", "status": "partial", "evidence_ids": [], "notes": "Operational events and dashboards exist, but production runtime health is not proven." },
+    { "id": "BUILD", "status": "unverified", "evidence_ids": [], "notes": "Executable Python and Node components exist, but implementation presence receives no readiness credit without exact-head proof." },
+    { "id": "TEST", "status": "unverified", "evidence_ids": [], "notes": "Promotion-gate and security tests exist; exact-head passing evidence must be attached before partial or verified status." },
+    { "id": "VERIFY", "status": "unverified", "evidence_ids": [], "notes": "Exact-head promotion gates are defined, but no passing run is attached." },
+    { "id": "DEPLOY", "status": "unverified", "evidence_ids": [], "notes": "No immutable deployment artifact is attached." },
+    { "id": "ROLLBACK", "status": "unverified", "evidence_ids": [], "notes": "Code-revert concepts and operational events exist, but no executed rollback proof is attached." },
+    { "id": "HEALTH", "status": "unverified", "evidence_ids": [], "notes": "Operational events and dashboards exist, but production runtime health is not proven." },
     { "id": "AUTH", "status": "blocked", "evidence_ids": [], "notes": "Production readiness is blocked by hardened session design and complete workspace authorization proof." },
-    { "id": "DATABASE", "status": "partial", "evidence_ids": [], "notes": "Partitioning and isolation contracts exist; live persistence behavior is not fully verified here." },
-    { "id": "API", "status": "partial", "evidence_ids": [], "notes": "Runtime services and handlers exist; a complete externally supported API contract is not yet proven." },
-    { "id": "AI", "status": "partial", "evidence_ids": [], "notes": "AI runtime and provider operating contracts exist; live model behavior is outside this file's proof boundary." },
+    { "id": "DATABASE", "status": "unverified", "evidence_ids": [], "notes": "Partitioning and isolation contracts exist; live persistence behavior is not proven." },
+    { "id": "API", "status": "unverified", "evidence_ids": [], "notes": "Runtime services and handlers exist; supported API behavior is not proven." },
+    { "id": "AI", "status": "unverified", "evidence_ids": [], "notes": "AI runtime and provider contracts exist; live model behavior is not proven." },
     { "id": "MCP", "status": "unverified", "evidence_ids": [], "notes": "No MCP execution proof is attached." },
-    { "id": "AUTOMATION", "status": "partial", "evidence_ids": [], "notes": "Promotion gates and event producers automate checks, but end-to-end production automation is not proven." },
-    { "id": "ANALYTICS", "status": "partial", "evidence_ids": [], "notes": "L99 latency and operational telemetry analyzers exist; production completeness is not proven." },
+    { "id": "AUTOMATION", "status": "unverified", "evidence_ids": [], "notes": "Automation implementation exists, but end-to-end production execution is not proven." },
+    { "id": "ANALYTICS", "status": "unverified", "evidence_ids": [], "notes": "Latency and telemetry analyzers exist; current execution evidence is not attached." },
     { "id": "NOTIFICATIONS", "status": "unverified", "evidence_ids": [], "notes": "No notification-delivery proof is attached." },
-    { "id": "OBSERVABILITY", "status": "partial", "evidence_ids": [], "notes": "Event bus, correlation IDs, dashboards, and latency monitors exist without current runtime proof." },
+    { "id": "OBSERVABILITY", "status": "unverified", "evidence_ids": [], "notes": "Event bus, correlation IDs, dashboards, and latency monitors exist without current runtime proof." },
     { "id": "SECURITY", "status": "blocked", "evidence_ids": [], "notes": "Known blockers include Stripe signature verification, browser-readable key persistence, CSP hardening, and authorization coverage." },
-    { "id": "EVIDENCE", "status": "partial", "evidence_ids": [], "notes": "Artifact writers and event contracts exist; immutable exact-head evidence binding is the next gate." }
+    { "id": "EVIDENCE", "status": "unverified", "evidence_ids": [], "notes": "Artifact writers and event contracts exist; immutable exact-head evidence binding is not yet attached." }
   ],
   "verification": [
+    { "id": "capability-contract", "command": "python runtime/verify_capability_contract.py", "purpose": "Validate canonical capabilities, proof structure, exact-head binding, blocker contradictions, and rollback scope." },
     { "id": "control-room-contract", "command": "python runtime/test_control_room_contract.py", "purpose": "Verify the existing Founder Control Room federation contract." },
     { "id": "promotion-gates", "command": "python runtime/promotion_gates_all.py", "purpose": "Run provenance, revocation, partition, event, drift, shell, and latency gates." },
     { "id": "security-context", "command": "cd story-engine && node --test test/securityContext.test.js", "purpose": "Verify header authentication and cookie rejection behavior." }
@@ -35,11 +36,12 @@
     "tests": "unknown",
     "deploy": "unknown",
     "runtime": "unknown",
-    "proof": "yellow"
+    "proof": "unknown"
   },
   "proof": [],
   "rollback": {
-    "method": "Revert the exact promoted commit and replay revocation and operational events through the append-only event spine.",
+    "method": "Revert the exact promoted commit and replay revocation and operational events through the append-only event spine. This covers code rollback only; external side effects, data mutations, infrastructure, secrets, and provider state require separate proof.",
+    "scope": "code_only",
     "verified": false,
     "evidence_id": null
   },
@@ -54,5 +56,5 @@
     "Workspace authorization must be proven on every read and mutation path.",
     "Exact-head CI evidence has not yet been attached to this contract."
   ],
-  "next_gate": "Run exact-head capability and promotion validation, bind immutable workflow evidence to the commit, and only then promote supported capability states."
+  "next_gate": "Pass exact-head validation, publish immutable workflow evidence with repository, commit, scope, and timestamp binding, and let Founder Control Room independently authenticate it before promoting any capability."
 }
