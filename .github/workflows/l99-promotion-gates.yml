@@ -85,7 +85,14 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Run capability contract adversarial tests
+        env:
+          GITHUB_SHA: ${{ env.EXPECTED_HEAD_SHA }}
+        run: python runtime/test_verify_capability_contract.py
+
       - name: Verify proof-first capability contract
+        env:
+          GITHUB_SHA: ${{ env.EXPECTED_HEAD_SHA }}
         run: python runtime/verify_capability_contract.py
 
       - name: Run Control Room federation contract tests
