@@ -17,6 +17,31 @@ Repeated `redteam` tokens are intentional.
 
 Do not collapse the two redteam passes. The first attacks the premise. The second attacks the chosen mechanism.
 
+## Mandatory founder truth loop
+
+Before any merge-readiness, release-readiness, capability, recovery, or completion claim, every agent must run or explicitly classify why it cannot run:
+
+```bash
+python runtime/founder_truth_gate.py
+```
+
+The command must execute against the exact checked-out head and emit `artifacts/founder-truth/<sha>.json`. GitHub Actions may execute this command, but GitHub Actions is not the sole source of truth. A zero-step or no-log CI failure is infrastructure evidence, not a code failure. Never weaken a check to create a green result.
+
+Every nontrivial action must follow and report:
+
+```text
+Observe reality
+→ Redteam the premise
+→ Map the L99 system
+→ Decide the smallest reversible path
+→ Redteam the selected path
+→ Act
+→ Run the founder truth gate
+→ Classify evidence
+→ Record rollback
+→ Name the next approval gate
+```
+
 ## Truth order
 
 1. Repository, branch, runtime, artifacts, and deployed configuration actually inspected.
