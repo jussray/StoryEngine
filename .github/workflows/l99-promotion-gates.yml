@@ -2,8 +2,7 @@ name: L99 Promotion Gates
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'runtime/**'
       - 'policies/**'
@@ -17,9 +16,7 @@ on:
       - '.control/**'
       - '.control-room/**'
       - 'control-room.manifest.json'
-      - 'story-engine/public/l99_auth.js'
-      - 'story-engine/lib/securityContext.js'
-      - 'story-engine/test/securityContext.test.js'
+      - 'story-engine/**'
       - '.github/workflows/l99-promotion-gates.yml'
       - '.github/workflows/publish-control-room-status.yml'
   pull_request:
@@ -37,9 +34,7 @@ on:
       - '.control/**'
       - '.control-room/**'
       - 'control-room.manifest.json'
-      - 'story-engine/public/l99_auth.js'
-      - 'story-engine/lib/securityContext.js'
-      - 'story-engine/test/securityContext.test.js'
+      - 'story-engine/**'
       - '.github/workflows/l99-promotion-gates.yml'
       - '.github/workflows/publish-control-room-status.yml'
   workflow_dispatch:
@@ -56,51 +51,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gates:
-    name: Promotion gates
+  capability-contract:
+    name: Capability contract trust
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    timeout-minutes: 5
     steps:
-      - name: Checkout exact head
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_HEAD_SHA }}
-
-      - name: Verify immutable head
-        shell: bash
-        run: |
-          set -euo pipefail
-          actual="$(git rev-parse HEAD)"
-          printf 'expected=%s\nactual=%s\n' "$EXPECTED_HEAD_SHA" "$actual"
-          test "$actual" = "$EXPECTED_HEAD_SHA"
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Run capability contract adversarial tests
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - name: Run adversarial contract tests
         env:
           GITHUB_SHA: ${{ env.EXPECTED_HEAD_SHA }}
         run: python runtime/test_verify_capability_contract.py
-
-      - name: Verify proof-first capability contract
+      - name: Validate conservative contract
         env:
           GITHUB_SHA: ${{ env.EXPECTED_HEAD_SHA }}
         run: python runtime/verify_capability_contract.py
 
-      - name: Run Control Room federation contract tests
-        run: python runtime/test_control_room_contract.py
+  federation-contract:
+    name: Control Room federation contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - run: python runtime/test_control_room_contract.py
 
-      - name: Run all L99 promotion gates
-        run: python runtime/promotion_gates_all.py
+  promotion-gates:
+    name: Runtime promotion gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - run: python runtime/promotion_gates_all.py
 
-      - name: Verify header auth and cookie rejection
+  auth-contract:
+    name: Header auth and cookie rejection
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - name: Run security context tests
         working-directory: story-engine
         run: node --test test/securityContext.test.js
