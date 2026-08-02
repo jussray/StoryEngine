@@ -13,12 +13,14 @@ function mockRes() {
   };
 }
 
-test('creator pages include the core story flow', () => {
+test('creator pages include the core story flow and shared browser clients', () => {
   assert.ok(CREATOR_PAGES.has('/front_door.html'));
   assert.ok(CREATOR_PAGES.has('/story_engine.html'));
   assert.ok(CREATOR_PAGES.has('/chapters.html'));
   assert.ok(CREATOR_PAGES.has('/studio.html'));
   assert.ok(CREATOR_PAGES.has('/ip_studio.html'));
+  assert.ok(CREATOR_PAGES.has('/l99_auth.js'));
+  assert.ok(CREATOR_PAGES.has('/video_control_room.js'));
 });
 
 test('operator pages include all backstage dashboards', () => {
@@ -43,6 +45,8 @@ test('known creator and operator assets are public static shells', () => {
     '/front_door.html',
     '/l99_auth.js',
     '/control_room.html',
+    '/control_room.js',
+    '/video_control_room.js',
     '/mission_control.html',
   ]) {
     const req = { method: 'GET', headers: {} };
