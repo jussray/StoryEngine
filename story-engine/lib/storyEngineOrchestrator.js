@@ -30,6 +30,8 @@ export const PIPELINE_STAGES = Object.freeze([
   'complete'
 ]);
 
+const BLADER_THRESHOLD = Number(process.env.BLADER_HUMAN_SCORE_THRESHOLD || 72);
+
 const MEDIUM_PATTERNS = [
   ['picture_book', /picture book|children(?:'s)? book|kids? book|storybook/i],
   ['movie', /movie|film|screenplay/i],
@@ -193,6 +195,9 @@ function ensureLindymodeState(db, workspaceId, intent, ghostPlan) {
     current_goal: ghostPlan.goal,
     pipeline_run: ghostPlan.run_id,
     ghost_voice_fingerprint: ghostPlan.voice_fingerprint || null,
+    ghost_draft_status: ghostPlan.draft?.status || null,
+    blader_score: ghostPlan.blader_score || 0,
+    detector_report: ghostPlan.detector_report || null
     ghost_draft_status: ghostPlan.draft?.status || null
   };
   if (existing) {
@@ -224,6 +229,8 @@ async function buildGhostPlan(runId, intent, profile) {
       'Establish the creative contract.',
       'Build structure and canon.',
       'Draft the first executable story unit with the Ghost voice fingerprint.',
+      'Run Ghost humanize and Blader before Lindymode validation.',
+      'Validate continuity, audience fit, detector score, and operator constraints.',
       'Run the Ghost human-voice post-pass before Lindymode validation.',
       'Validate continuity, audience fit, and operator constraints.',
       'Run browser validation before pre-release Redteam.',
@@ -233,12 +240,16 @@ async function buildGhostPlan(runId, intent, profile) {
     ],
     ghost_commands: ghostCommandOptions(),
     voice_fingerprint: draft.voice_fingerprint,
+    blader_score: draft.blader_score || 0,
+    detector_report: draft.detector_report || null,
     draft: {
       status: draft.status,
       provider: draft.provider,
       task: draft.task,
       draft_unit: draft.draft_unit,
       humanize_pass: draft.humanize_pass,
+      blader_score: draft.blader_score || 0,
+      detector_report: draft.detector_report || null,
       error: draft.error || null
     },
     human_decisions: ['Approve paid execution when required.', 'Approve Ghost draft before overwriting human-authored text.', 'Approve final release.']
@@ -252,6 +263,9 @@ function runRedteamPreRuntime(intent, decision, operatorCheck, ghostPlan = {}) {
   if (operatorCheck.requires_approval) findings.push({ severity: 'warning', code: 'operator_approval', message: operatorCheck.recommendation });
   if (!ghostPlan.draft?.draft_unit) findings.push({ severity: 'warning', code: 'ghost_no_draft', message: 'Ghost did not produce a draft unit; continue in human-led mode or retry the writer provider.' });
   if (ghostPlan.draft?.status === 'fallback_stub') findings.push({ severity: 'warning', code: 'ghost_provider_fallback', message: 'Ghost writing provider was unavailable; a review-safe fallback stub was created.' });
+  if (ghostPlan.draft?.status !== 'fallback_stub' && Number(ghostPlan.blader_score || 0) < BLADER_THRESHOLD) {
+    findings.push({ severity: 'warning', code: 'blader_low_score', message: `Blader detector score ${ghostPlan.blader_score || 0} is below threshold ${BLADER_THRESHOLD}.`, detector_report: ghostPlan.detector_report || null });
+  }
   return findings;
 }
 
@@ -304,6 +318,7 @@ export async function startStoryEngineRun(db, input = {}) {
 
     const ghostPlan = await buildGhostPlan(runId, intent, profile);
     db.prepare('UPDATE story_engine_runs SET ghost_plan_json=? WHERE run_id=?').run(JSON.stringify(ghostPlan), runId);
+    setStage(db, runId, workspaceId, 'ghost', 'completed', 'Ghost drafted, Blader revised, and detector scoring completed.', { ...ghostPlan, draft: { ...ghostPlan.draft, draft_unit: '[stored in ghost_plan_json]' } });
     setStage(db, runId, workspaceId, 'ghost', 'completed', 'Ghost created the voice fingerprint and drafted the first review unit.', { ...ghostPlan, draft: { ...ghostPlan.draft, draft_unit: '[stored in ghost_plan_json]' } });
 
     ensureLindymodeState(db, workspaceId, intent, ghostPlan);
@@ -429,6 +444,37 @@ export function listStoryEngineRuns(db, limit = 50) {
   `).all(Math.max(1, Math.min(200, Number(limit) || 50)));
 }
 
+export function bladerHealthSnapshot(db, limit = 25) {
+  ensureStoryEngineSchema(db);
+  const rows = db.prepare(`
+    SELECT run_id, workspace_id, ghost_plan_json, updated_at
+    FROM story_engine_runs
+    ORDER BY updated_at DESC LIMIT ?
+  `).all(Math.max(1, Math.min(100, Number(limit) || 25)));
+  const reports = rows.map(row => {
+    try {
+      const ghost = JSON.parse(row.ghost_plan_json || '{}');
+      return {
+        run_id: row.run_id,
+        workspace_id: row.workspace_id,
+        updated_at: row.updated_at,
+        score: Number(ghost.blader_score || ghost.draft?.blader_score || 0),
+        detector_report: ghost.detector_report || ghost.draft?.detector_report || null
+      };
+    } catch {
+      return { run_id: row.run_id, workspace_id: row.workspace_id, updated_at: row.updated_at, score: 0, detector_report: null };
+    }
+  }).filter(item => item.score > 0);
+  const average = reports.length ? Math.round(reports.reduce((sum, item) => sum + item.score, 0) / reports.length) : 0;
+  return {
+    threshold: BLADER_THRESHOLD,
+    average_score: average,
+    below_threshold_count: reports.filter(item => item.score < BLADER_THRESHOLD).length,
+    last_run: reports[0] || null,
+    reports
+  };
+}
+
 export function storyEngineBrainSnapshot(db) {
   ensureStoryEngineSchema(db);
   const runs = listStoryEngineRuns(db, 25);
@@ -439,6 +485,8 @@ export function storyEngineBrainSnapshot(db) {
     active_count: active.length,
     current: active[0] || runs[0] || null,
     pipeline_stages: PIPELINE_STAGES,
+    ghost_commands: ghostCommandOptions(),
+    blader_health: bladerHealthSnapshot(db)
     ghost_commands: ghostCommandOptions()
   };
 }

@@ -4,12 +4,13 @@ import { randomUUID } from 'node:crypto';
 import '../lib/sqliteTransaction.js';
 import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
-import { storyEngineBrainSnapshot } from '../lib/storyEngineOrchestrator.js';
+import { storyEngineBrainSnapshot, bladerHealthSnapshot } from '../lib/storyEngineOrchestrator.js';
 import { getRunSummary, listRunSummaries } from '../lib/runSummary.js';
 import { ipGrowthOverview } from '../lib/ipGrowthEngine.js';
 import { ipStudioOverview } from '../lib/ipStudio.js';
 import { campaignStudioOverview } from '../lib/campaignStudio.js';
 import { founderEconomicsOverview } from '../lib/bootstrapEngine.js';
+import { ipSeedOverview } from '../lib/ipSeedMemoryGraph.js';
 import { llmRoutingSnapshot } from '../lib/llmClient.js';
 import { authSnapshot, requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
@@ -30,6 +31,18 @@ function safeJson(value, fallback = []) {
 
 function tableExists(db, tableName) {
   return Boolean(db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1`).get(tableName));
+}
+
+function withTransaction(db, callback) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = callback();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
 }
 
 function storyMemorySignals(db) {
@@ -90,6 +103,7 @@ function lineageHealth(db) {
   };
 }
 
+function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudio, founderEconomics, llm, blader, ipSeed) {
 function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudio, founderEconomics, llm) {
   const running = Number(snapshot.overview?.running_dispatches || 0);
   const failed = Number(snapshot.overview?.runtime_failures || 0);
@@ -98,6 +112,8 @@ function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudi
   return [
     { key: 'story_engine', label: 'Story Engine', status: brain.active_count ? 'running' : 'ok' },
     { key: 'ghost', label: 'Ghost', status: brain.current?.current_stage === 'ghost' ? 'running' : 'ok' },
+    { key: 'blader', label: 'Blader', status: blader.below_threshold_count ? 'watch' : blader.last_run ? 'ok' : 'idle' },
+    { key: 'ip_seed', label: 'IP Seed', status: ipSeed.refresh_needed_count ? 'watch' : ipSeed.seed_count ? 'ready' : 'idle' },
     { key: 'lindymode', label: 'Lindymode', status: snapshot.incidents?.length ? 'watch' : 'ok' },
     { key: 'ooda', label: 'OODA Loop', status: 'running' },
     { key: 'redteam', label: 'Redteam', status: brain.current?.current_stage?.startsWith('redteam') ? 'running' : 'ok' },
@@ -127,6 +143,8 @@ export function buildControlRoomOverview(db, now = Date.now()) {
   const founderEconomics = founderEconomicsOverview(db);
   const llm = llmRoutingSnapshot();
   const lineage = lineageHealth(db);
+  const blader = bladerHealthSnapshot(db);
+  const ipSeed = ipSeedOverview(db);
   return {
     ...snapshot,
     control_room_generated_at: now,
@@ -134,6 +152,8 @@ export function buildControlRoomOverview(db, now = Date.now()) {
     operator,
     operator_alerts: operatorAlerts,
     story_engine_brain: brain,
+    blader_health: blader,
+    ip_seed: ipSeed,
     ip_growth: ipGrowth,
     ip_studio: ipStudio,
     campaign_studio: campaignStudio,
@@ -141,6 +161,7 @@ export function buildControlRoomOverview(db, now = Date.now()) {
     founder_economics: founderEconomics,
     llm_gateway: llm,
     recent_run_summaries: runSummaries,
+    pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth, ipStudio, campaignStudio, founderEconomics, llm, blader, ipSeed)
     pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth, ipStudio, campaignStudio, founderEconomics, llm)
   };
 }
@@ -154,7 +175,7 @@ export function resolveControlRoomIncident(db, input = {}) {
   let diffChanges = 0;
   let incidentChanges = 0;
   let workspaceId = input.workspace_id || 'control-room';
-  db.transaction(() => {
+  withTransaction(db, () => {
     if (diffId) {
       if (!tableExists(db, 'memory_diffs')) throw new Error('Memory Engine is not available.');
       const diff = db.prepare('SELECT workspace_id FROM memory_diffs WHERE id=?').get(diffId);
@@ -171,6 +192,7 @@ export function resolveControlRoomIncident(db, input = {}) {
         WHERE incident_id=? AND status='active'
       `).run(`operator:${resolution}`, now, incidentId).changes || 0);
     }
+  });
   })();
   log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.incident_resolved', payload: { incident_id: incidentId || null, diff_id: diffId || null, resolution, actor: input.actor || null } });
   return { ok: true, incident_id: incidentId || null, diff_id: diffId || null, resolved: diffChanges + incidentChanges, resolution, resolved_at: now };
@@ -214,6 +236,7 @@ function registerOperatorRoutes(router, db, basePath) {
 }
 
 export default function controlRoomRoutes(router, db) {
+  router.get('/api/control-room/overview', (req, res) => { try { json(res, 200, { ...buildControlRoomOverview(db), viewer: authSnapshot(req) }); } catch (error) { json(res, 500, { error: error.message }); } });
   // Control Room is a cross-tenant founder/operator surface by design (it
   // aggregates run summaries and health across every workspace), so its
   // reads are gated by role rather than by workspace_id like every other
@@ -247,6 +270,29 @@ export default function controlRoomRoutes(router, db) {
   registerOperatorRoutes(router, db, '/api/control-room/operator');
   registerOperatorRoutes(router, db, '/api/control-room/founder');
   router.get('/api/control-room/stream', (req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    const send = () => {
+      try { res.write('event: snapshot\n'); res.write(`data: ${JSON.stringify(buildControlRoomOverview(db))}\n\n`); }
+      catch (error) { res.write('event: error\n'); res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`); }
+    };
+    send();
+    const interval = setInterval(send, 30_000);
+    req.on('close', () => clearInterval(interval));
+  });
+  router.post('/api/control-room/resolve-incident', (req, res) => {
+    requireRole('reviewer')(req, res, () => {
+      if (!requireWorkspaceAccess(req, res, req.body?.workspace_id)) return;
+      try { json(res, 200, resolveControlRoomIncident(db, { ...req.body, actor: authSnapshot(req) })); }
+      catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
+    });
+  });
+  router.post('/api/control-room/force-gate-pass', (req, res) => {
+    requireRole('release_manager')(req, res, () => {
+      if (!requireWorkspaceAccess(req, res, req.body?.workspace_id)) return;
+      try { json(res, 201, forceControlRoomGatePass(db, { ...req.body, actor: authSnapshot(req) })); }
+      catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
+    });
+  });
     requireRole('administrator')(req, res, () => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       const send = () => {

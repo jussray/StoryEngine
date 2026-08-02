@@ -1,6 +1,7 @@
 // lib/ghostWriter.js
 
 import { complete } from './llmClient.js';
+import { runBlader } from './blader.js';
 
 const AI_SIGNALS = [
   [/\bfurthermore,?\s*/gi, ''],
@@ -47,6 +48,12 @@ function list(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
 }
 
+function clampNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
 function sentenceLengthProfile(audience) {
   if (audience === 'eli5' || audience === 'baby' || audience === 'child') return 'mostly short sentences, usually under 12 words, but never baby talk';
   if (audience === 'eli10' || audience === 'middle_grade') return 'mostly clear sentences under 18 words with occasional longer rhythm';
@@ -86,6 +93,8 @@ function promptForDraft(intent, fingerprint) {
   return {
     provider: process.env.GHOST_WRITER_PROVIDER || process.env.DEFAULT_WRITING_LLM || 'anthropic',
     task: 'chapter_generation',
+    maxTokens: Math.round(clampNumber(process.env.GHOST_WRITER_MAX_TOKENS, 1800, 256, 8192)),
+    temperature: clampNumber(process.env.GHOST_WRITER_TEMPERATURE, 0.72, 0, 1),
     maxTokens: Number(process.env.GHOST_WRITER_MAX_TOKENS || 1800),
     temperature: Number(process.env.GHOST_WRITER_TEMPERATURE || 0.72),
     system: [
@@ -159,6 +168,9 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
   const request = promptForDraft(intent, fingerprint);
   try {
     const raw = await complete(request.prompt, request);
+    const baseDraft = ghostHumanizePass(raw);
+    const blader = runBlader(baseDraft, fingerprint);
+    const draft = blader.text || baseDraft;
     const draft = ghostHumanizePass(raw);
     return {
       status: draft ? 'drafted' : 'empty_draft',
@@ -170,6 +182,10 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
         applied: true,
         removed_ai_signals: AI_SIGNALS.map(([pattern]) => String(pattern)),
         cadence: cadenceReport(draft)
+      },
+      blader_score: blader.blader_score,
+      detector_report: blader.detector_report,
+      blader
       }
     };
   } catch (error) {
@@ -180,6 +196,10 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       voice_fingerprint: fingerprint,
       draft_unit: fallbackDraft(intent, fingerprint),
       error: error.message,
+      humanize_pass: { applied: false, reason: 'provider_unavailable' },
+      blader_score: 0,
+      detector_report: null,
+      blader: null
       humanize_pass: { applied: false, reason: 'provider_unavailable' }
     };
   }

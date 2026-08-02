@@ -47,6 +47,7 @@ import ipGrowthRoutes from './routes/ipGrowth.js';
 import ipStudioRoutes from './routes/ipStudio.js';
 import campaignStudioRoutes from './routes/campaignStudio.js';
 import bootstrapEngineRoutes from './routes/bootstrapEngine.js';
+import ipSeedRoutes from './routes/ipSeed.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -95,6 +96,7 @@ ipGrowthRoutes(router, db);
 ipStudioRoutes(router, db);
 campaignStudioRoutes(router, db);
 bootstrapEngineRoutes(router, db);
+ipSeedRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -232,4 +234,5 @@ server.listen(PORT, () => {
   console.log('Public guardrails: http://localhost:' + PORT + '/guardrails');
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
   console.log('Founder Economics: GET /api/bootstrap-engine/overview');
+  console.log('IP Seed Memory Graph: GET /api/ip-seeds/overview');
 });
