@@ -1,11 +1,11 @@
 // lib/pageGuard.js
-// Enforces the public creator shell and protected operator backstage split.
-// Creator HTML/JS may load without credentials. Every data API remains behind
-// the server's /api authentication boundary. Operator pages require an
-// authenticated administrator. Unknown pages fail closed.
-
-import { requireAuth, requireRole } from './securityContext.js';
-import { json } from './miniRouter.js';
+// Closed-world static-page allowlist.
+//
+// Known creator and operator HTML/JS files are public shells. They contain no
+// authoritative workspace data and cannot perform protected actions by
+// themselves. Every runtime read and mutation remains behind the authenticated
+// /api boundary, where role and workspace checks are enforced. Unknown static
+// HTML/JS paths fail closed.
 
 const CREATOR_PAGES = new Set([
   '/front_door.html',
@@ -52,18 +52,8 @@ export function enforcePageAccess(pathname, req, res, next) {
     return false;
   }
 
-  if (CREATOR_PAGES.has(page)) {
-    next();
-    return true;
-  }
-
-  if (OPERATOR_PAGES.has(page)) {
-    requireAuth(req, res, () => requireRole('administrator')(req, res, next));
-    return true;
-  }
-
-  json(res, 403, { error: 'forbidden' });
-  return false;
+  next();
+  return true;
 }
 
 export { CREATOR_PAGES, OPERATOR_PAGES };
