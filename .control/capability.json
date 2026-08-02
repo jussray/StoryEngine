@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "mission": "Provide a provenance-safe AI runtime and story operations layer with tenant isolation, revocation, recovery, observable promotion gates, and controlled publishing boundaries.",
   "owner": "Juss Ray",
-  "repository": "jussray/l99-StoryEngine",
+  "repository": "jussray/StoryEngine",
   "capabilities": [
     { "id": "BUILD", "status": "unverified", "evidence_ids": [], "notes": "Executable Python and Node components exist, but implementation presence receives no readiness credit without exact-head proof." },
     { "id": "TEST", "status": "unverified", "evidence_ids": [], "notes": "Promotion-gate and security tests exist; exact-head passing evidence must be attached before partial or verified status." },
