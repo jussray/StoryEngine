@@ -6,7 +6,7 @@ import { runBlader } from './blader.js';
 const AI_SIGNALS = [
   [/\bfurthermore,?\s*/gi, ''],
   [/\bin conclusion,?\s*/gi, ''],
-  [/\bit'?s worth noting that\s*/gi, ''],
+  [/\b(?:it'?s|it is) worth noting that\s*/gi, ''],
   [/\bmoreover,?\s*/gi, ''],
   [/\badditionally,?\s*/gi, ''],
   [/\bneedless to say,?\s*/gi, ''],
@@ -22,8 +22,8 @@ const AI_SIGNALS = [
   [/\bever-evolving\b/gi, 'changing'],
   [/\bseamlessly\b/gi, 'smoothly'],
   [/\brobust\b/gi, 'strong'],
-  [/\butilize\b/gi, 'use'],
-  [/\bleverage\b/gi, 'use'],
+  [/\butilize(?:s|d|ing)?\b/gi, 'use'],
+  [/\bleverage(?:s|d|ing)?\b/gi, 'use'],
   [/\bjourney\b/gi, 'path'],
   [/\brealm\b/gi, 'place'],
   [/\bunveil\b/gi, 'show'],
@@ -95,8 +95,6 @@ function promptForDraft(intent, fingerprint) {
     task: 'chapter_generation',
     maxTokens: Math.round(clampNumber(process.env.GHOST_WRITER_MAX_TOKENS, 1800, 256, 8192)),
     temperature: clampNumber(process.env.GHOST_WRITER_TEMPERATURE, 0.72, 0, 1),
-    maxTokens: Number(process.env.GHOST_WRITER_MAX_TOKENS || 1800),
-    temperature: Number(process.env.GHOST_WRITER_TEMPERATURE || 0.72),
     system: [
       'You are Ghost inside L99 Story Engine.',
       'Write original, human-feeling creative prose or script pages from the creator profile.',
@@ -155,7 +153,7 @@ function fallbackDraft(intent = {}, fingerprint = {}) {
   return [
     `${intent.title || 'Untitled Story'} — ${unit}`,
     '',
-    `Ghost could not reach the writing model, so L99 prepared a review-safe drafting stub instead.`,
+    'Ghost could not reach the writing model, so L99 prepared a review-safe drafting stub instead.',
     `Vision: ${intent.story_vision || 'No vision supplied.'}`,
     `Audience: ${fingerprint.audience || intent.audience || 'adult'}`,
     '',
@@ -171,7 +169,6 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
     const baseDraft = ghostHumanizePass(raw);
     const blader = runBlader(baseDraft, fingerprint);
     const draft = blader.text || baseDraft;
-    const draft = ghostHumanizePass(raw);
     return {
       status: draft ? 'drafted' : 'empty_draft',
       provider: request.provider,
@@ -186,7 +183,6 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       blader_score: blader.blader_score,
       detector_report: blader.detector_report,
       blader
-      }
     };
   } catch (error) {
     return {
@@ -195,12 +191,11 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       task: request.task,
       voice_fingerprint: fingerprint,
       draft_unit: fallbackDraft(intent, fingerprint),
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
       humanize_pass: { applied: false, reason: 'provider_unavailable' },
       blader_score: 0,
       detector_report: null,
       blader: null
-      humanize_pass: { applied: false, reason: 'provider_unavailable' }
     };
   }
 }

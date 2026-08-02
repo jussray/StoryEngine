@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "runtime" / "verify_capability_contract.py"
 BASE = json.loads((ROOT / ".control" / "capability.json").read_text(encoding="utf-8"))
+REPOSITORY = "jussray/StoryEngine"
 SHA = "a" * 40
 
 
@@ -23,7 +24,7 @@ def run_case(data: dict, *, should_pass: bool, name: str) -> None:
         env = {
             **os.environ,
             "CAPABILITY_CONTRACT": str(path),
-            "GITHUB_REPOSITORY": "jussray/l99-StoryEngine",
+            "GITHUB_REPOSITORY": REPOSITORY,
             "GITHUB_SHA": SHA,
         }
         result = subprocess.run(
@@ -45,7 +46,7 @@ def proof() -> dict:
         "id": "exact-head-test",
         "kind": "workflow",
         "status": "verified",
-        "source": "https://github.com/jussray/l99-StoryEngine/actions/runs/123456",
+        "source": f"https://github.com/{REPOSITORY}/actions/runs/123456",
         "commit_sha": SHA,
         "scope": ["TEST"],
         "verified_at": "2026-07-25T20:00:00Z",
@@ -60,7 +61,7 @@ def main() -> None:
     run_case(partial_without_proof, should_pass=False, name="partial without proof")
 
     fake_mutable_source = copy.deepcopy(BASE)
-    fake_mutable_source["proof"] = [{**proof(), "source": "https://github.com/jussray/l99-StoryEngine/tree/main"}]
+    fake_mutable_source["proof"] = [{**proof(), "source": f"https://github.com/{REPOSITORY}/tree/main"}]
     fake_mutable_source["capabilities"][1].update(status="verified", evidence_ids=["exact-head-test"])
     run_case(fake_mutable_source, should_pass=False, name="mutable source")
 

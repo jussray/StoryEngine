@@ -198,7 +198,6 @@ function ensureLindymodeState(db, workspaceId, intent, ghostPlan) {
     ghost_draft_status: ghostPlan.draft?.status || null,
     blader_score: ghostPlan.blader_score || 0,
     detector_report: ghostPlan.detector_report || null
-    ghost_draft_status: ghostPlan.draft?.status || null
   };
   if (existing) {
     db.prepare(`
@@ -231,8 +230,6 @@ async function buildGhostPlan(runId, intent, profile) {
       'Draft the first executable story unit with the Ghost voice fingerprint.',
       'Run Ghost humanize and Blader before Lindymode validation.',
       'Validate continuity, audience fit, detector score, and operator constraints.',
-      'Run the Ghost human-voice post-pass before Lindymode validation.',
-      'Validate continuity, audience fit, and operator constraints.',
       'Run browser validation before pre-release Redteam.',
       'Finalize the release artifact after pre-release Redteam.',
       'Write a permanent Control Room run summary.',
@@ -319,7 +316,6 @@ export async function startStoryEngineRun(db, input = {}) {
     const ghostPlan = await buildGhostPlan(runId, intent, profile);
     db.prepare('UPDATE story_engine_runs SET ghost_plan_json=? WHERE run_id=?').run(JSON.stringify(ghostPlan), runId);
     setStage(db, runId, workspaceId, 'ghost', 'completed', 'Ghost drafted, Blader revised, and detector scoring completed.', { ...ghostPlan, draft: { ...ghostPlan.draft, draft_unit: '[stored in ghost_plan_json]' } });
-    setStage(db, runId, workspaceId, 'ghost', 'completed', 'Ghost created the voice fingerprint and drafted the first review unit.', { ...ghostPlan, draft: { ...ghostPlan.draft, draft_unit: '[stored in ghost_plan_json]' } });
 
     ensureLindymodeState(db, workspaceId, intent, ghostPlan);
     setStage(db, runId, workspaceId, 'lindymode', 'completed', 'Lindymode established creative context and canonical starting state.');
@@ -487,6 +483,5 @@ export function storyEngineBrainSnapshot(db) {
     pipeline_stages: PIPELINE_STAGES,
     ghost_commands: ghostCommandOptions(),
     blader_health: bladerHealthSnapshot(db)
-    ghost_commands: ghostCommandOptions()
   };
 }
