@@ -17,7 +17,8 @@ const CREATOR_PAGES = new Set([
   '/creative_profile.html',
   '/studio.html',
   '/ip_studio.html',
-  '/l99_auth.js'
+  '/l99_auth.js',
+  '/video_control_room.js'
 ]);
 
 const OPERATOR_PAGES = new Set([
