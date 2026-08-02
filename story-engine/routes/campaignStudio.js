@@ -11,6 +11,7 @@ import {
   campaignStudioOverview
 } from '../lib/campaignStudio.js';
 import { attachCreditsToCampaign, buildVisualEndCredit } from '../lib/visualLineage.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function campaignStudioRoutes(router, db) {
   router.get('/api/campaign-studio/options', (req, res) => {
@@ -30,6 +31,7 @@ export default function campaignStudioRoutes(router, db) {
     try {
       const campaign = getCampaignPack(db, req.params.campaign_id);
       if (!campaign) return json(res, 404, { error: 'Campaign Pack not found.' });
+      if (!requireWorkspaceAccess(req, res, campaign.source_workspace_id)) return;
       json(res, 200, attachCreditsToCampaign(campaign));
     } catch (error) {
       json(res, 500, { error: error.message });
@@ -40,6 +42,7 @@ export default function campaignStudioRoutes(router, db) {
     try {
       const campaign = getCampaignPack(db, req.params.campaign_id);
       if (!campaign) return json(res, 404, { error: 'Campaign Pack not found.' });
+      if (!requireWorkspaceAccess(req, res, campaign.source_workspace_id)) return;
       json(res, 200, attachCreditsToCampaign(campaign).clips);
     } catch (error) {
       json(res, 500, { error: error.message });
@@ -50,6 +53,7 @@ export default function campaignStudioRoutes(router, db) {
     try {
       const clip = getCampaignClip(db, req.params.clip_id);
       if (!clip) return json(res, 404, { error: 'Campaign Clip not found.' });
+      if (!requireWorkspaceAccess(req, res, clip.source_workspace_id)) return;
       const endCredit = buildVisualEndCredit({
         title: clip.clip?.lineage?.source_title,
         blueprintId: clip.blueprint_id,

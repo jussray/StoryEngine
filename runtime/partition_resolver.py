@@ -1,3 +1,4 @@
+# Copyright © 2026 Juss Ray. All rights reserved. Proprietary and confidential.
 """L99 partition resolver.
 
 This module turns an isolation envelope into a deterministic semantic-cache

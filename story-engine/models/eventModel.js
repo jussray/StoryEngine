@@ -1,5 +1,7 @@
 // models/eventModel.js
 
+import '../lib/sqliteTransaction.js';
+
 function payloadText(value) {
   if (value == null) return null;
   return typeof value === 'string' ? value : JSON.stringify(value);

@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import '../lib/sqliteTransaction.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

@@ -1,6 +1,7 @@
 // lib/bootstrapEngine.js
 
 import { randomUUID } from 'node:crypto';
+import './sqliteTransaction.js';
 import { getOperatorProfile, getOperatorSummary } from './operatorProfile.js';
 import { log } from '../models/eventModel.js';
 
@@ -194,6 +195,9 @@ export function evaluateBootstrapStack(db, { persist = false } = {}) {
     withTransaction(db, () => {
       for (const item of evaluations) insert.run(`bootstrap_${randomUUID()}`, item.category, item.provider, item.action, item.lindy_score, item.confidence_score, JSON.stringify(item.reasons), now);
     });
+    db.transaction(() => {
+      for (const item of evaluations) insert.run(`bootstrap_${randomUUID()}`, item.category, item.provider, item.action, item.lindy_score, item.confidence_score, JSON.stringify(item.reasons), now);
+    })();
     log(db, { workspace_id: 'control-room', mode: 'bootstrap_engine', event_type: 'bootstrap.stack.evaluated', payload: { stack_score: stackScore, monthly_cost: monthlyCost, at_risk_count: atRisk.length } });
   }
 

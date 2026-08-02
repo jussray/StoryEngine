@@ -95,6 +95,8 @@ function promptForDraft(intent, fingerprint) {
     task: 'chapter_generation',
     maxTokens: Math.round(clampNumber(process.env.GHOST_WRITER_MAX_TOKENS, 1800, 256, 8192)),
     temperature: clampNumber(process.env.GHOST_WRITER_TEMPERATURE, 0.72, 0, 1),
+    maxTokens: Number(process.env.GHOST_WRITER_MAX_TOKENS || 1800),
+    temperature: Number(process.env.GHOST_WRITER_TEMPERATURE || 0.72),
     system: [
       'You are Ghost inside L99 Story Engine.',
       'Write original, human-feeling creative prose or script pages from the creator profile.',
@@ -169,6 +171,7 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
     const baseDraft = ghostHumanizePass(raw);
     const blader = runBlader(baseDraft, fingerprint);
     const draft = blader.text || baseDraft;
+    const draft = ghostHumanizePass(raw);
     return {
       status: draft ? 'drafted' : 'empty_draft',
       provider: request.provider,
@@ -183,6 +186,7 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       blader_score: blader.blader_score,
       detector_report: blader.detector_report,
       blader
+      }
     };
   } catch (error) {
     return {
@@ -196,6 +200,7 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       blader_score: 0,
       detector_report: null,
       blader: null
+      humanize_pass: { applied: false, reason: 'provider_unavailable' }
     };
   }
 }

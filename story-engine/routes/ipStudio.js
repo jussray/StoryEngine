@@ -3,6 +3,7 @@
 import { json } from '../lib/miniRouter.js';
 import { IP_STUDIO_PACK_TYPES, buildProductionPack, listProductionPacks, getProductionPack, ipStudioOverview } from '../lib/ipStudio.js';
 import { attachCreditsToProductionPack } from '../lib/visualLineage.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function ipStudioRoutes(router, db) {
   router.get('/api/ip-studio/options', (req, res) => {
@@ -22,6 +23,7 @@ export default function ipStudioRoutes(router, db) {
     try {
       const pack = getProductionPack(db, req.params.pack_id);
       if (!pack) return json(res, 404, { error: 'Production Pack not found.' });
+      if (!requireWorkspaceAccess(req, res, pack.source_workspace_id)) return;
       json(res, 200, attachCreditsToProductionPack(pack));
     } catch (error) {
       json(res, 500, { error: error.message });

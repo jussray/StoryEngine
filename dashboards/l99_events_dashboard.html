@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>L99 Events Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    color-scheme: dark light;
+    --bg: #0b0f14;
+    --panel: #121822;
+    --border: #223047;
+    --text: #d7e2f0;
+    --muted: #7c8ba0;
+    --critical: #ff5c5c;
+    --sev2: #f5a623;
+    --watch: #58c4dc;
+    --ok: #57c785;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header .spacer { flex: 1; }
+  select, label, button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font: inherit;
+  }
+  #status { color: var(--muted); font-size: 12px; }
+  main {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 12px;
+    padding: 12px;
+    align-items: start;
+  }
+  .tenant-group {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    background: var(--panel);
+  }
+  .tenant-group > summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    font-weight: bold;
+  }
+  .severity-group { padding: 0 12px 8px 12px; }
+  .severity-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 8px 0 4px 0;
+  }
+  .event-row {
+    display: grid;
+    grid-template-columns: 140px 1fr auto;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .event-row:hover { background: #1a2433; }
+  .event-row.critical { border-left: 3px solid var(--critical); }
+  .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  .badge.sev3 { background: var(--critical); color: #1a0000; }
+  .badge.sev2 { background: var(--sev2); color: #2a1a00; }
+  .badge.sev1, .badge.watch { background: var(--watch); color: #001a1f; }
+  .badge.info { background: var(--ok); color: #002a12; }
+  #incidentPanel {
+    position: sticky;
+    top: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    padding: 12px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  #incidentPanel h2 { font-size: 13px; margin: 0 0 8px 0; }
+  .chain-item {
+    border-left: 2px solid var(--border);
+    padding: 4px 0 4px 10px;
+    margin-bottom: 6px;
+    font-size: 11px;
+  }
+  .chain-item.critical { border-left-color: var(--critical); }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>L99 Events</h1>
+  <label>Tenant
+    <select id="tenantFilter"><option value="">All tenants</option></select>
+  </label>
+  <label><input type="checkbox" id="criticalOnly" /> Critical only</label>
+  <div class="spacer"></div>
+  <span id="status">connecting&hellip;</span>
+</header>
+<main>
+  <section id="eventsByTenant"></section>
+  <aside id="incidentPanel">
+    <h2>Correlation chain</h2>
+    <p class="muted" id="incidentEmpty">Click an event to trace its correlation_id chain.</p>
+    <div id="incidentChain"></div>
+  </aside>
+</main>
+
+<script>
+// Read model per docs/event_bus_design_notes.md and docs/correlation_ids.md:
+// tenant_id first, severity second, correlation_id third. Critical bucket:
+// severity == sev3 OR status in {blocked, failed} OR event_type in
+// {poisoning.suspected, containment.started}.
+
+const FEED_URL = "/events.ndjson";
+const POLL_MS = 4000;
+const SEVERITY_ORDER = ["sev3", "sev2", "sev1", "watch", "info"];
+
+const state = { events: [], tenant: "", criticalOnly: false };
+
+// Event fields (reason, correlation_id, ...) can carry attacker-influenced
+// text — e.g. via `:emit lindy-event`'s reason argument reaching this feed —
+// so anything interpolated into innerHTML must be escaped first.
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function isCritical(event) {
+  return (
+    event.severity === "sev3" ||
+    event.status === "blocked" ||
+    event.status === "failed" ||
+    event.event_type === "poisoning.suspected" ||
+    event.event_type === "containment.started"
+  );
+}
+
+async function fetchEvents() {
+  const statusEl = document.getElementById("status");
+  try {
+    const response = await fetch(FEED_URL, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = await response.text();
+    state.events = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    statusEl.textContent = `live · ${state.events.length} events · updated ${new Date().toLocaleTimeString()}`;
+    render();
+  } catch (error) {
+    statusEl.textContent = `feed unreachable: ${error.message}`;
+  }
+}
+
+function populateTenantFilter() {
+  const select = document.getElementById("tenantFilter");
+  const known = new Set(Array.from(select.options).map((option) => option.value));
+  const tenants = new Set(state.events.map((event) => event.tenant_id).filter(Boolean));
+  for (const tenant of tenants) {
+    if (!known.has(tenant)) {
+      const option = document.createElement("option");
+      option.value = tenant;
+      option.textContent = tenant;
+      select.appendChild(option);
+    }
+  }
+}
+
+function groupEvents() {
+  const filtered = state.events.filter((event) => {
+    if (state.tenant && event.tenant_id !== state.tenant) return false;
+    if (state.criticalOnly && !isCritical(event)) return false;
+    return true;
+  });
+
+  const byTenant = new Map();
+  for (const event of filtered) {
+    const tenant = event.tenant_id || "unknown_tenant";
+    if (!byTenant.has(tenant)) byTenant.set(tenant, new Map());
+    const bySeverity = byTenant.get(tenant);
+    const severity = event.severity || "info";
+    if (!bySeverity.has(severity)) bySeverity.set(severity, []);
+    bySeverity.get(severity).push(event);
+  }
+  return byTenant;
+}
+
+function eventRow(event) {
+  const row = document.createElement("div");
+  row.className = "event-row" + (isCritical(event) ? " critical" : "");
+  const timestamp = escapeHtml((event.timestamp_utc || "").replace("T", " ").replace("Z", ""));
+  const eventType = escapeHtml(event.event_type || "unknown");
+  const reason = escapeHtml(event.reason || "");
+  const severity = escapeHtml(event.severity || "info");
+  row.innerHTML = `
+    <span class="muted">${timestamp}</span>
+    <span>${eventType} — ${reason}</span>
+    <span class="badge ${severity}">${severity}</span>
+  `;
+  row.addEventListener("click", () => showCorrelationChain(event.correlation_id));
+  return row;
+}
+
+function render() {
+  populateTenantFilter();
+  const container = document.getElementById("eventsByTenant");
+  container.innerHTML = "";
+  const byTenant = groupEvents();
+
+  for (const [tenant, bySeverity] of [...byTenant.entries()].sort()) {
+    const details = document.createElement("details");
+    details.className = "tenant-group";
+    details.open = true;
+    const summary = document.createElement("summary");
+    const total = [...bySeverity.values()].reduce((sum, list) => sum + list.length, 0);
+    summary.textContent = `${tenant} (${total})`;
+    details.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "severity-group";
+    for (const severity of SEVERITY_ORDER) {
+      const events = bySeverity.get(severity);
+      if (!events || !events.length) continue;
+      const label = document.createElement("div");
+      label.className = "severity-label";
+      label.textContent = `${severity} (${events.length})`;
+      body.appendChild(label);
+      for (const event of events) body.appendChild(eventRow(event));
+    }
+    details.appendChild(body);
+    container.appendChild(details);
+  }
+
+  if (!byTenant.size) {
+    container.innerHTML = '<p class="muted">No events match the current filters.</p>';
+  }
+}
+
+function showCorrelationChain(correlationId) {
+  const panelEmpty = document.getElementById("incidentEmpty");
+  const chainEl = document.getElementById("incidentChain");
+  if (!correlationId) {
+    panelEmpty.style.display = "block";
+    chainEl.innerHTML = "";
+    return;
+  }
+  panelEmpty.style.display = "none";
+
+  const chain = state.events
+    .filter((event) => event.correlation_id === correlationId)
+    .sort((a, b) => (a.timestamp_utc || "").localeCompare(b.timestamp_utc || ""));
+
+  chainEl.innerHTML = `<p class="muted">correlation_id: ${escapeHtml(correlationId)} (${chain.length} events)</p>`;
+  for (const event of chain) {
+    const item = document.createElement("div");
+    item.className = "chain-item" + (isCritical(event) ? " critical" : "");
+    const parentLine = event.parent_event_id
+      ? `<br /><span class="muted">parent: ${escapeHtml(event.parent_event_id)}</span>`
+      : "";
+    item.innerHTML = `
+      <strong>${escapeHtml(event.event_type)}</strong><br />
+      <span class="muted">${escapeHtml(event.timestamp_utc || "")}</span><br />
+      ${escapeHtml(event.reason || "")}
+      ${parentLine}
+    `;
+    chainEl.appendChild(item);
+  }
+}
+
+document.getElementById("tenantFilter").addEventListener("change", (event) => {
+  state.tenant = event.target.value;
+  render();
+});
+document.getElementById("criticalOnly").addEventListener("change", (event) => {
+  state.criticalOnly = event.target.checked;
+  render();
+});
+
+fetchEvents();
+setInterval(fetchEvents, POLL_MS);
+</script>
+</body>
+</html>

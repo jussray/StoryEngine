@@ -1,3 +1,4 @@
+# Copyright © 2026 Juss Ray. All rights reserved. Proprietary and confidential.
 """RiverEditor shell router.
 
 This module parses RiverEditor command prefixes and resolves commands against a
@@ -8,11 +9,11 @@ so UI shells, CLIs, or tests can route commands without binding to a runtime.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
-from datetime import datetime, timezone
 
 
 PREFIX_TO_MODE = {
@@ -141,7 +142,10 @@ def shell_event(
     return event
 
 
-def route(raw: str, registry_path: str | Path = "configs/rivereditor_command_registry.json") -> dict[str, Any]:
+def route(
+    raw: str,
+    registry_path: str | Path = "configs/rivereditor_command_registry.json",
+) -> dict[str, Any]:
     registry = load_registry(registry_path)
     return resolve_command(raw, registry)
 

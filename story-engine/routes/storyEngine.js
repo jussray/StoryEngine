@@ -17,6 +17,7 @@ import {
   recordAssistContribution
 } from '../lib/assistMode.js';
 import { log } from '../models/eventModel.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 function cancelQueuedDispatch(db, dispatchId) {
   if (!dispatchId) return;
@@ -143,6 +144,7 @@ export default function storyEngineRoutes(router, db) {
     try {
       const run = await getStoryEngineRun(db, req.params.run_id);
       if (!run) return json(res, 404, { error: 'Story Engine run not found.' });
+      if (!requireWorkspaceAccess(req, res, run.workspace_id)) return;
       json(res, 200, run);
     } catch (error) {
       json(res, 500, { error: error.message });
@@ -150,6 +152,10 @@ export default function storyEngineRoutes(router, db) {
   });
 
   router.post('/api/story-engine/runs/:run_id/approve', (req, res) => {
+    const target = db.prepare('SELECT workspace_id FROM story_engine_runs WHERE run_id=?').get(req.params.run_id);
+    if (!target) return json(res, 404, { error: 'Story Engine run not found.' });
+    if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
+
     try { json(res, 200, approveStoryEngineRun(db, req.params.run_id)); }
     catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
   });
@@ -158,6 +164,7 @@ export default function storyEngineRoutes(router, db) {
     try {
       const run = await getStoryEngineRun(db, req.params.run_id, { resume: true });
       if (!run) return json(res, 404, { error: 'Story Engine run not found.' });
+      if (!requireWorkspaceAccess(req, res, run.workspace_id)) return;
       json(res, 200, run);
     } catch (error) {
       json(res, 500, { error: error.message });

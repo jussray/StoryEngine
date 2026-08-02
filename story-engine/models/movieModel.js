@@ -1,5 +1,7 @@
 // models/movieModel.js
 
+import '../lib/sqliteTransaction.js';
+
 export function listBeats(db, workspace_id) {
   return db.prepare(`
     SELECT mb.*, c.title as chapter_title
@@ -39,6 +41,10 @@ export function generateBeats(db, workspace_id) {
 
   insertAll(chapters);
   return listBeats(db, workspace_id);
+}
+
+export function getBeat(db, id) {
+  return db.prepare('SELECT * FROM movie_beats WHERE id = ?').get(id);
 }
 
 export function updateBeat(db, id, { logline }) {

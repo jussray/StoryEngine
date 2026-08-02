@@ -1,6 +1,7 @@
 // routes/controlRoom.js
 
 import { randomUUID } from 'node:crypto';
+import '../lib/sqliteTransaction.js';
 import { json } from '../lib/miniRouter.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { storyEngineBrainSnapshot, bladerHealthSnapshot } from '../lib/storyEngineOrchestrator.js';
@@ -103,6 +104,7 @@ function lineageHealth(db) {
 }
 
 function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudio, founderEconomics, llm, blader, ipSeed) {
+function pipelineHealth(snapshot, memory, brain, growth, ipStudio, campaignStudio, founderEconomics, llm) {
   const running = Number(snapshot.overview?.running_dispatches || 0);
   const failed = Number(snapshot.overview?.runtime_failures || 0);
   const gateBlocked = Number(snapshot.overview?.release_gate_blocked_count || 0);
@@ -160,6 +162,7 @@ export function buildControlRoomOverview(db, now = Date.now()) {
     llm_gateway: llm,
     recent_run_summaries: runSummaries,
     pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth, ipStudio, campaignStudio, founderEconomics, llm, blader, ipSeed)
+    pipeline_health: pipelineHealth(snapshot, memory, brain, ipGrowth, ipStudio, campaignStudio, founderEconomics, llm)
   };
 }
 
@@ -190,6 +193,7 @@ export function resolveControlRoomIncident(db, input = {}) {
       `).run(`operator:${resolution}`, now, incidentId).changes || 0);
     }
   });
+  })();
   log(db, { workspace_id: workspaceId, mode: 'control_room', event_type: 'control_room.incident_resolved', payload: { incident_id: incidentId || null, diff_id: diffId || null, resolution, actor: input.actor || null } });
   return { ok: true, incident_id: incidentId || null, diff_id: diffId || null, resolved: diffChanges + incidentChanges, resolution, resolved_at: now };
 }
@@ -233,22 +237,35 @@ function registerOperatorRoutes(router, db, basePath) {
 
 export default function controlRoomRoutes(router, db) {
   router.get('/api/control-room/overview', (req, res) => { try { json(res, 200, { ...buildControlRoomOverview(db), viewer: authSnapshot(req) }); } catch (error) { json(res, 500, { error: error.message }); } });
+  // Control Room is a cross-tenant founder/operator surface by design (it
+  // aggregates run summaries and health across every workspace), so its
+  // reads are gated by role rather than by workspace_id like every other
+  // dashboard in this app.
+  router.get('/api/control-room/overview', (req, res) => {
+    requireRole('administrator')(req, res, () => {
+      try { json(res, 200, { ...buildControlRoomOverview(db), viewer: authSnapshot(req) }); } catch (error) { json(res, 500, { error: error.message }); }
+    });
+  });
   router.get('/api/control-room/run-summaries', (req, res) => {
-    try {
-      const url = new URL(req.url, 'http://localhost');
-      json(res, 200, listRunSummaries(db, Number(url.searchParams.get('limit') || 25)));
-    } catch (error) {
-      json(res, 500, { error: error.message });
-    }
+    requireRole('administrator')(req, res, () => {
+      try {
+        const url = new URL(req.url, 'http://localhost');
+        json(res, 200, listRunSummaries(db, Number(url.searchParams.get('limit') || 25)));
+      } catch (error) {
+        json(res, 500, { error: error.message });
+      }
+    });
   });
   router.get('/api/control-room/run-summaries/:run_id', (req, res) => {
-    try {
-      const summary = getRunSummary(db, req.params.run_id);
-      if (!summary) return json(res, 404, { error: 'Run summary not found.' });
-      json(res, 200, summary);
-    } catch (error) {
-      json(res, 500, { error: error.message });
-    }
+    requireRole('administrator')(req, res, () => {
+      try {
+        const summary = getRunSummary(db, req.params.run_id);
+        if (!summary) return json(res, 404, { error: 'Run summary not found.' });
+        json(res, 200, summary);
+      } catch (error) {
+        json(res, 500, { error: error.message });
+      }
+    });
   });
   registerOperatorRoutes(router, db, '/api/control-room/operator');
   registerOperatorRoutes(router, db, '/api/control-room/founder');
@@ -265,6 +282,41 @@ export default function controlRoomRoutes(router, db) {
   router.post('/api/control-room/resolve-incident', (req, res) => {
     requireRole('reviewer')(req, res, () => {
       if (!requireWorkspaceAccess(req, res, req.body?.workspace_id)) return;
+      try { json(res, 200, resolveControlRoomIncident(db, { ...req.body, actor: authSnapshot(req) })); }
+      catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
+    });
+  });
+  router.post('/api/control-room/force-gate-pass', (req, res) => {
+    requireRole('release_manager')(req, res, () => {
+      if (!requireWorkspaceAccess(req, res, req.body?.workspace_id)) return;
+      try { json(res, 201, forceControlRoomGatePass(db, { ...req.body, actor: authSnapshot(req) })); }
+      catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
+    });
+  });
+    requireRole('administrator')(req, res, () => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+      const send = () => {
+        try { res.write('event: snapshot\n'); res.write(`data: ${JSON.stringify(buildControlRoomOverview(db))}\n\n`); }
+        catch (error) { res.write('event: error\n'); res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`); }
+      };
+      send();
+      const interval = setInterval(send, 30_000);
+      req.on('close', () => clearInterval(interval));
+    });
+  });
+  router.post('/api/control-room/resolve-incident', (req, res) => {
+    requireRole('reviewer')(req, res, () => {
+      const { diff_id: diffId, incident_id: incidentId } = req.body || {};
+      if (diffId) {
+        const diff = db.prepare('SELECT workspace_id FROM memory_diffs WHERE id=?').get(diffId);
+        if (!diff) return json(res, 404, { error: 'Memory diff not found.' });
+        if (!requireWorkspaceAccess(req, res, diff.workspace_id)) return;
+      }
+      if (incidentId) {
+        const incident = db.prepare('SELECT workspace_id FROM lindymode_incidents WHERE incident_id=?').get(incidentId);
+        if (!incident) return json(res, 404, { error: 'Lindymode incident not found.' });
+        if (!requireWorkspaceAccess(req, res, incident.workspace_id)) return;
+      }
       try { json(res, 200, resolveControlRoomIncident(db, { ...req.body, actor: authSnapshot(req) })); }
       catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }
     });
