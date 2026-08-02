@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0",
+  "repository": "jussray/l99-StoryEngine",
+  "portfolioHub": "jussray/founder-control-room",
+  "role": "runtime-control-room",
+  "authority": {
+    "sourceOfTruth": "Current main event spine, Story Engine state, artifacts, full promotion gates, and repository CI evidence",
+    "portfolioMode": "retired-direct-observer",
+    "canonicalIntegration": ".control-room/repository.manifest.json",
+    "productionMutation": "separate-founder-gate"
+  },
+  "controlRoom": {
+    "localSurface": true,
+    "surfaces": [
+      "story-engine/routes/controlRoom.js",
+      "story-engine/lib/guardrails.js",
+      "GLOBAL_AI.md",
+      "docs/GUARDRAILS.md",
+      ".control-room/repository.manifest.json"
+    ],
+    "privateContentAllowed": false
+  },
+  "evidence": {
+    "status": "at-risk",
+    "commit": "3a6b8ca6be3148876f4e62fac7440b92682b5eec",
+    "observedAt": "2026-07-24",
+    "proofRefs": [
+      ".control-room/repository.manifest.json",
+      "GLOBAL_AI.md",
+      "docs/GUARDRAILS.md",
+      "runtime/promotion_gates.py",
+      "runtime/promotion_gates_all.py",
+      "runtime/cookie_contract.py",
+      ".security/cookies.json"
+    ]
+  },
+  "risk": {
+    "level": "high",
+    "blockers": [
+      "Tenant-safe identity and resource ownership remain release blockers",
+      "Browser-readable development credentials remain a production blocker",
+      "Creator and operator surfaces are not fully separated",
+      "GitHub-hosted Story Engine jobs are failing before runner provisioning"
+    ]
+  },
+  "nextGate": "Use the provider-neutral Founder Control Room federation path, verify the current full promotion contract, and capture exact-head signed evidence before production release."
+}

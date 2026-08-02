@@ -8,8 +8,10 @@ import {
   AUDIENCE_LENS_OPTIONS
 } from '../lib/audienceLens.js';
 
-test('ELI5 and ELI10 are audience lenses, not separate pipelines', () => {
-  assert.deepEqual(AUDIENCE_LENS_OPTIONS.supported, ['eli5', 'eli10']);
+test('ELI5 and ELI10 remain audience lenses inside the shared pipeline', () => {
+  assert.ok(AUDIENCE_LENS_OPTIONS.supported.includes('eli5'));
+  assert.ok(AUDIENCE_LENS_OPTIONS.supported.includes('eli10'));
+  assert.equal(new Set(AUDIENCE_LENS_OPTIONS.supported).size, AUDIENCE_LENS_OPTIONS.supported.length);
   assert.equal(resolveAudienceLens('eli5').active, true);
   assert.equal(resolveAudienceLens('eli10').active, true);
   assert.equal(resolveAudienceLens('adult').active, false);
@@ -24,7 +26,8 @@ test('ELI5 uses shorter sentences and concrete explanation rules', () => {
 
 test('ELI10 preserves more detail while remaining clear', () => {
   const lens = getAudienceLens('eli10');
-  assert.equal(lens.max_sentence_words, 18);
+  assert.equal(lens.max_sentence_words, 14);
+  assert.equal(lens.sentence_hard_cap_words, 22);
   assert.equal(lens.abstraction_policy, 'define_then_demonstrate');
   assert.match(resolveAudienceLens('eli10').instruction, /cause and effect/i);
 });

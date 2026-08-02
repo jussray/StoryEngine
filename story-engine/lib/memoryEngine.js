@@ -1,6 +1,7 @@
 // lib/memoryEngine.js
 
 import { createHash, randomUUID } from 'node:crypto';
+import './sqliteTransaction.js';
 
 const ENTITY_DEFINITIONS = {
   characters: {

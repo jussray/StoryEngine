@@ -343,8 +343,9 @@ export function approveStoryEngineRun(db, runId) {
   if (run.status !== 'awaiting_approval') throw new Error('Run is not awaiting approval.');
   setStage(db, runId, run.workspace_id, 'redteam_pre_runtime', 'approved', 'Human operator approved execution.');
   const dispatch = enqueueRuntime(db, run.workspace_id, 'story_engine_operator_approved');
-  db.prepare("UPDATE story_engine_runs SET dispatch_id=?, status='runtime_queued', updated_at=? WHERE run_id=?").run(dispatch?.dispatch_id || null, Date.now(), runId);
+  db.prepare('UPDATE story_engine_runs SET dispatch_id=? WHERE run_id=?').run(dispatch?.dispatch_id || null, runId);
   setStage(db, runId, run.workspace_id, 'runtime', 'queued', 'Runtime execution queued after operator approval.', { dispatch_id: dispatch?.dispatch_id || null });
+  db.prepare("UPDATE story_engine_runs SET status='runtime_queued', updated_at=? WHERE run_id=?").run(Date.now(), runId);
   return hydrateRun(db, runId);
 }
 

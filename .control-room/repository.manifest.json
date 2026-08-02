@@ -1,0 +1,338 @@
+{
+  "schemaVersion": "1.0",
+  "projectId": "l99",
+  "repository": {
+    "provider": "github",
+    "identifier": "jussray/l99-StoryEngine",
+    "defaultBranch": "main"
+  },
+  "verification": {
+    "requiredSignals": [
+      {
+        "id": "promotion-gates",
+        "name": "Promotion gates",
+        "required": true
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "tenant-first-partition-resolution",
+      "description": "Resolves deterministic isolation partitions before semantic lookup.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/partition_resolver.py",
+        "runtime/promotion_gates.py",
+        "schemas/isolation_envelope.schema.json",
+        "policies/multi_tenant_partitioning_strategy.md"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "promotion-gates-import-partition-resolver",
+          "path": "runtime/promotion_gates.py",
+          "marker": "from partition_resolver import IsolationEnvelope, resolve_partition_id",
+          "description": "The CI gate imports the deterministic partition resolver."
+        },
+        {
+          "id": "partition-gate-varies-boundary-fields",
+          "path": "runtime/promotion_gates.py",
+          "marker": "gate_partition_boundary",
+          "description": "Promotion tests identical envelopes and tenant/user/namespace/model/policy separation."
+        },
+        {
+          "id": "resolver-hashes-canonical-envelope",
+          "path": "runtime/partition_resolver.py",
+          "marker": "hashlib.sha256(payload.encode(\"utf-8\"))",
+          "description": "Partition IDs derive from a canonical, stable isolation envelope."
+        }
+      ]
+    },
+    {
+      "id": "provenance-and-revocation-contracts",
+      "description": "Defines and executes provenance matching, semantic-cache authorization boundaries, and revocation-over-TTL behavior.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/artifact_writer.py",
+        "runtime/promotion_gates.py",
+        "policies/cache_contract.schema.json",
+        "policies/provenance_rules.json",
+        "policies/cache_revocation_triggers.md",
+        "docs/provenance_engine.md"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "promotion-gates-executes-provenance-decisions",
+          "path": "runtime/promotion_gates.py",
+          "marker": "build_decision_artifact",
+          "description": "CI evaluates both an allowed decision and a cross-tenant block."
+        },
+        {
+          "id": "decision-engine-blocks-tenant-mismatch",
+          "path": "runtime/artifact_writer.py",
+          "marker": "return \"block\", \"tenant_mismatch\", False, True",
+          "description": "The decision helper blocks cross-tenant candidates before semantic evaluation."
+        },
+        {
+          "id": "decision-engine-enforces-revocation-epoch",
+          "path": "runtime/artifact_writer.py",
+          "marker": "consumer_revocation_epoch > producer_revocation_epoch",
+          "description": "A newer consumer revocation epoch blocks stale cached evidence."
+        }
+      ]
+    },
+    {
+      "id": "shared-operational-event-spine",
+      "description": "Validates and appends tenant-scoped operational events for dashboards, incidents, shell commands, and Lindymode producers.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/l99_event_bus.py",
+        "schemas/shared_event_bus_schema.json",
+        "docs/shared_event_bus_format.md",
+        "runtime/events_feed_server.py",
+        "runtime/l99_rolling_window.py"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "event-bus-loads-shared-schema",
+          "path": "runtime/l99_event_bus.py",
+          "marker": "shared_event_bus_schema.json",
+          "description": "All event validation uses the shared versioned schema."
+        },
+        {
+          "id": "rolling-window-emits-through-event-bus",
+          "path": "runtime/l99_rolling_window.py",
+          "marker": "append_event(feed_path, event)",
+          "description": "Latency windows emit operational events through the shared spine."
+        },
+        {
+          "id": "feed-server-serves-ndjson",
+          "path": "runtime/events_feed_server.py",
+          "marker": "path == \"/events.ndjson\"",
+          "description": "The dashboard service exposes the append-only operational feed."
+        }
+      ]
+    },
+    {
+      "id": "rivereditor-command-runtime",
+      "description": "Routes and executes registered RiverEditor commands while emitting shared operational events.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/rivereditor_shell_router.py",
+        "runtime/rivereditor_handlers.py",
+        "configs/rivereditor_command_registry.json",
+        "schemas/rivereditor_command_registry.schema.json",
+        "runtime/promotion_gates.py"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "handlers-resolve-registry-command",
+          "path": "runtime/rivereditor_handlers.py",
+          "marker": "resolved = resolve_command(raw_command, registry)",
+          "description": "Dispatch resolves each raw command against the registry."
+        },
+        {
+          "id": "handlers-execute-registered-handler",
+          "path": "runtime/rivereditor_handlers.py",
+          "marker": "result = handler(**merged_args)",
+          "description": "Resolved handlers execute with shell context and explicit arguments."
+        },
+        {
+          "id": "handlers-emit-completion-event",
+          "path": "runtime/rivereditor_handlers.py",
+          "marker": "event_type=\"shell.command_completed\"",
+          "description": "Successful command execution emits a correlated completion event."
+        },
+        {
+          "id": "promotion-gates-roundtrip-command-registry",
+          "path": "runtime/promotion_gates.py",
+          "marker": "gate_shell_command",
+          "description": "CI verifies every command pattern resolves to a registered handler."
+        }
+      ]
+    },
+    {
+      "id": "tail-latency-and-promotion-controls",
+      "description": "Analyzes L99 tail latency and blocks promotion on provenance, revocation, partition, schema, drift, shell, latency, cookie-auth, and Control Room federation failures.",
+      "status": "active",
+      "evidencePaths": [
+        "runtime/style_chain_l99_analyzer.py",
+        "runtime/rivereditor_l99_latency_monitor.py",
+        "runtime/l99_rolling_window.py",
+        "runtime/promotion_gates.py",
+        "runtime/promotion_gates_all.py",
+        "runtime/cookie_contract.py",
+        "runtime/control_room_contract.py",
+        ".github/workflows/l99-promotion-gates.yml"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "workflow-executes-promotion-gates",
+          "path": ".github/workflows/l99-promotion-gates.yml",
+          "marker": "python runtime/promotion_gates_all.py",
+          "description": "GitHub Actions executes the full base, cookie-auth, and Control Room federation registry."
+        },
+        {
+          "id": "promotion-entrypoint-iterates-gates",
+          "path": "runtime/promotion_gates.py",
+          "marker": "for name, gate in GATES.items()",
+          "description": "The entrypoint runs every registered gate and exits non-zero on failure."
+        },
+        {
+          "id": "latency-gate-builds-chain-report",
+          "path": "runtime/promotion_gates.py",
+          "marker": "report = build_report(records)",
+          "description": "Promotion uses actual telemetry records to calculate chain tail latency."
+        },
+        {
+          "id": "rolling-window-uses-latency-monitor",
+          "path": "runtime/l99_rolling_window.py",
+          "marker": "from rivereditor_l99_latency_monitor import build_report, load_records",
+          "description": "Successive windows use the same rich latency report implementation."
+        }
+      ]
+    },
+    {
+      "id": "cookie-free-auth-transport",
+      "description": "Keeps the transitional browser API key tab-scoped and explicit while rejecting ambient cookie authentication.",
+      "status": "active",
+      "evidencePaths": [
+        ".security/cookies.json",
+        "runtime/cookie_contract.py",
+        "runtime/promotion_gates_all.py",
+        "story-engine/public/l99_auth.js",
+        "story-engine/lib/securityContext.js",
+        "story-engine/test/securityContext.test.js"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "full-registry-registers-cookie-contract",
+          "path": "runtime/promotion_gates_all.py",
+          "marker": "promotion_gates.GATES[\"cookie_contract\"] = gate_cookie_contract",
+          "description": "The full promotion registry enforces the cookie-free contract."
+        },
+        {
+          "id": "browser-auth-sends-explicit-header",
+          "path": "story-engine/public/l99_auth.js",
+          "marker": "headers.set('x-api-key', key)",
+          "description": "The browser sends the tab-scoped credential through an explicit request header."
+        },
+        {
+          "id": "server-auth-prefers-explicit-api-key",
+          "path": "story-engine/lib/securityContext.js",
+          "marker": "const direct = req.headers?.['x-api-key'];",
+          "description": "Server authentication reads the explicit API-key header."
+        },
+        {
+          "id": "cookie-contract-rejects-server-cookie-paths",
+          "path": "runtime/cookie_contract.py",
+          "marker": "for forbidden in (\"cookieCredential\", \"headers?.cookie\", \"headers.cookie\", \"l99_api_key\")",
+          "description": "The cookie contract rejects any restored server cookie credential path."
+        }
+      ]
+    },
+    {
+      "id": "founder-control-room-federation",
+      "description": "Publishes bounded repository evidence through the provider-neutral Founder Control Room federation path without a second L99-only observer.",
+      "status": "active",
+      "evidencePaths": [
+        ".control-room/repository.manifest.json",
+        "control-room.manifest.json",
+        "runtime/control_room_contract.py",
+        "runtime/promotion_gates_all.py",
+        ".github/workflows/l99-promotion-gates.yml",
+        ".github/workflows/publish-control-room-status.yml"
+      ],
+      "requiredSignals": [
+        "promotion-gates"
+      ],
+      "usageAssertions": [
+        {
+          "id": "full-registry-registers-control-room-contract",
+          "path": "runtime/promotion_gates_all.py",
+          "marker": "promotion_gates.GATES[\"control_room_federation\"] = gate_control_room_federation",
+          "description": "The full promotion registry enforces the canonical federation boundary."
+        },
+        {
+          "id": "legacy-direct-observer-is-retired",
+          "path": ".github/workflows/publish-control-room-status.yml",
+          "marker": "Legacy L99 Direct Status Bridge (Retired)",
+          "description": "The historical direct observer remains visible but has no execution or OIDC authority."
+        },
+        {
+          "id": "legacy-manifest-points-to-federation",
+          "path": "control-room.manifest.json",
+          "marker": "\"canonicalIntegration\": \".control-room/repository.manifest.json\"",
+          "description": "The historical manifest points builders to the provider-neutral federation contract."
+        }
+      ]
+    },
+    {
+      "id": "live-provenance-candidate-evaluator",
+      "description": "Evaluates live semantic-cache candidates against authorization and provenance rules rather than only formatting explicit decisions.",
+      "status": "planned",
+      "evidencePaths": [],
+      "requiredSignals": [],
+      "usageAssertions": []
+    }
+  ],
+  "buildAssist": {
+    "enabled": true,
+    "preferredBuilder": "codex",
+    "riskLevel": "high"
+  },
+  "privacy": {
+    "allowlistedPacketFields": [
+      "projectId",
+      "repository.provider",
+      "repository.identifier",
+      "commitSha",
+      "branch",
+      "manifestHash",
+      "generatedAt",
+      "runner.provider",
+      "runner.runId",
+      "runner.detailsUrl",
+      "checks.id",
+      "checks.name",
+      "checks.required",
+      "checks.status",
+      "checks.detailsUrl",
+      "capabilities.id",
+      "capabilities.claimedStatus",
+      "capabilities.observedStatus",
+      "capabilities.evidencePaths",
+      "capabilities.usageAssertionIds",
+      "capabilities.failedUsageAssertionIds",
+      "capabilities.reason"
+    ],
+    "forbiddenData": [
+      "tenant payload contents",
+      "semantic cache values",
+      "raw prompts or model responses",
+      "user identities",
+      "authorization tokens",
+      "provider credentials",
+      "unredacted event payloads",
+      "private incident artifacts",
+      "usage assertion marker text in runner packets"
+    ]
+  }
+}

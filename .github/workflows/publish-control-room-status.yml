@@ -1,0 +1,18 @@
+name: Legacy L99 Direct Status Bridge (Retired)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Founder Control Room PR #21 replaced the L99-specific OIDC observer with
+# provider-neutral repository federation and signed runner-packet ingestion.
+# Keep this historical workflow visible, but never allocate a runner, request
+# an OIDC token, or POST a second status record.
+jobs:
+  retired-direct-observer:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Retired. Use .control-room/repository.manifest.json and the Founder Control Room federation path.'

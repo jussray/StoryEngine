@@ -9,6 +9,7 @@ import {
   createReleaseAttempt,
   reconcileStaleReleaseAttempts
 } from '../lib/releaseAttempts.js';
+import { upsertCreativeProfile } from '../lib/creativeProfile.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
@@ -41,6 +42,15 @@ function seedWorkspace(db, workspaceId = 'workspace-concurrency') {
       steps_json, result_json, created_at, completed_at
     ) VALUES ('run-concurrency', 'corr-concurrency', ?, 'test', 'completed', '[]', '{}', ?, ?)
   `).run(workspaceId, now, now);
+  upsertCreativeProfile(db, workspaceId, {
+    story_vision: 'A complete test story about courage and belonging.',
+    story_kind: 'drama',
+    emotional_effect: 'hope',
+    medium: 'book',
+    audience: 'adult',
+    goal: 'entertain',
+  });
+
   return workspaceId;
 }
 

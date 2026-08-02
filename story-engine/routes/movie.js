@@ -7,6 +7,8 @@ import {
   completeReleaseAttempt,
   failReleaseAttempt
 } from '../lib/releaseAttempts.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import videoEngineRoutes from './videoEngine.js';
 
 export default function movieRoutes(router, db) {
   router.get('/api/movie/beats/:workspace_id', (req, res) => {
@@ -66,15 +68,22 @@ export default function movieRoutes(router, db) {
 
   router.put('/api/movie/beats/:id', (req, res) => {
     const id = Number(req.params.id);
+    const beat = Movie.getBeat(db, id);
+    if (!beat) return json(res, 404, { error: 'Not found' });
+    if (!requireWorkspaceAccess(req, res, beat.workspace_id)) return;
+
     const { logline } = req.body || {};
     const t0 = Date.now();
     Movie.updateBeat(db, id, { logline });
     log(db, {
-      workspace_id: req.body.workspace_id || 'unknown',
+      workspace_id: beat.workspace_id,
       mode: 'movie',
       event_type: 'beat_updated',
       duration_ms: Date.now() - t0
     });
     json(res, 200, { ok: true });
   });
+
+  // Video adapts the same story source; it is not a second story engine.
+  videoEngineRoutes(router, db);
 }

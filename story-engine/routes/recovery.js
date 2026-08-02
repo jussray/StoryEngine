@@ -3,15 +3,22 @@
 import { json } from '../lib/miniRouter.js';
 import { planRecovery, runRecovery, getRecoveryRun, listRecoveryRuns } from '../lib/recoveryEngine.js';
 import { buildStoryGenome, getStoryGenome } from '../lib/storyGenome.js';
+import { getIncident } from '../models/lindymodeModel.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function recoveryRoutes(router, db) {
   router.get('/api/ooda/recovery-plan/:incident_id', (req, res) => {
     const plan = planRecovery(db, req.params.incident_id);
     if (!plan) return json(res, 404, { error: 'Incident not found' });
+    if (!requireWorkspaceAccess(req, res, plan.workspace_id)) return;
     json(res, 200, plan);
   });
 
   router.post('/api/ooda/recover/:incident_id', (req, res) => {
+    const target = getIncident(db, req.params.incident_id);
+    if (!target) return json(res, 404, { error: 'Incident not found' });
+    if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
+
     try {
       const run = runRecovery(db, req.params.incident_id, req.body?.strategy || null);
       if (!run) return json(res, 404, { error: 'Incident not found' });
@@ -24,6 +31,7 @@ export default function recoveryRoutes(router, db) {
   router.get('/api/ooda/recovery-run/:run_id', (req, res) => {
     const run = getRecoveryRun(db, req.params.run_id);
     if (!run) return json(res, 404, { error: 'Recovery run not found' });
+    if (!requireWorkspaceAccess(req, res, run.workspace_id)) return;
     json(res, 200, run);
   });
 

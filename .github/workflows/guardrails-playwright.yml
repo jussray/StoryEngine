@@ -1,0 +1,51 @@
+name: Guardrails Playwright
+
+on:
+  pull_request:
+    paths:
+      - 'story-engine/**'
+      - 'docs/VISION.md'
+      - 'docs/GUARDRAILS.md'
+      - '.github/workflows/guardrails-playwright.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify-guardrails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: story-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: story-engine/package-lock.json
+      - run: npm ci
+      - name: Run Node tests with retained evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee node-test-output.log
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:guardrails
+      - name: Verify Story Video Engine in Control Room
+        run: npx playwright test e2e/video_engine.spec.js
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l99-test-evidence
+          path: |
+            story-engine/node-test-output.log
+            story-engine/playwright-report/
+            story-engine/test-results/
+          if-no-files-found: ignore

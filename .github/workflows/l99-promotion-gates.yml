@@ -1,0 +1,121 @@
+name: L99 Promotion Gates
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'runtime/**'
+      - 'policies/**'
+      - 'schemas/**'
+      - 'configs/**'
+      - 'samples/**'
+      - 'docs/**'
+      - 'artifacts/**'
+      - 'dashboards/**'
+      - '.security/**'
+      - '.control/**'
+      - '.control-room/**'
+      - 'control-room.manifest.json'
+      - 'story-engine/**'
+      - '.github/workflows/l99-promotion-gates.yml'
+      - '.github/workflows/publish-control-room-status.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'runtime/**'
+      - 'policies/**'
+      - 'schemas/**'
+      - 'configs/**'
+      - 'samples/**'
+      - 'docs/**'
+      - 'artifacts/**'
+      - 'dashboards/**'
+      - '.security/**'
+      - '.control/**'
+      - '.control-room/**'
+      - 'control-room.manifest.json'
+      - 'story-engine/**'
+      - '.github/workflows/l99-promotion-gates.yml'
+      - '.github/workflows/publish-control-room-status.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: l99-promotion-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capability-contract:
+    name: Capability contract trust
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - name: Run adversarial contract tests
+        env:
+          GITHUB_SHA: ${{ env.EXPECTED_HEAD_SHA }}
+        run: python runtime/test_verify_capability_contract.py
+      - name: Validate conservative contract
+        env:
+          GITHUB_SHA: ${{ env.EXPECTED_HEAD_SHA }}
+        run: python runtime/verify_capability_contract.py
+
+  federation-contract:
+    name: Control Room federation contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - run: python runtime/test_control_room_contract.py
+
+  promotion-gates:
+    name: Runtime promotion gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - run: python runtime/promotion_gates_all.py
+
+  auth-contract:
+    name: Header auth and cookie rejection
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - name: Run security context tests
+        working-directory: story-engine
+        run: node --test test/securityContext.test.js

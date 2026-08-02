@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.1.0",
+  "blueprint_id": "video_blueprint_example",
+  "workspace_id": "synthetic_workspace",
+  "source_revision_id": "8c0c1cc7f8f4fbafbe77d1b826c9d437554f7c34962965c5e2b3bf46f54d7d9a",
+  "title": "The Lantern Door — Cinematic Realism / Cinematic 3D",
+  "target_mode": "cinematic_3d",
+  "target_mode_label": "Cinematic 3D",
+  "visual_style": "cinematic_realism",
+  "visual_style_label": "Cinematic Realism",
+  "style_fit": "recommended",
+  "preview_renderer": "motion_book_html",
+  "renderer_status": "blueprint_ready",
+  "quality": "draft",
+  "aspect_ratio": "16:9",
+  "duration_seconds": 12,
+  "scene_count": 1,
+  "shot_count": 2,
+  "character_bible": [
+    {
+      "character_id": "mina",
+      "name": "Mina",
+      "role": "protagonist",
+      "traits": ["brave", "curious"],
+      "locked_visuals": ["yellow raincoat", "silver glasses"]
+    }
+  ],
+  "world_bible": {
+    "source": "story_memory_and_chapters",
+    "palette": "natural skin tones, controlled contrast, motivated lighting",
+    "visual_language": "cinematic realism, natural performance, practical camera grammar, filmic contrast",
+    "render_mode": "cinematic_3d",
+    "visual_style": "cinematic_realism"
+  },
+  "cost_plan": {
+    "max_cost_usd": 0,
+    "estimated_cost_usd": 0,
+    "actual_cost_usd": 0,
+    "provider_generation_enabled": false,
+    "hero_video_seconds": 0,
+    "strategy": "deterministic_preview_first"
+  },
+  "shots": [
+    {
+      "shot_id": "shot_01",
+      "source_chapter_id": 1,
+      "source_chapter_title": "The Storm",
+      "duration_seconds": 6,
+      "shot_type": "establishing",
+      "camera_move": "push_in",
+      "action": "Rain hammered the windows.",
+      "narration": "Rain hammered the windows.",
+      "emotion": "wonder",
+      "intensity": "medium",
+      "characters": ["Mina"],
+      "must_preserve": [
+        "Mina remains visually consistent with the locked character bible.",
+        "Preserve source chapter meaning and cause-and-effect.",
+        "Do not invent canon-changing actions."
+      ],
+      "negative_constraints": [
+        "no floating feet",
+        "no wardrobe drift",
+        "no camera clipping",
+        "no plastic skin",
+        "no uncanny faces",
+        "no glossy game-cutscene look"
+      ],
+      "style_prompt": "Cinematic realism, natural performance, practical camera grammar, filmic contrast. Palette: natural skin tones, controlled contrast, motivated lighting.",
+      "render_mode": "cinematic_3d",
+      "visual_style": "cinematic_realism",
+      "style_fit": "recommended",
+      "provider_generation": false,
+      "estimated_cost_usd": 0
+    },
+    {
+      "shot_id": "shot_02",
+      "source_chapter_id": 1,
+      "source_chapter_title": "The Storm",
+      "duration_seconds": 6,
+      "shot_type": "medium",
+      "camera_move": "pan_right",
+      "action": "Mina saw a violet door glowing across the street.",
+      "narration": "Mina saw a violet door glowing across the street.",
+      "emotion": "tension",
+      "intensity": "medium",
+      "characters": ["Mina"],
+      "must_preserve": [
+        "Mina remains visually consistent with the locked character bible.",
+        "Preserve source chapter meaning and cause-and-effect.",
+        "Do not invent canon-changing actions."
+      ],
+      "negative_constraints": [
+        "no floating feet",
+        "no wardrobe drift",
+        "no camera clipping",
+        "no plastic skin",
+        "no uncanny faces",
+        "no glossy game-cutscene look"
+      ],
+      "style_prompt": "Cinematic realism, natural performance, practical camera grammar, filmic contrast. Palette: natural skin tones, controlled contrast, motivated lighting.",
+      "render_mode": "cinematic_3d",
+      "visual_style": "cinematic_realism",
+      "style_fit": "recommended",
+      "provider_generation": false,
+      "estimated_cost_usd": 0
+    }
+  ],
+  "continuity_contract": {
+    "one_story_brain": true,
+    "shared_shot_plan": true,
+    "per_shot_retry": true,
+    "approved_shots_are_immutable": true,
+    "provider_adapters_are_replaceable": true,
+    "visual_style_is_not_canon": true
+  }
+}

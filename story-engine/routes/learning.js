@@ -8,15 +8,25 @@ import {
   listEpisodes,
   predictWorkspaceRisk
 } from '../lib/learningEngine.js';
+import { getIncident } from '../models/lindymodeModel.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function learningRoutes(router, db) {
   router.post('/api/ooda/episodes/from-incident/:incident_id', (req, res) => {
+    const target = getIncident(db, req.params.incident_id);
+    if (!target) return json(res, 404, { error: 'Incident not found' });
+    if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
+
     const episode = captureEpisodeFromIncident(db, req.params.incident_id, req.body?.outcome || 'unknown');
     if (!episode) return json(res, 404, { error: 'Incident not found' });
     json(res, 201, episode);
   });
 
   router.post('/api/ooda/episodes/:episode_id/complete', (req, res) => {
+    const target = db.prepare('SELECT workspace_id FROM ooda_episodes WHERE episode_id = ?').get(req.params.episode_id);
+    if (!target) return json(res, 404, { error: 'Episode not found' });
+    if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
+
     const episode = completeEpisode(
       db,
       req.params.episode_id,

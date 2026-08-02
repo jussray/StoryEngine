@@ -1,6 +1,7 @@
 // lib/bootstrapEngine.js
 
 import { randomUUID } from 'node:crypto';
+import './sqliteTransaction.js';
 import { getOperatorProfile, getOperatorSummary } from './operatorProfile.js';
 import { log } from '../models/eventModel.js';
 

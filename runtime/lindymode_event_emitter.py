@@ -1,3 +1,4 @@
+# Copyright © 2026 Juss Ray. All rights reserved. Proprietary and confidential.
 """Lindymode event emitter for the L99 shared event bus.
 
 The emitter appends Lindymode continuity and state-drift events to an NDJSON
@@ -9,9 +10,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-import json
 from pathlib import Path
+import sys
 from uuid import uuid4
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from l99_event_bus import append_event as _bus_append_event  # noqa: E402
+from artifact_writer import write_artifact  # noqa: E402
 
 
 LINDYMODE_NAMESPACE = "l99_lindymode"
@@ -88,13 +93,10 @@ class LindymodeEvent:
 
 
 def append_event(feed_path: str | Path, event: LindymodeEvent) -> dict:
-    """Append a Lindymode event to an NDJSON feed and return the event."""
-    path = Path(feed_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Write a Lindymode artifact, validate, and append the event to an NDJSON feed."""
     payload = event.to_event()
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
-    return payload
+    payload["artifact_ref"] = write_artifact("lindymode", payload["event_id"], payload)
+    return _bus_append_event(feed_path, payload)
 
 
 def emit_state_drift(

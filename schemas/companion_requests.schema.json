@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "companion_requests.v1",
+  "title": "CompanionRequest",
+  "description": "Append-only log of every companion AI request. Never mutated. Retries are new rows. No message body stored.",
+  "type": "object",
+  "required": [
+    "id",
+    "user_id",
+    "companion_id",
+    "model_used",
+    "model_version",
+    "request_at",
+    "response_at",
+    "latency_ms",
+    "token_input",
+    "token_output",
+    "success",
+    "is_fallback",
+    "fallback_reason",
+    "error_code",
+    "session_id",
+    "tenant_id"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Primary key. Generated server-side."
+    },
+    "user_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Scoped to authenticated user. RLS enforced. Cascade-deleted on account deletion."
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Tenant boundary. Required for isolation. Never null."
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Groups requests within a single conversation session."
+    },
+    "companion_id": {
+      "type": "string",
+      "enum": ["raylene", "rylane", "cloud", "night", "oracle"],
+      "description": "Which companion handled the request."
+    },
+    "model_used": {
+      "type": "string",
+      "description": "Provider model identifier, e.g. gpt-4o, claude-3-5-sonnet-20241022."
+    },
+    "model_version": {
+      "type": "string",
+      "description": "Pinned model version string. Tracks drift across provider updates."
+    },
+    "request_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp when request left the server."
+    },
+    "response_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp when response was received or fallback triggered."
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total round-trip latency in milliseconds. For fallbacks, latency to failure + fallback resolution time."
+    },
+    "token_input": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Input tokens consumed. 0 for ghost fallbacks."
+    },
+    "token_output": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Output tokens generated. 0 for ghost fallbacks."
+    },
+    "success": {
+      "type": "boolean",
+      "description": "True if model returned a valid response. False on any error, timeout, or fallback."
+    },
+    "is_fallback": {
+      "type": "boolean",
+      "description": "True if a ghost offline fallback response was served instead of a live model response."
+    },
+    "fallback_reason": {
+      "type": ["string", "null"],
+      "enum": ["api_error_500", "api_timeout", "api_rate_limit", "network_offline", "safety_block", "budget_exceeded", null],
+      "description": "Reason fallback was triggered. Null when is_fallback is false."
+    },
+    "error_code": {
+      "type": ["string", "null"],
+      "description": "Provider HTTP status or error code string. Null on success."
+    },
+    "user_visible_latency_ms": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Latency as perceived by the client (includes streaming first-token or fallback trigger). Optional."
+    }
+  },
+  "additionalProperties": false
+}

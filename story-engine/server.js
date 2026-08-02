@@ -14,6 +14,7 @@ import { enforcePageAccess } from './lib/pageGuard.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
+import { publicL99GuardrailSnapshot, renderL99GuardrailPage } from './lib/guardrails.js';
 
 import storyRoutes from './routes/story.js';
 import outlineRoutes from './routes/outline.js';
@@ -121,6 +122,16 @@ function openOodaStream(req, res) {
   req.on('close', () => oodaClients.delete(res));
 }
 
+function setPublicSecurityHeaders(res, contentType) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
+}
+
 function serveStatic(filePath, ext, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -140,6 +151,20 @@ function serveStatic(filePath, ext, res) {
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+
+  if (url.pathname === '/guardrails') {
+    setPublicSecurityHeaders(res, 'text/html; charset=utf-8');
+    res.writeHead(200);
+    res.end(renderL99GuardrailPage());
+    return;
+  }
+
+  if (url.pathname === '/guardrails.json') {
+    setPublicSecurityHeaders(res, 'application/json; charset=utf-8');
+    res.writeHead(200);
+    res.end(JSON.stringify(publicL99GuardrailSnapshot()));
+    return;
+  }
 
   if (url.pathname === '/api/ooda/incidents') {
     requestContext(req, res, () => requireAuth(req, res, () => openOodaStream(req, res)));
@@ -203,6 +228,8 @@ server.listen(PORT, () => {
   console.log(`LLM client started at: ${new Date(llmSnapshot.client_started_at).toISOString()} (${llmSnapshot.circuit_state_scope})`);
   console.log('Creator entry point: http://localhost:' + PORT + '/ → /front_door.html');
   console.log('Operator entry point: http://localhost:' + PORT + '/control_room.html (administrator role required)');
+  console.log('L99 OS Alpha entry point: http://localhost:' + PORT + '/story_engine.html');
+  console.log('Public guardrails: http://localhost:' + PORT + '/guardrails');
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
   console.log('Founder Economics: GET /api/bootstrap-engine/overview');
 });

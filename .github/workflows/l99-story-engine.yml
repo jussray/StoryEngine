@@ -12,6 +12,9 @@ on:
       - 'story-engine/**'
       - '.github/workflows/l99-story-engine.yml'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     name: Node tests
@@ -24,7 +27,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Show Node version
         run: node --version

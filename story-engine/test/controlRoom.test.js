@@ -137,7 +137,8 @@ test('force gate pass writes an OPERATOR_OVERRIDE audit', () => {
   const result = forceControlRoomGatePass(db, {
     workspace_id: workspaceId,
     chapter_id: 1,
-    operator_note: 'Approved after manual continuity review.'
+    operator_note: 'Approved after manual continuity review.',
+    actor: { actor_id: 'operator-test' }
   });
   const audit = db.prepare('SELECT * FROM release_audits WHERE audit_id = ?').get(result.audit_id);
   const checks = JSON.parse(audit.checks_json);
