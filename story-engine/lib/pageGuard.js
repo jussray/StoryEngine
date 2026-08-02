@@ -1,12 +1,12 @@
 // lib/pageGuard.js
-// Enforces the front/back stage split for static HTML pages.
-// Creator-facing pages are public (after auth). Operator pages require administrator role.
-// Any page not in either list is denied by default (closed-world policy).
+// Enforces the public creator shell and protected operator backstage split.
+// Creator HTML/JS may load without credentials. Every data API remains behind
+// the server's /api authentication boundary. Operator pages require an
+// authenticated administrator. Unknown pages fail closed.
 
 import { requireAuth, requireRole } from './securityContext.js';
 import { json } from './miniRouter.js';
 
-// Pages any authenticated user (creator or above) can access.
 const CREATOR_PAGES = new Set([
   '/front_door.html',
   '/story_engine.html',
@@ -20,7 +20,6 @@ const CREATOR_PAGES = new Set([
   '/l99_auth.js'
 ]);
 
-// Pages only the operator (administrator role) can access.
 const OPERATOR_PAGES = new Set([
   '/control_room.html',
   '/mission_control.html',
@@ -36,7 +35,6 @@ const OPERATOR_PAGES = new Set([
   '/campaign_studio.html'
 ]);
 
-// JS companion files inherit the same access level as their HTML counterpart.
 function canonicalPage(pathname) {
   if (pathname.endsWith('.js')) {
     const htmlVersion = pathname.replace(/\.js$/, '.html');
@@ -45,32 +43,21 @@ function canonicalPage(pathname) {
   return pathname;
 }
 
-/**
- * Middleware that enforces page-level access control.
- * Call this before serveStatic for HTML/JS requests.
- *
- * Returns true if the request may proceed.
- * Returns false and has already written a response if access is denied.
- */
 export function enforcePageAccess(pathname, req, res, next) {
   const page = canonicalPage(pathname);
 
-  // Static assets that aren't gated pages pass through.
   if (!CREATOR_PAGES.has(page) && !OPERATOR_PAGES.has(page)) {
-    // Closed-world: deny unknown pages.
     res.writeHead(404);
     res.end('Not found');
     return false;
   }
 
   if (CREATOR_PAGES.has(page)) {
-    // Any authenticated user may access creator pages.
-    requireAuth(req, res, next);
+    next();
     return true;
   }
 
   if (OPERATOR_PAGES.has(page)) {
-    // Only administrators may access operator pages.
     requireAuth(req, res, () => requireRole('administrator')(req, res, next));
     return true;
   }
