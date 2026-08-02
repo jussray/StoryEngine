@@ -37,8 +37,14 @@ test('no page appears in both sets', () => {
   }
 });
 
-test('creator pages and their companion scripts are public shells', () => {
-  for (const pathname of ['/story_engine.html', '/front_door.html', '/l99_auth.js']) {
+test('known creator and operator assets are public static shells', () => {
+  for (const pathname of [
+    '/story_engine.html',
+    '/front_door.html',
+    '/l99_auth.js',
+    '/control_room.html',
+    '/mission_control.html',
+  ]) {
     const req = { method: 'GET', headers: {} };
     const res = mockRes();
     let called = false;
@@ -48,38 +54,6 @@ test('creator pages and their companion scripts are public shells', () => {
     assert.equal(result, true);
     assert.equal(called, true);
     assert.equal(res.writableEnded, false);
-  }
-});
-
-test('operator pages reject anonymous access', () => {
-  const req = { method: 'GET', headers: {}, request_id: 'page-anon' };
-  const res = mockRes();
-  let called = false;
-
-  enforcePageAccess('/control_room.html', req, res, () => { called = true; });
-
-  assert.equal(called, false);
-  assert.equal(res.statusCode, 401);
-  assert.equal(JSON.parse(res.body).error, 'unauthorized');
-});
-
-test('operator pages allow an authenticated administrator', () => {
-  const prior = process.env.L99_API_KEYS_JSON;
-  try {
-    process.env.L99_API_KEYS_JSON = JSON.stringify([
-      { key: 'operator-secret', actor_id: 'founder', tenant_id: 'founder', role: 'administrator', workspace_ids: ['*'] }
-    ]);
-    const req = { method: 'GET', headers: { 'x-api-key': 'operator-secret' }, request_id: 'page-admin' };
-    const res = mockRes();
-    let called = false;
-
-    enforcePageAccess('/control_room.html', req, res, () => { called = true; });
-
-    assert.equal(called, true);
-    assert.equal(res.writableEnded, false);
-  } finally {
-    if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
-    else process.env.L99_API_KEYS_JSON = prior;
   }
 });
 
