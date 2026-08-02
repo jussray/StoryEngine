@@ -45,11 +45,15 @@ function createDb() {
   return db;
 }
 
-test('requireAuth rejects missing or incorrect API keys', () => {
+test('requireAuth rejects missing, incorrect, and cookie-only API keys', () => {
   const original = process.env.API_KEY;
   process.env.API_KEY = 'correct-secret';
   try {
-    for (const headers of [{}, { 'x-api-key': 'wrong-secret' }]) {
+    for (const headers of [
+      {},
+      { 'x-api-key': 'wrong-secret' },
+      { cookie: 'other=value; l99_api_key=correct-secret' }
+    ]) {
       const req = request('GET', '/api/health', headers);
       const res = responseRecorder();
       let called = false;
@@ -64,14 +68,13 @@ test('requireAuth rejects missing or incorrect API keys', () => {
   }
 });
 
-test('requireAuth accepts header, bearer token, and browser cookie', () => {
+test('requireAuth accepts x-api-key and Bearer token credentials', () => {
   const original = process.env.API_KEY;
   process.env.API_KEY = 'correct-secret';
   try {
     const cases = [
       { 'x-api-key': 'correct-secret' },
-      { authorization: 'Bearer correct-secret' },
-      { cookie: 'other=value; l99_api_key=correct-secret' }
+      { authorization: 'Bearer correct-secret' }
     ];
     for (const headers of cases) {
       const req = request('GET', '/api/health', headers);
