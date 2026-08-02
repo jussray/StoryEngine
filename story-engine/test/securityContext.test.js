@@ -15,10 +15,6 @@ function mockRes() {
   };
 }
 
-test('security context resolves scoped actor identity from cached registry', () => {
-  const prior = process.env.L99_API_KEYS_JSON;
-  try {
-    process.env.L99_API_KEYS_JSON = JSON.stringify([{ key: 'security-test-secret-a', actor_id: 'actor-a', tenant_id: 'tenant-a', role: 'editor', workspace_ids: ['workspace_1'] }]);
 function withRegistry(entries, callback) {
   const prior = process.env.L99_API_KEYS_JSON;
   try {
@@ -44,17 +40,6 @@ test('security context resolves scoped actor identity from x-api-key', () => {
     assert.equal(req.auth.actor_id, 'actor-a');
     assert.equal(req.auth.tenant_id, 'tenant-a');
     assert.ok(securitySnapshot().scoped_key_count >= 1);
-  } finally {
-    if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
-    else process.env.L99_API_KEYS_JSON = prior;
-  }
-});
-
-test('security context resolves l99_api_key cookie for EventSource/SSE clients', () => {
-  const prior = process.env.L99_API_KEYS_JSON;
-  try {
-    process.env.L99_API_KEYS_JSON = JSON.stringify([{ key: 'cookie-secret', actor_id: 'cookie-actor', tenant_id: 'tenant-a', role: 'viewer', workspace_ids: ['workspace_1'] }]);
-    const req = { method: 'GET', headers: { cookie: `theme=dark; l99_api_key=${encodeURIComponent('cookie-secret')}; other=1` }, request_id: 'req_cookie' };
   });
 });
 
@@ -69,24 +54,18 @@ test('security context preserves Bearer authentication', () => {
     requireAuth(req, res, () => { nextCalled = true; });
 
     assert.equal(nextCalled, true);
-    assert.equal(req.auth.actor_id, 'cookie-actor');
-    assert.equal(req.auth.auth_type || req.auth.type, 'scoped_api_key');
-  } finally {
-    if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
-    else process.env.L99_API_KEYS_JSON = prior;
-  }
     assert.equal(req.auth.actor_id, 'actor-b');
     assert.equal(req.auth.tenant_id, 'tenant-b');
   });
 });
 
-test('security context rejects a valid key supplied only through cookies', () => {
+test('security context resolves l99_api_key cookie for EventSource and SSE clients', () => {
   withRegistry([
-    { key: 'security-test-cookie', actor_id: 'actor-cookie', tenant_id: 'tenant-cookie', role: 'administrator', workspace_ids: ['*'] }
+    { key: 'cookie-secret', actor_id: 'cookie-actor', tenant_id: 'tenant-a', role: 'viewer', workspace_ids: ['workspace_1'] }
   ], () => {
     const req = {
       method: 'GET',
-      headers: { cookie: 'other=value; l99_api_key=security-test-cookie' },
+      headers: { cookie: `theme=dark; l99_api_key=${encodeURIComponent('cookie-secret')}; other=1` },
       request_id: 'req_cookie'
     };
     const res = mockRes();
@@ -94,9 +73,10 @@ test('security context rejects a valid key supplied only through cookies', () =>
 
     requireAuth(req, res, () => { nextCalled = true; });
 
-    assert.equal(nextCalled, false);
-    assert.equal(res.status, 401);
-    assert.equal(res.body.error, 'unauthorized');
+    assert.equal(nextCalled, true);
+    assert.equal(req.auth.actor_id, 'cookie-actor');
+    assert.equal(req.auth.tenant_id, 'tenant-a');
+    assert.equal(req.auth.auth_type || req.auth.type, 'scoped_api_key');
   });
 });
 
