@@ -39,20 +39,6 @@ function keyRegistry() {
   return registryCache;
 }
 
-function cookieCredential(req) {
-  const raw = req.headers?.cookie;
-  if (typeof raw !== 'string' || !raw.trim()) return '';
-  for (const part of raw.split(';')) {
-    const [name, ...rest] = part.trim().split('=');
-    if (name === 'l99_api_key') {
-      const value = rest.join('=').trim();
-      try { return decodeURIComponent(value); }
-      catch { return value; }
-    }
-  }
-  return '';
-}
-
 function suppliedCredential(req) {
   const direct = req.headers?.['x-api-key'];
   if (typeof direct === 'string' && direct.trim()) return direct.trim();
@@ -61,8 +47,6 @@ function suppliedCredential(req) {
     const match = authorization.match(/^Bearer\s+(.+)$/i);
     if (match) return match[1].trim();
   }
-  const cookie = cookieCredential(req);
-  if (cookie) return cookie;
   return '';
 }
 
@@ -163,6 +147,7 @@ export function securitySnapshot() {
     scoped_key_count: keyRegistry().length,
     legacy_api_key_enabled: Boolean(process.env.API_KEY) && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_LEGACY_API_KEY === 'true'),
     registry_cached: Boolean(registryCache),
-    registry_loaded_at_runtime: true
+    registry_loaded_at_runtime: true,
+    cookie_credentials_enabled: false
   };
 }
