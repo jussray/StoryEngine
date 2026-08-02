@@ -40,6 +40,7 @@ test('security context resolves scoped actor identity from x-api-key', () => {
     assert.equal(req.auth.actor_id, 'actor-a');
     assert.equal(req.auth.tenant_id, 'tenant-a');
     assert.ok(securitySnapshot().scoped_key_count >= 1);
+    assert.equal(securitySnapshot().cookie_credentials_enabled, false);
   });
 });
 
@@ -59,7 +60,7 @@ test('security context preserves Bearer authentication', () => {
   });
 });
 
-test('security context resolves l99_api_key cookie for EventSource and SSE clients', () => {
+test('security context rejects a valid key supplied only through cookies', () => {
   withRegistry([
     { key: 'cookie-secret', actor_id: 'cookie-actor', tenant_id: 'tenant-a', role: 'viewer', workspace_ids: ['workspace_1'] }
   ], () => {
@@ -73,14 +74,13 @@ test('security context resolves l99_api_key cookie for EventSource and SSE clien
 
     requireAuth(req, res, () => { nextCalled = true; });
 
-    assert.equal(nextCalled, true);
-    assert.equal(req.auth.actor_id, 'cookie-actor');
-    assert.equal(req.auth.tenant_id, 'tenant-a');
-    assert.equal(req.auth.auth_type || req.auth.type, 'scoped_api_key');
+    assert.equal(nextCalled, false);
+    assert.equal(res.status, 401);
+    assert.equal(res.body.error, 'unauthorized');
   });
 });
 
-test('cookie credentials cannot replace an explicit lower-privilege header identity', () => {
+test('cookie credentials cannot override an explicit lower-privilege header identity', () => {
   withRegistry([
     { key: 'security-test-header', actor_id: 'actor-header', tenant_id: 'tenant-header', role: 'viewer', workspace_ids: ['workspace_header'] },
     { key: 'security-test-cookie-admin', actor_id: 'actor-cookie-admin', tenant_id: 'tenant-cookie', role: 'administrator', workspace_ids: ['*'] }
