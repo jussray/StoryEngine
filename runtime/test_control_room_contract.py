@@ -6,6 +6,11 @@ import shutil
 import tempfile
 import unittest
 
+# The production promotion runner imports this module before evaluating the
+# federation contract. Standalone contract tests must load the same extended
+# registry so cookie and federation gates are judged against production truth.
+import promotion_gates_all  # noqa: F401
+
 from control_room_contract import (
     FEDERATED_MANIFEST,
     LEGACY_MANIFEST,
