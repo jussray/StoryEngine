@@ -19,6 +19,17 @@ FEDERATION_REGISTRATION = (
     'promotion_gates.GATES["control_room_federation"] = '
     "gate_control_room_federation"
 )
+EXPECTED_LOCAL_GATES = {
+    "provenance",
+    "revocation",
+    "partition_boundary",
+    "event_schema",
+    "lindymode_drift",
+    "shell_command",
+    "l99_latency",
+    "cookie_contract",
+    "control_room_federation",
+}
 REQUIRED_COOKIE_EVIDENCE = {
     ".security/cookies.json",
     "runtime/cookie_contract.py",
@@ -84,6 +95,82 @@ def _evidence(capability: dict) -> set[str]:
 def _requires_promotion(capability: dict) -> bool:
     required = capability.get("requiredSignals")
     return isinstance(required, list) and "promotion-gates" in required
+
+
+def _verify_local_test_catalog(root: Path, legacy_manifest: dict) -> list[str]:
+    errors: list[str] = []
+    tests = legacy_manifest.get("tests")
+    if not isinstance(tests, dict):
+        return ["legacy manifest tests must be an object"]
+    if tests.get("authority") != "repo-native-promotion-registry":
+        errors.append("local test authority must be repo-native-promotion-registry")
+    if tests.get("rawLogsAllowed") is not False:
+        errors.append("local test catalog must deny raw logs")
+
+    catalog = tests.get("catalog")
+    if not isinstance(catalog, list):
+        return errors + ["local test catalog must be an array"]
+
+    ids: set[str] = set()
+    gates: set[str] = set()
+    for index, entry in enumerate(catalog):
+        prefix = f"local test catalog[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        test_id = entry.get("id")
+        gate = entry.get("gate")
+        if not isinstance(test_id, str) or not test_id:
+            errors.append(f"{prefix} id is required")
+        elif test_id in ids:
+            errors.append(f"{prefix} id is duplicated: {test_id}")
+        else:
+            ids.add(test_id)
+        if not isinstance(gate, str) or not gate:
+            errors.append(f"{prefix} gate is required")
+        elif gate in gates:
+            errors.append(f"{prefix} gate is duplicated: {gate}")
+        else:
+            gates.add(gate)
+        if entry.get("required") is not True:
+            errors.append(f"{prefix} must remain required")
+        if entry.get("status") != "active":
+            errors.append(f"{prefix} must remain active")
+        evidence_paths = entry.get("evidencePaths")
+        if not isinstance(evidence_paths, list) or not evidence_paths:
+            errors.append(f"{prefix} evidencePaths must not be empty")
+            continue
+        for relative_path in evidence_paths:
+            if not isinstance(relative_path, str) or not relative_path:
+                errors.append(f"{prefix} contains an invalid evidence path")
+            elif relative_path.startswith("/") or ".." in Path(relative_path).parts:
+                errors.append(f"{prefix} contains an unsafe evidence path: {relative_path}")
+            elif not (root / relative_path).is_file():
+                errors.append(f"{prefix} evidence is missing: {relative_path}")
+
+    if gates != EXPECTED_LOCAL_GATES:
+        missing = sorted(EXPECTED_LOCAL_GATES - gates)
+        extra = sorted(gates - EXPECTED_LOCAL_GATES)
+        if missing:
+            errors.append("local test catalog is missing gates: " + ", ".join(missing))
+        if extra:
+            errors.append("local test catalog has unknown gates: " + ", ".join(extra))
+
+    # This function executes from inside the registered promotion run, after
+    # promotion_gates_all has added cookie and federation gates. Comparing the
+    # catalog to the live registry prevents either side from drifting silently.
+    import promotion_gates  # pylint: disable=import-outside-toplevel
+
+    live_gates = set(promotion_gates.GATES)
+    if live_gates != gates:
+        missing = sorted(live_gates - gates)
+        extra = sorted(gates - live_gates)
+        if missing:
+            errors.append("local control room is missing live gates: " + ", ".join(missing))
+        if extra:
+            errors.append("local control room declares non-live gates: " + ", ".join(extra))
+
+    return errors
 
 
 def verify_control_room_contract(root: Path) -> list[str]:
@@ -224,5 +311,6 @@ def verify_control_room_contract(root: Path) -> list[str]:
                 errors.append("legacy manifest does not mark the direct observer retired")
             if authority.get("canonicalIntegration") != FEDERATED_MANIFEST:
                 errors.append("legacy manifest does not point to the federated contract")
+        errors.extend(_verify_local_test_catalog(root, legacy_manifest))
 
     return errors
