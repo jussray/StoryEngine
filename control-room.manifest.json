@@ -16,22 +16,39 @@
       "story-engine/lib/guardrails.js",
       "GLOBAL_AI.md",
       "docs/GUARDRAILS.md",
-      ".control-room/repository.manifest.json"
+      ".control-room/repository.manifest.json",
+      "runtime/promotion_gates.py",
+      "runtime/promotion_gates_all.py"
     ],
     "privateContentAllowed": false
   },
+  "tests": {
+    "authority": "repo-native-promotion-registry",
+    "aggregation": "promotion-gates-sanitized-summary-to-founder-control-room",
+    "rawLogsAllowed": false,
+    "catalog": [
+      {"id": "provenance", "name": "Provenance decision contracts", "kind": "security", "gate": "provenance", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates.py", "runtime/artifact_writer.py", "policies/provenance_rules.json"]},
+      {"id": "revocation", "name": "Revocation epoch partitioning", "kind": "security", "gate": "revocation", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates.py", "runtime/partition_resolver.py"]},
+      {"id": "partition-boundary", "name": "Tenant partition boundary", "kind": "security", "gate": "partition_boundary", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates.py", "runtime/partition_resolver.py", "schemas/isolation_envelope.schema.json"]},
+      {"id": "event-schema", "name": "Shared operational event schema", "kind": "contract", "gate": "event_schema", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates.py", "runtime/l99_event_bus.py", "schemas/shared_event_bus_schema.json"]},
+      {"id": "lindymode-drift", "name": "Lindymode drift semantics", "kind": "contract", "gate": "lindymode_drift", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates.py", "samples/events.ndjson"]},
+      {"id": "shell-command", "name": "RiverEditor command registry roundtrip", "kind": "integration", "gate": "shell_command", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates.py", "runtime/rivereditor_shell_router.py", "runtime/rivereditor_handlers.py", "configs/rivereditor_command_registry.json"]},
+      {"id": "l99-latency", "name": "L99 latency and rollback thresholds", "kind": "contract", "gate": "l99_latency", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates.py", "runtime/rivereditor_l99_latency_monitor.py", "samples/rivereditor_style_chain_telemetry.sample.json"]},
+      {"id": "cookie-contract", "name": "Cookie-free authentication transport", "kind": "security", "gate": "cookie_contract", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates_all.py", "runtime/cookie_contract.py", ".security/cookies.json"]},
+      {"id": "control-room-federation", "name": "Founder Control Room federation", "kind": "contract", "gate": "control_room_federation", "required": true, "status": "active", "evidencePaths": ["runtime/promotion_gates_all.py", "runtime/control_room_contract.py", ".control-room/repository.manifest.json"]}
+    ]
+  },
   "evidence": {
-    "status": "at-risk",
-    "commit": "3a6b8ca6be3148876f4e62fac7440b92682b5eec",
-    "observedAt": "2026-07-24",
+    "status": "verified",
+    "commit": "0b97f2a8a0d310c49c013a328ae61c97ddbc9bad",
+    "observedAt": "2026-08-04",
     "proofRefs": [
       ".control-room/repository.manifest.json",
-      "GLOBAL_AI.md",
-      "docs/GUARDRAILS.md",
       "runtime/promotion_gates.py",
       "runtime/promotion_gates_all.py",
+      "runtime/control_room_contract.py",
       "runtime/cookie_contract.py",
-      ".security/cookies.json"
+      ".github/workflows/l99-promotion-gates.yml"
     ]
   },
   "risk": {
@@ -40,8 +57,8 @@
       "Tenant-safe identity and resource ownership remain release blockers",
       "Browser-readable development credentials remain a production blocker",
       "Creator and operator surfaces are not fully separated",
-      "GitHub-hosted Story Engine jobs are failing before runner provisioning"
+      "A catalog entry is not a pass unless the exact Promotion gates signal succeeds"
     ]
   },
-  "nextGate": "Use the provider-neutral Founder Control Room federation path, verify the current full promotion contract, and capture exact-head signed evidence before production release."
+  "nextGate": "Pass the exact nine-gate registry and retain the signed provider-neutral federation receipt before production release."
 }
