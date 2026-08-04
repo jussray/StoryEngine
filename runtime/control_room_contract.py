@@ -11,7 +11,7 @@ LEGACY_MANIFEST = "control-room.manifest.json"
 LEGACY_WORKFLOW = ".github/workflows/publish-control-room-status.yml"
 PROMOTION_WORKFLOW = ".github/workflows/l99-promotion-gates.yml"
 FULL_REGISTRY = "runtime/promotion_gates_all.py"
-EXPECTED_REPOSITORY = "jussray/l99-StoryEngine"
+EXPECTED_REPOSITORY = "jussray/StoryEngine"
 EXPECTED_PROJECT = "l99"
 EXPECTED_PROMOTION_COMMAND = "python runtime/promotion_gates_all.py"
 COOKIE_REGISTRATION = 'promotion_gates.GATES["cookie_contract"] = gate_cookie_contract'
