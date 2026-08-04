@@ -3,7 +3,7 @@
   "projectId": "l99",
   "repository": {
     "provider": "github",
-    "identifier": "jussray/l99-StoryEngine",
+    "identifier": "jussray/StoryEngine",
     "defaultBranch": "main"
   },
   "verification": {
