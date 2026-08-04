@@ -17,6 +17,7 @@ from control_room_contract import (
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_FILES = REQUIRED_COOKIE_EVIDENCE | REQUIRED_FEDERATION_EVIDENCE
+STALE_REPOSITORY = "jussray/l99-StoryEngine"
 
 
 def copy_contract_tree(destination: Path) -> None:
@@ -69,13 +70,25 @@ class ControlRoomContractTests(unittest.TestCase):
                 errors,
             )
 
+    def test_stale_federated_repository_identity_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_contract_tree(root)
+            path = root / FEDERATED_MANIFEST
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["repository"]["identifier"] = STALE_REPOSITORY
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            errors = verify_control_room_contract(root)
+            self.assertIn("federated manifest repository identity is stale", errors)
+
     def test_stale_legacy_repository_identity_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             copy_contract_tree(root)
             path = root / LEGACY_MANIFEST
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            manifest["repository"] = "jussray/l99-"
+            manifest["repository"] = STALE_REPOSITORY
             path.write_text(json.dumps(manifest), encoding="utf-8")
 
             errors = verify_control_room_contract(root)
