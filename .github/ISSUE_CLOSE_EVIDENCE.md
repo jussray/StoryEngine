@@ -14,4 +14,4 @@ Unresolved risks: none
 Founder approval: @jussray
 ```
 
-The gate reopens the issue when evidence is absent, stale, edited after closure, malformed, not founder-authored, or still reports unresolved risk. Generated artifacts, approvals, publishing, promotion, or verbal agreement do not automatically authorize closure.
+The gate reopens the issue when evidence is absent, stale, edited after closure, malformed, not founder-authored, or still reports unresolved risk. A passing gate posts one idempotent receipt with the evidence comment ID, timestamps, and SHA-256 witness without copying raw evidence. Generated artifacts, approvals, publishing, promotion, or verbal agreement do not automatically authorize closure.
