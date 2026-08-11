@@ -6,14 +6,26 @@ on:
       - main
     paths:
       - 'story-engine/**'
+      - 'AGENTS.md'
+      - 'AGENTS_FOUNDER_INTELLIGENCE.md'
+      - 'docs/FOUNDER_INTELLIGENCE_CONSTITUTION.md'
+      - 'scripts/verify-juss-os-commands.mjs'
       - '.github/workflows/l99-story-engine.yml'
   pull_request:
     paths:
       - 'story-engine/**'
+      - 'AGENTS.md'
+      - 'AGENTS_FOUNDER_INTELLIGENCE.md'
+      - 'docs/FOUNDER_INTELLIGENCE_CONSTITUTION.md'
+      - 'scripts/verify-juss-os-commands.mjs'
       - '.github/workflows/l99-story-engine.yml'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -21,8 +33,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout exact head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+
+      - name: Verify immutable head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED_HEAD_SHA" "$actual"
+          test "$actual" = "$EXPECTED_HEAD_SHA"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -31,6 +53,9 @@ jobs:
 
       - name: Show Node version
         run: node --version
+
+      - name: Verify portable Juss OS command contract
+        run: node scripts/verify-juss-os-commands.mjs
 
       - name: Run L99 integration tests
         working-directory: story-engine
