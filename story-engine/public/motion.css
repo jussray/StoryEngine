@@ -1,0 +1,44 @@
+:root {
+  --motion-fast: 140ms;
+  --motion-base: 240ms;
+  --motion-slow: 420ms;
+  --ease-enter: cubic-bezier(.2,.8,.2,1);
+  --ease-exit: cubic-bezier(.4,0,1,1);
+  --motion-rise: 10px;
+}
+
+/* Narrative motion belongs to state changes, not decoration. */
+#beats .beat-card {
+  animation: beat-enter var(--motion-base) var(--ease-enter) both;
+}
+
+#beats .beat-card:nth-child(2) { animation-delay: 45ms; }
+#beats .beat-card:nth-child(3) { animation-delay: 90ms; }
+#beats .beat-card:nth-child(4) { animation-delay: 135ms; }
+
+@keyframes beat-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-rise));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 1ms;
+    --motion-base: 1ms;
+    --motion-slow: 1ms;
+    --motion-rise: 0px;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
