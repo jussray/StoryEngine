@@ -27,8 +27,12 @@ async function loadBeats() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ logline, workspace_id })
       });
+      btn.dataset.saveState = 'saved';
       btn.textContent = 'Saved ✓';
-      setTimeout(() => (btn.textContent = 'Save beat'), 1500);
+      setTimeout(() => {
+        btn.textContent = 'Save beat';
+        delete btn.dataset.saveState;
+      }, 1500);
     });
   });
 }
