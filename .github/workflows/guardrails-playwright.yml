@@ -39,6 +39,8 @@ jobs:
       - run: npm run test:guardrails
       - name: Verify Story Video Engine in Control Room
         run: npx playwright test e2e/video_engine.spec.js
+      - name: Verify Movie Mode motion contract
+        run: npx playwright test e2e/movie_motion.spec.js
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
