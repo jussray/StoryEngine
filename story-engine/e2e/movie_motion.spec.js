@@ -7,7 +7,7 @@ async function mountBeat(page) {
     const card = document.createElement('div');
     card.className = 'beat-card';
     card.dataset.testid = 'motion-proof-beat';
-    card.textContent = 'Motion proof beat';
+    card.innerHTML = '<button class="save-beat" data-save-state="saved">Saved ✓</button>';
     beats.replaceChildren(card);
   });
   return page.locator('[data-testid="motion-proof-beat"]');
@@ -21,6 +21,14 @@ test('Movie Mode uses bounded narrative motion on desktop', async ({ page }) => 
   });
   expect(motion.name).toBe('beat-enter');
   expect(motion.duration).toBe('0.24s');
+
+  const save = beat.locator('.save-beat');
+  const saveMotion = await save.evaluate(node => {
+    const style = getComputedStyle(node);
+    return { name: style.animationName, duration: style.animationDuration };
+  });
+  expect(saveMotion.name).toBe('save-confirm');
+  expect(saveMotion.duration).toBe('0.14s');
 });
 
 test('Movie Mode motion remains bounded on a narrow viewport', async ({ page }) => {
@@ -34,5 +42,7 @@ test('Movie Mode collapses animation when reduced motion is requested', async ({
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const beat = await mountBeat(page);
   const duration = await beat.evaluate(node => getComputedStyle(node).animationDuration);
+  const saveDuration = await beat.locator('.save-beat').evaluate(node => getComputedStyle(node).animationDuration);
   expect(duration).toBe('0.001s');
+  expect(saveDuration).toBe('0.001s');
 });
