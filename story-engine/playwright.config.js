@@ -22,7 +22,15 @@ export default defineConfig({
       PORT: '3000',
       NODE_ENV: 'test',
       API_KEY: process.env.API_KEY || 'playwright-test-key',
-      L99_API_KEYS_JSON: process.env.L99_API_KEYS_JSON || '[]',
+      L99_API_KEYS_JSON: process.env.L99_API_KEYS_JSON || JSON.stringify([
+        {
+          key: 'playwright-scoped-key',
+          actor_id: 'playwright-scoped-actor',
+          tenant_id: 'playwright',
+          role: 'creator',
+          workspace_ids: ['playwright-allowed-workspace']
+        }
+      ]),
       RUNTIME_SCAN_INTERVAL_MS: '3600000',
       RUNTIME_DRAIN_INTERVAL_MS: '3600000'
     }
