@@ -21,6 +21,11 @@
   animation: save-confirm var(--motion-fast) var(--ease-enter) both;
 }
 
+/* Failed persistence must be visible without masquerading as success. */
+#beats .save-beat[data-save-state="error"] {
+  animation: save-error var(--motion-fast) var(--ease-exit) both;
+}
+
 @keyframes beat-enter {
   from {
     opacity: 0;
@@ -35,6 +40,11 @@
 @keyframes save-confirm {
   from { transform: scale(.97); }
   to { transform: scale(1); }
+}
+
+@keyframes save-error {
+  from { transform: translateX(3px); }
+  to { transform: translateX(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -22,17 +22,33 @@ async function loadBeats() {
     btn.addEventListener('click', async () => {
       const card = btn.closest('.beat-card');
       const logline = card.querySelector('.logline').value;
-      await fetch(`/api/movie/beats/${btn.dataset.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logline, workspace_id })
-      });
-      btn.dataset.saveState = 'saved';
-      btn.textContent = 'Saved ✓';
-      setTimeout(() => {
-        btn.textContent = 'Save beat';
-        delete btn.dataset.saveState;
-      }, 1500);
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      delete btn.dataset.saveState;
+
+      try {
+        const response = await fetch(`/api/movie/beats/${btn.dataset.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logline, workspace_id })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Save failed with ${response.status}`);
+        }
+
+        btn.dataset.saveState = 'saved';
+        btn.textContent = 'Saved ✓';
+        setTimeout(() => {
+          btn.textContent = 'Save beat';
+          delete btn.dataset.saveState;
+        }, 1500);
+      } catch (_error) {
+        btn.dataset.saveState = 'error';
+        btn.textContent = 'Save failed · Try again';
+      } finally {
+        btn.disabled = false;
+      }
     });
   });
 }
