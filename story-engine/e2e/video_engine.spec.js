@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const apiKey = 'playwright-test-key';
 const headers = { 'x-api-key': apiKey, 'Content-Type': 'application/json' };
+const scopedHeaders = { 'x-api-key': 'playwright-scoped-key', 'Content-Type': 'application/json' };
 
 async function createAndValidateJob(request, workspaceId, look) {
   const jobResponse = await request.post('/api/video-engine/jobs', {
@@ -86,6 +87,21 @@ test('free Story Video Engine validates multiple non-anime styles and reports th
     mode: 'animation_2d',
     visual_style: 'watercolor_storybook',
     aspect_ratio: '9:16'
+  });
+
+  const listResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, { headers });
+  expect(listResponse.status()).toBe(200);
+  const listedJobs = await listResponse.json();
+  expect(Array.isArray(listedJobs)).toBe(true);
+  expect(listedJobs.length).toBeGreaterThanOrEqual(2);
+
+  const forbiddenListResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, {
+    headers: scopedHeaders
+  });
+  expect(forbiddenListResponse.status()).toBe(403);
+  await expect(forbiddenListResponse.json()).resolves.toMatchObject({
+    error: 'workspace_forbidden',
+    workspace_id: workspaceId
   });
 
   await context.addCookies([{ name: 'l99_api_key', value: apiKey, domain: '127.0.0.1', path: '/', sameSite: 'Strict' }]);
