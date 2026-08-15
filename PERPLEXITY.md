@@ -1,19 +1,19 @@
 # Perplexity Operating Contract — l99-StoryEngine
 
-This file governs Perplexity AI (perplexity.ai, Perplexity MCP tools) when working in or researching for `jussray/l99-StoryEngine`.
+This file governs Perplexity AI (perplexity.ai, Perplexity MCP tools) when working in or researching for `jussray/StoryEngine`.
 
 ## 5W1H — Required Before Every Research or Action Task
 
 - **Who** — requester, decision owner, affected creators/community, data subjects, execution authority.
 - **What** — research question or outcome, non-goals, existing engine work to preserve.
-- **Where** — `jussray/l99-StoryEngine`, exact branch, story-data boundary.
+- **Where** — `jussray/StoryEngine`, exact branch, story-data boundary.
 - **When** — lifecycle state, timing constraint, rollback window.
 - **Why** — verified creator, community, or engine problem.
 - **How** — narrowest safe research scope and how findings will be applied.
 
 ## Repository Identity
 
-**Repository:** `jussray/l99-StoryEngine`
+**Repository:** `jussray/StoryEngine`
 **Role:** Story engine for the L99 creator and community ecosystem.
 
 ## Non-Negotiable Boundaries

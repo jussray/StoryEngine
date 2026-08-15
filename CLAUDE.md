@@ -1,19 +1,19 @@
 # Claude Operating Contract — l99-StoryEngine
 
-This file governs Claude (claude.ai, Claude Code, MCP-connected sessions) when working in `jussray/l99-StoryEngine`.
+This file governs Claude (claude.ai, Claude Code, MCP-connected sessions) when working in `jussray/StoryEngine`.
 
 ## 5W1H — Required Before Every Nontrivial Action
 
 - **Who** — requester, decision owner, affected users, data subjects, execution authority.
 - **What** — requested outcome, deliverable, non-goals, existing engine work to preserve.
-- **Where** — `jussray/l99-StoryEngine`, exact branch, environment, runtime, story-data boundary, and provider.
+- **Where** — `jussray/StoryEngine`, exact branch, environment, runtime, story-data boundary, and provider.
 - **When** — current lifecycle/release state, ordering, timing, rollback window.
 - **Why** — verified creator or audience problem and evidence.
 - **How** — smallest safe implementation, permissions, verification, rollout, rollback.
 
 ## Repository Identity
 
-**Repository:** `jussray/l99-StoryEngine`
+**Repository:** `jussray/StoryEngine`
 **Role:** Story engine powering the L99 creator and community ecosystem — narrative tools, content pipelines, story-data schemas, and community publishing layer.
 **Separation:** Strictly separate from Se’kret Bip IP, JBH operations, Think Tank, and Untold Stories storefronts.
 

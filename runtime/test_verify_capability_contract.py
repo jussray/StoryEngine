@@ -14,7 +14,26 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "runtime" / "verify_capability_contract.py"
 BASE = json.loads((ROOT / ".control" / "capability.json").read_text(encoding="utf-8"))
 REPOSITORY = "jussray/StoryEngine"
+STALE_REPOSITORY = "jussray/" + "l99-StoryEngine"
 SHA = "a" * 40
+ACTIVE_REPOSITORY_AUTHORITY_FILES = (
+    "CLAUDE.md",
+    "CHATGPT.md",
+    "PERPLEXITY.md",
+    ".cursor/rules",
+    ".agents/skills/l99-operator/SKILL.md",
+    "runtime/founder_truth_gate.py",
+    "runtime/verify_capability_contract.py",
+)
+
+
+def assert_active_repository_authority() -> None:
+    for relative_path in ACTIVE_REPOSITORY_AUTHORITY_FILES:
+        content = (ROOT / relative_path).read_text(encoding="utf-8")
+        if STALE_REPOSITORY in content:
+            raise AssertionError(f"{relative_path}: stale repository locator remains active")
+        if REPOSITORY not in content:
+            raise AssertionError(f"{relative_path}: canonical repository locator is missing")
 
 
 def run_case(data: dict, *, should_pass: bool, name: str) -> None:
@@ -54,6 +73,7 @@ def proof() -> dict:
 
 
 def main() -> None:
+    assert_active_repository_authority()
     run_case(copy.deepcopy(BASE), should_pass=True, name="conservative baseline")
 
     partial_without_proof = copy.deepcopy(BASE)
@@ -92,7 +112,7 @@ def main() -> None:
     invalid_rollback_scope["rollback"]["scope"] = "everything"
     run_case(invalid_rollback_scope, should_pass=False, name="invalid rollback scope")
 
-    print("capability contract adversarial tests passed: 8 rejection cases + conservative baseline")
+    print("capability contract adversarial tests passed: active repository authority + 8 rejection cases + conservative baseline")
 
 
 if __name__ == "__main__":
