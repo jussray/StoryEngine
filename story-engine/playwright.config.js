@@ -23,6 +23,7 @@ export default defineConfig({
       NODE_ENV: 'test',
       API_KEY: process.env.API_KEY || 'playwright-test-key',
       L99_API_KEYS_JSON: process.env.L99_API_KEYS_JSON || '[]',
+      SOURCE_CANON_PROVIDER: process.env.SOURCE_CANON_PROVIDER || 'local',
       RUNTIME_SCAN_INTERVAL_MS: '3600000',
       RUNTIME_DRAIN_INTERVAL_MS: '3600000'
     }
