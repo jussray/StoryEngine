@@ -32,6 +32,21 @@ function esc(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
+function ensureUniverseLink(workspaceId) {
+  if (!workspaceId) return;
+  const links = document.querySelector('.links');
+  if (!links) return;
+  let link = document.getElementById('storyUniverseLink');
+  if (!link) {
+    link = document.createElement('a');
+    link.id = 'storyUniverseLink';
+    link.textContent = 'Story Universe';
+    link.dataset.testid = 'story-universe-link';
+    links.prepend(link);
+  }
+  link.href = `/story_universe.html?workspace_id=${encodeURIComponent(workspaceId)}`;
+}
+
 document.querySelectorAll('.type').forEach(button => {
   button.addEventListener('click', () => {
     document.querySelectorAll('.type').forEach(item => item.classList.remove('active'));
@@ -51,6 +66,7 @@ document.querySelectorAll('.assist-option').forEach(button => {
 
 function renderRun(run) {
   currentRunId = run.run_id;
+  ensureUniverseLink(run.workspace_id);
   $('runPanel').classList.remove('hidden');
   $('runTitle').textContent = run.intent?.title || 'L99 Pipeline Run';
   const role = run.assist_profile?.assist_mode;
@@ -163,4 +179,6 @@ $('approve').addEventListener('click', async () => {
   }
 });
 
+const initialWorkspaceId = new URLSearchParams(window.location.search).get('workspace_id');
+ensureUniverseLink(initialWorkspaceId);
 loadDefaultAssistMode();
