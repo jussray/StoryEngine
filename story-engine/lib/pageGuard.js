@@ -11,6 +11,7 @@ const CREATOR_PAGES = new Set([
   '/front_door.html',
   '/story_engine.html',
   '/story_home.html',
+  '/story_universe.html',
   '/story_architect.html',
   '/chapter_builder.html',
   '/chapters.html',
