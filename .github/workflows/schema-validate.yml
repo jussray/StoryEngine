@@ -1,5 +1,5 @@
 # Schema Validation CI — l99-StoryEngine
-# Runs on every push + PR. Fails if any schema JSON is malformed or missing required fields.
+# Runs on schema/reconcile changes. Fails if any schema JSON is malformed or missing required fields.
 name: Schema Validation
 
 on:
@@ -9,32 +9,44 @@ on:
       - 'schemas/**'
       - 'scripts/reconcile.ts'
       - 'schemas/validate.ts'
+      - '.github/workflows/schema-validate.yml'
   pull_request:
     paths:
       - 'schemas/**'
       - 'scripts/reconcile.ts'
       - 'schemas/validate.ts'
+      - '.github/workflows/schema-validate.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   validate-schemas:
     name: Validate Story Schemas
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+
+      - name: Verify immutable head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '24'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Show Node version
+        run: node --version
 
       - name: Run schema validation
-        run: npx tsx schemas/validate.ts ./schemas
+        run: npx --yes tsx@4.19.0 schemas/validate.ts ./schemas
 
       - name: Run reconciliation check
-        run: npx tsx scripts/reconcile.ts
+        run: npx --yes tsx@4.19.0 scripts/reconcile.ts
         env:
           NODE_ENV: ci
