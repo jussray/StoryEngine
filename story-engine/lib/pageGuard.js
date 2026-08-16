@@ -1,11 +1,9 @@
 // lib/pageGuard.js
-// Closed-world static-page allowlist.
+// Closed-world creator/operator asset allowlist.
 //
-// Known creator and operator HTML/JS files are public shells. They contain no
-// authoritative workspace data and cannot perform protected actions by
-// themselves. Every runtime read and mutation remains behind the authenticated
-// /api boundary, where role and workspace checks are enforced. Unknown static
-// HTML/JS paths fail closed.
+// Known HTML/JS files are presentation clients, never product authority. They
+// must read and mutate workspace state through the authenticated /api boundary,
+// where role and workspace checks are enforced. Unknown HTML/JS paths fail closed.
 
 const CREATOR_PAGES = new Set([
   '/front_door.html',
