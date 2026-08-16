@@ -14,6 +14,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   verify-guardrails:
@@ -23,7 +24,18 @@ jobs:
       run:
         working-directory: story-engine
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - name: Verify immutable head
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED_HEAD_SHA" "$actual"
+          test "$actual" = "$EXPECTED_HEAD_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -41,6 +53,8 @@ jobs:
         run: npx playwright test e2e/video_engine.spec.js
       - name: Verify Movie Mode motion contract
         run: npx playwright test e2e/movie_motion.spec.js
+      - name: Verify V2 Story Universe runtime persistence
+        run: npx playwright test e2e/story_universe.spec.js
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
