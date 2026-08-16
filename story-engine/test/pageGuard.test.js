@@ -16,6 +16,7 @@ function mockRes() {
 test('creator pages include the core story flow and shared browser clients', () => {
   assert.ok(CREATOR_PAGES.has('/front_door.html'));
   assert.ok(CREATOR_PAGES.has('/story_engine.html'));
+  assert.ok(CREATOR_PAGES.has('/story_universe.html'));
   assert.ok(CREATOR_PAGES.has('/chapters.html'));
   assert.ok(CREATOR_PAGES.has('/studio.html'));
   assert.ok(CREATOR_PAGES.has('/ip_studio.html'));
@@ -40,9 +41,11 @@ test('no page appears in both sets', () => {
   }
 });
 
-test('known creator and operator assets are public static shells', () => {
+test('known creator and operator presentation clients are allowed', () => {
   for (const pathname of [
     '/story_engine.html',
+    '/story_universe.html',
+    '/story_universe.js',
     '/front_door.html',
     '/l99_auth.js',
     '/control_room.html',
