@@ -55,6 +55,8 @@ jobs:
         run: npx playwright test e2e/movie_motion.spec.js
       - name: Verify V2 Story Universe runtime persistence
         run: npx playwright test e2e/story_universe.spec.js
+      - name: Verify V2.1 source understand and canonize contract
+        run: npx playwright test e2e/source_canonize.spec.js
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
