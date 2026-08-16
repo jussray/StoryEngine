@@ -12,6 +12,12 @@ import {
   getGenomeContext
 } from '../lib/memoryEngine.js';
 import { canonSnapshot, setCanonAnchor } from '../lib/canonMemory.js';
+import {
+  analyzeStorySource,
+  listSourceCanonState,
+  reviewSourceProposal,
+  SOURCE_CANON_MAX_CHARS
+} from '../lib/sourceCanon.js';
 
 function respondError(res, error) {
   const notFound = /not found/i.test(error.message);
@@ -71,6 +77,44 @@ export default function memoryRoutes(router, db) {
         source: 'human'
       });
       json(res, 201, anchor);
+    } catch (error) {
+      respondError(res, error);
+    }
+  });
+
+  // V2.1 source intelligence is deliberately proposal-only. Analysis never writes
+  // canon. The creator must explicitly approve a proposal before canonMemory runs.
+  router.get('/api/memory/:workspace_id/sources', (req, res) => {
+    try {
+      json(res, 200, {
+        ...listSourceCanonState(db, req.params.workspace_id),
+        max_source_chars: SOURCE_CANON_MAX_CHARS
+      });
+    } catch (error) {
+      respondError(res, error);
+    }
+  });
+
+  router.post('/api/memory/:workspace_id/sources/analyze', async (req, res) => {
+    try {
+      const result = await analyzeStorySource(db, {
+        ...(req.body || {}),
+        workspace_id: req.params.workspace_id
+      });
+      json(res, 201, result);
+    } catch (error) {
+      respondError(res, error);
+    }
+  });
+
+  router.post('/api/memory/:workspace_id/proposals/:proposal_id/review', (req, res) => {
+    try {
+      const result = reviewSourceProposal(db, {
+        ...(req.body || {}),
+        workspace_id: req.params.workspace_id,
+        proposal_id: req.params.proposal_id
+      });
+      json(res, 200, result);
     } catch (error) {
       respondError(res, error);
     }
