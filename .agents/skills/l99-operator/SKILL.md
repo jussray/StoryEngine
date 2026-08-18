@@ -2,7 +2,7 @@
 
 ## Trigger
 
-Use for every nontrivial task, repository-state claim, code or documentation change, deployment discussion, review, or recovery operation in `jussray/l99-StoryEngine`.
+Use for every nontrivial task, repository-state claim, code or documentation change, deployment discussion, review, or recovery operation in `jussray/StoryEngine`.
 
 ## 5W1H operating contract
 
@@ -19,7 +19,7 @@ Inspect repository and runtime truth for unknowns. Ask only when a missing answe
 
 ## Repository identity
 
-**Repository:** `jussray/l99-StoryEngine`
+**Repository:** `jussray/StoryEngine`
 
 **Role:** An AI runtime and operations layer for state integrity, provenance-safe reuse, recovery, shadow validation, and promotion controls.
 
