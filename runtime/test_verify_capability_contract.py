@@ -22,6 +22,7 @@ ACTIVE_REPOSITORY_AUTHORITY_FILES = (
     "PERPLEXITY.md",
     ".cursor/rules",
     ".agents/skills/l99-operator/SKILL.md",
+    ".security/cookies.json",
     "runtime/founder_truth_gate.py",
     "runtime/verify_capability_contract.py",
 )
@@ -34,6 +35,10 @@ def assert_active_repository_authority() -> None:
             raise AssertionError(f"{relative_path}: stale repository locator remains active")
         if REPOSITORY not in content:
             raise AssertionError(f"{relative_path}: canonical repository locator is missing")
+
+    cookie_contract = json.loads((ROOT / ".security" / "cookies.json").read_text(encoding="utf-8"))
+    if cookie_contract.get("repository") != REPOSITORY:
+        raise AssertionError(".security/cookies.json: repository field is not canonical")
 
 
 def run_case(data: dict, *, should_pass: bool, name: str) -> None:
@@ -112,7 +117,7 @@ def main() -> None:
     invalid_rollback_scope["rollback"]["scope"] = "everything"
     run_case(invalid_rollback_scope, should_pass=False, name="invalid rollback scope")
 
-    print("capability contract adversarial tests passed: active repository authority + 8 rejection cases + conservative baseline")
+    print("capability contract adversarial tests passed: active repository authority + cookie manifest identity + 8 rejection cases + conservative baseline")
 
 
 if __name__ == "__main__":
