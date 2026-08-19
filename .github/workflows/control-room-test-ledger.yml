@@ -14,7 +14,7 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  CONTROL_ROOM_LEDGER_SELF_CHECK: Publish exact-head test ledger
+  CONTROL_ROOM_LEDGER_SELF_CHECK: Verify test-ledger contract
   CONTROL_ROOM_TEST_LEDGER_PATH: artifacts/control-room-test-ledger.json
 
 concurrency:
@@ -22,52 +22,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ledger-contract:
+  ledger:
     name: Verify test-ledger contract
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Check out exact head
         uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_HEAD_SHA }}
+
       - name: Record and verify exact head
         shell: bash
         run: |
           actual="$(git rev-parse HEAD)"
           printf 'expected=%s\nactual=%s\n' "$EXPECTED_HEAD_SHA" "$actual"
           test "$actual" = "$EXPECTED_HEAD_SHA"
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+
       - name: Run Control Room test-ledger contracts
         run: node --test test/control-room-test-ledger.test.mjs
 
-  publish-ledger:
-    name: Publish exact-head test ledger
-    needs: ledger-contract
-    runs-on: ubuntu-22.04
-    timeout-minutes: 25
-    steps:
-      - name: Check out exact head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_HEAD_SHA }}
-      - name: Record and verify exact head
-        shell: bash
-        run: |
-          actual="$(git rev-parse HEAD)"
-          printf 'expected=%s\nactual=%s\n' "$EXPECTED_HEAD_SHA" "$actual"
-          test "$actual" = "$EXPECTED_HEAD_SHA"
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
       - name: Observe every exact-head check lane
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/control-room-test-ledger.mjs
+
       - name: Upload repository-local Control Room ledger
         if: always()
         uses: actions/upload-artifact@v4
