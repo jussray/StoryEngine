@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "project": "story-engine",
+  "mode": "local-only",
+  "localOrigin": "http://127.0.0.1:3000",
+  "productionOrigin": null,
+  "promotionRequirements": [
+    "choose a canonical HTTPS production origin",
+    "deploy a runtime with a public identity endpoint",
+    "bind the production origin in source-controlled deployment config",
+    "pass production Playwright browser proof before claiming the domain live"
+  ]
+}
