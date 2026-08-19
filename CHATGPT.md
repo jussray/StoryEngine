@@ -1,19 +1,19 @@
 # ChatGPT Operating Contract — l99-StoryEngine
 
-This file governs ChatGPT (chat.openai.com, desktop, API, Codex tasks) when working in `jussray/l99-StoryEngine`.
+This file governs ChatGPT (chat.openai.com, desktop, API, Codex tasks) when working in `jussray/StoryEngine`.
 
 ## 5W1H — Required Before Every Nontrivial Action
 
 - **Who** — requester, decision owner, affected creators/community members, data subjects, execution authority.
 - **What** — requested outcome, deliverable, non-goals, existing engine work to preserve.
-- **Where** — `jussray/l99-StoryEngine`, exact branch, runtime, story-data boundary.
+- **Where** — `jussray/StoryEngine`, exact branch, runtime, story-data boundary.
 - **When** — lifecycle/release state, ordering, timing, rollback window.
 - **Why** — verified creator or community problem and evidence.
 - **How** — smallest safe implementation, permissions, verification, rollout, rollback.
 
 ## Repository Identity
 
-**Repository:** `jussray/l99-StoryEngine`
+**Repository:** `jussray/StoryEngine`
 **Role:** Story engine for L99 — narrative tools, content pipelines, story-data schemas, community publishing.
 
 ## Non-Negotiable Boundaries

@@ -60,7 +60,7 @@ def main() -> int:
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     report = {
         "schema_version": "1.0",
-        "repository": "jussray/l99-StoryEngine",
+        "repository": "jussray/StoryEngine",
         "head_sha": actual_sha,
         "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
         "generated_at": datetime.now(timezone.utc).isoformat(),

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "repository": "jussray/l99-StoryEngine",
+  "repository": "jussray/StoryEngine",
   "defaultPolicy": "deny-undeclared",
   "scanRoots": [
     "runtime",

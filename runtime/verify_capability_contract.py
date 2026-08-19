@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = Path(os.environ.get("CAPABILITY_CONTRACT", ROOT / ".control" / "capability.json"))
-EXPECTED_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "jussray/l99-StoryEngine")
+EXPECTED_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "jussray/StoryEngine")
 EXPECTED_SHA = os.environ.get("GITHUB_SHA")
 
 ALLOWED_STATUS = {"verified", "partial", "unverified", "blocked", "not_applicable"}
