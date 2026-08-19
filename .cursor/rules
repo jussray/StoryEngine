@@ -6,7 +6,7 @@ Before every nontrivial edit, establish and state:
 
 - **Who** — requester, decision owner, affected creators/community, data subjects, execution authority
 - **What** — exact outcome, deliverable, non-goals, preserved engine work
-- **Where** — `jussray/l99-StoryEngine`, exact branch, environment, story-data boundary
+- **Where** — `jussray/StoryEngine`, exact branch, environment, story-data boundary
 - **When** — lifecycle state, ordering constraint, rollback window
 - **Why** — verified creator/community problem and evidence
 - **How** — smallest safe implementation, verification plan, rollback
