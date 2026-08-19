@@ -74,6 +74,7 @@ export default function videoEngineRoutes(router, db) {
   });
 
   router.get('/api/workspaces/:workspace_id/video-jobs', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     try {
       json(res, 200, listStoryVideoJobs(db, req.params.workspace_id, Number(req.query.limit || 50)));
     } catch (error) {
