@@ -15,17 +15,34 @@ async function api(path, options={}){
 function statusClass(value){
   const text=String(value||'').toLowerCase();
   if(text.includes('block')||text.includes('error')||text.includes('fail')||text.includes('critical')) return 'red';
-  if(text.includes('warn')||text.includes('watch')||text.includes('planned')||text.includes('queued')) return 'gold';
+  if(text.includes('warn')||text.includes('watch')||text.includes('planned')||text.includes('queued')||text.includes('unknown')) return 'gold';
   return 'green';
 }
 
 function money(value){ return new Intl.NumberFormat(undefined,{style:'currency',currency:'USD'}).format(Number(value||0)); }
 
+function aggregateReleaseGate(workspaces){
+  if(!Array.isArray(workspaces)||workspaces.length===0) return 'UNKNOWN';
+  const statuses=workspaces.map(item=>String(item?.release_gate_status||'UNKNOWN').toUpperCase());
+  if(statuses.includes('BLOCKED')) return 'BLOCKED';
+  if(statuses.some(status=>!['READY','WARNING'].includes(status))) return 'UNKNOWN';
+  if(statuses.includes('WARNING')) return 'WARNING';
+  return 'READY';
+}
+
+function runtimeHealth(overview){
+  const runs=Number(overview?.runtime_runs||0);
+  if(runs<=0) return 'Unknown';
+  if(Number(overview?.runtime_failures||0)>0) return 'Degraded';
+  if(Number(overview?.running_dispatches||0)>0) return 'Running';
+  return 'Healthy';
+}
+
 function renderStats(data){
-  const memory=data.memory||{}; const overview=data.overview||{};
-  const confidence=memory.confidence_trend?.at(-1)?.confidence_after??data.workspaces?.[0]?.confidence_score??0;
-  const gate=data.workspaces?.some(x=>x.release_gate_status==='BLOCKED')?'BLOCKED':data.workspaces?.some(x=>x.release_gate_status==='WARNING')?'WARNING':'READY';
-  const runtime=overview.runtime_failures?'Degraded':overview.running_dispatches?'Running':'Healthy';
+  const memory=data.memory||{}; const overview=data.overview||{}; const workspaces=Array.isArray(data.workspaces)?data.workspaces:[];
+  const confidence=memory.confidence_trend?.at(-1)?.confidence_after??workspaces[0]?.confidence_score??0;
+  const gate=aggregateReleaseGate(workspaces);
+  const runtime=runtimeHealth(overview);
   const cards=[
     ['Workspace Health',`${Math.round(confidence)}%`,confidence>=75?'green':'gold',`${overview.workspaces||0} workspaces`],
     ['Story Drift',memory.story_drift_count||0,memory.story_drift_count?'red':'teal','Unresolved genome conflicts'],
