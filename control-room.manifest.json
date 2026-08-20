@@ -2,7 +2,7 @@
   "schemaVersion": "1.0",
   "repository": "jussray/StoryEngine",
   "portfolioHub": "jussray/founder-control-room",
-  "role": "runtime-control-room",
+  "role": "runtime-operations-layer",
   "authority": {
     "sourceOfTruth": "Current main event spine, Story Engine state, artifacts, full promotion gates, and repository CI evidence",
     "portfolioMode": "retired-direct-observer",
