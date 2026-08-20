@@ -9,13 +9,28 @@ import {
   listReleaseAttempts,
   reconcileStaleReleaseAttempts
 } from '../lib/releaseAttempts.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 
 function transitionFailure(res, error) {
   if (error?.code === 'INVALID_RELEASE_ATTEMPT_TRANSITION') {
     return json(res, 409, { error: error.message, attempt: error.attempt });
   }
   throw error;
+}
+
+function requireGlobalReleaseReconcileAuthority(req, res) {
+  let allowed = false;
+  requireRole('administrator')(req, res, () => { allowed = true; });
+  if (!allowed) return false;
+  if (!Array.isArray(req.auth?.workspace_ids) || !req.auth.workspace_ids.includes('*')) {
+    json(res, 403, {
+      error: 'global_workspace_forbidden',
+      required_workspace_scope: '*',
+      request_id: req.request_id
+    });
+    return false;
+  }
+  return true;
 }
 
 export default function releaseAttemptRoutes(router, db) {
@@ -41,12 +56,26 @@ export default function releaseAttemptRoutes(router, db) {
     }
   });
 
+  router.post('/api/release/attempts/reconcile/:workspace_id', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
+    try {
+      const attempts = reconcileStaleReleaseAttempts(db, {
+        staleAfterMs: req.body?.stale_after_ms,
+        workspaceId: req.params.workspace_id
+      });
+      json(res, 200, { reconciled: attempts.length, attempts, scope: req.params.workspace_id });
+    } catch (error) {
+      json(res, 400, { error: error.message });
+    }
+  });
+
   router.post('/api/release/attempts/reconcile', (req, res) => {
+    if (!requireGlobalReleaseReconcileAuthority(req, res)) return;
     try {
       const attempts = reconcileStaleReleaseAttempts(db, {
         staleAfterMs: req.body?.stale_after_ms
       });
-      json(res, 200, { reconciled: attempts.length, attempts });
+      json(res, 200, { reconciled: attempts.length, attempts, scope: '*' });
     } catch (error) {
       json(res, 400, { error: error.message });
     }
