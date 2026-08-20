@@ -36,6 +36,12 @@ function normalizeOperation(operation) {
   return value;
 }
 
+function normalizeWorkspaceScope(value) {
+  const workspaceId = String(value || '').trim();
+  if (workspaceId.length > 200) throw new Error('workspace_id is too long.');
+  return workspaceId;
+}
+
 function normalizeStaleAfterMs(value) {
   const number = Number(value ?? DEFAULT_STALE_AFTER_MS);
   if (!Number.isFinite(number)) throw new Error('stale_after_ms must be a finite number.');
@@ -55,12 +61,19 @@ function findRunningAttempt(db, workspaceId, operation) {
 
 export function reconcileStaleReleaseAttempts(db, options = {}) {
   const staleAfterMs = normalizeStaleAfterMs(options.staleAfterMs);
+  const workspaceId = normalizeWorkspaceScope(options.workspaceId);
   const cutoffAt = Date.now() - staleAfterMs;
-  const stale = db.prepare(`
-    SELECT * FROM release_attempts
-    WHERE status = 'running' AND created_at < ?
-    ORDER BY created_at ASC
-  `).all(cutoffAt).map(hydrate);
+  const stale = workspaceId
+    ? db.prepare(`
+        SELECT * FROM release_attempts
+        WHERE workspace_id = ? AND status = 'running' AND created_at < ?
+        ORDER BY created_at ASC
+      `).all(workspaceId, cutoffAt).map(hydrate)
+    : db.prepare(`
+        SELECT * FROM release_attempts
+        WHERE status = 'running' AND created_at < ?
+        ORDER BY created_at ASC
+      `).all(cutoffAt).map(hydrate);
 
   if (!stale.length) return [];
   const completedAt = Date.now();
@@ -94,7 +107,7 @@ export function reconcileStaleReleaseAttempts(db, options = {}) {
 export function createReleaseAttempt(db, workspaceId, operation, options = {}) {
   const normalizedOperation = normalizeOperation(operation);
   const staleAfterMs = normalizeStaleAfterMs(options.staleAfterMs);
-  reconcileStaleReleaseAttempts(db, { staleAfterMs });
+  reconcileStaleReleaseAttempts(db, { staleAfterMs, workspaceId });
 
   const existing = findRunningAttempt(db, workspaceId, normalizedOperation);
   if (existing) {
