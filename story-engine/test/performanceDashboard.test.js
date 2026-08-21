@@ -57,9 +57,41 @@ test('performance dashboard computes workspace p50, p99, ratio, and totals', () 
   const workspace = dashboard.workspace_metrics.find(item => item.workspace_id === workspaceId);
 
   assert.equal(dashboard.overview.total_events, 5);
+  assert.equal(dashboard.overview.latency_samples, 5);
+  assert.equal(workspace.latency_sample_count, 5);
   assert.equal(workspace.p50, 300);
   assert.equal(workspace.p99, 2500);
   assert.equal(workspace.p99_ratio, 8.33);
+  assert.equal(workspace.status, 'critical');
+  db.close();
+});
+
+test('performance dashboard keeps missing latency evidence unknown instead of healthy', () => {
+  const db = createDb();
+  const workspaceId = seedWorkspace(db);
+  insertEvent(db, workspaceId, null);
+
+  const dashboard = buildPerformanceDashboard(db);
+  const workspace = dashboard.workspace_metrics.find(item => item.workspace_id === workspaceId);
+
+  assert.equal(workspace.total_events, 1);
+  assert.equal(workspace.latency_sample_count, 0);
+  assert.equal(workspace.status, 'unknown');
+  assert.equal(dashboard.overview.latency_samples, 0);
+  assert.equal(dashboard.overview.max_p99, null);
+  db.close();
+});
+
+test('performance dashboard still prioritizes known failures when latency evidence is missing', () => {
+  const db = createDb();
+  const workspaceId = seedWorkspace(db);
+  insertEvent(db, workspaceId, null, 'operation.failed', 0);
+
+  const dashboard = buildPerformanceDashboard(db);
+  const workspace = dashboard.workspace_metrics.find(item => item.workspace_id === workspaceId);
+
+  assert.equal(workspace.latency_sample_count, 0);
+  assert.equal(workspace.error_rate, 1);
   assert.equal(workspace.status, 'critical');
   db.close();
 });
