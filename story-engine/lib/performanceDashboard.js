@@ -55,17 +55,21 @@ function computeWorkspaceSummary(db, windowMs) {
 
   return [...groups.values()].map(group => {
     const sorted = [...group.durations].sort((a, b) => a - b);
+    const latencySampleCount = sorted.length;
     const p50 = percentile(sorted, 50);
     const p99 = percentile(sorted, 99);
     const rollbackRate = group.total_events ? group.rollback_count / group.total_events : 0;
     const errorRate = group.total_events ? group.error_count / group.total_events : 0;
-    const status = p99 > 2000 || rollbackRate > 0.05 || errorRate > 0.1
+    const status = rollbackRate > 0.05 || errorRate > 0.1 || (latencySampleCount > 0 && p99 > 2000)
       ? 'critical'
-      : p99 > 1000 || rollbackRate > 0.02 || errorRate > 0.05 ? 'warning' : 'healthy';
+      : rollbackRate > 0.02 || errorRate > 0.05 || (latencySampleCount > 0 && p99 > 1000)
+        ? 'warning'
+        : latencySampleCount === 0 ? 'unknown' : 'healthy';
     return {
       workspace_id: group.workspace_id,
       title: titles.get(group.workspace_id) || group.workspace_id,
       total_events: group.total_events,
+      latency_sample_count: latencySampleCount,
       p50,
       p99,
       p99_ratio: p50 ? Number((p99 / p50).toFixed(2)) : 0,
@@ -75,7 +79,7 @@ function computeWorkspaceSummary(db, windowMs) {
       latest_event_at: group.latest_event_at
     };
   }).sort((a, b) => {
-    const rank = { critical: 3, warning: 2, healthy: 1 };
+    const rank = { critical: 4, warning: 3, unknown: 2, healthy: 1 };
     return (rank[b.status] || 0) - (rank[a.status] || 0) || b.p99 - a.p99;
   });
 }
@@ -117,11 +121,12 @@ export function buildPerformanceDashboard(db, options = {}) {
 
   const totals = workspaces.reduce((acc, item) => {
     acc.events += item.total_events;
+    acc.latency_samples += item.latency_sample_count;
     acc.rollback_count += Math.round(item.rollback_rate * item.total_events);
     acc.error_count += Math.round(item.error_rate * item.total_events);
-    acc.p99_max = Math.max(acc.p99_max, item.p99);
+    if (item.latency_sample_count > 0) acc.p99_max = Math.max(acc.p99_max, item.p99);
     return acc;
-  }, { events: 0, rollback_count: 0, error_count: 0, p99_max: 0 });
+  }, { events: 0, latency_samples: 0, rollback_count: 0, error_count: 0, p99_max: 0 });
 
   return {
     generated_at: Date.now(),
@@ -129,7 +134,8 @@ export function buildPerformanceDashboard(db, options = {}) {
     overview: {
       workspaces: workspaces.length,
       total_events: totals.events,
-      max_p99: totals.p99_max,
+      latency_samples: totals.latency_samples,
+      max_p99: totals.latency_samples ? totals.p99_max : null,
       rollback_rate: totals.events ? totals.rollback_count / totals.events : 0,
       error_rate: totals.events ? totals.error_count / totals.events : 0,
       active_incidents: incidents.length,
