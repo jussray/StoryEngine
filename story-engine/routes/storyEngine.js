@@ -8,7 +8,8 @@ import {
   approveStoryEngineRun,
   getStoryEngineRun,
   listStoryEngineRuns,
-  storyEngineBrainSnapshot
+  storyEngineBrainSnapshot,
+  ensureStoryEngineSchema
 } from '../lib/storyEngineOrchestrator.js';
 import {
   ASSIST_MODES,
@@ -172,6 +173,7 @@ export default function storyEngineRoutes(router, db) {
 
   router.post('/api/story-engine/runs/:run_id/resume', async (req, res) => {
     try {
+      ensureStoryEngineSchema(db);
       const target = db.prepare('SELECT workspace_id, status FROM story_engine_runs WHERE run_id=?').get(req.params.run_id);
       if (!target) return json(res, 404, { error: 'Story Engine run not found.' });
       if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
