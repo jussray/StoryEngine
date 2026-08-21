@@ -55,6 +55,25 @@ async function writerRun(db) {
   }, 'writer');
 }
 
+test('unknown resume on a fresh database initializes schema and returns 404 without mutation', async () => {
+  const db = createDb();
+  const handlers = captureRoutes(db);
+  const res = responseRecorder();
+  const req = {
+    params: { run_id: 'missing-run' },
+    auth: { workspace_ids: ['*'] },
+    request_id: 'fresh-db-resume'
+  };
+
+  await handlers.get('POST /api/story-engine/runs/:run_id/resume')(req, res);
+
+  assert.equal(res.status, 404);
+  assert.equal(res.body.error, 'Story Engine run not found.');
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM story_engine_runs').get().count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM runtime_dispatch_queue').get().count, 0);
+  db.close();
+});
+
 test('GET run is observational and cannot resume a Writer session', async () => {
   const db = createDb();
   const run = await writerRun(db);
