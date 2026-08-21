@@ -33,6 +33,13 @@ function requireGlobalReleaseReconcileAuthority(req, res) {
   return true;
 }
 
+function requireWorkspaceReleaseReconcileAuthority(req, res, workspaceId) {
+  let allowed = false;
+  requireRole('release_manager')(req, res, () => { allowed = true; });
+  if (!allowed) return false;
+  return requireWorkspaceAccess(req, res, workspaceId);
+}
+
 export default function releaseAttemptRoutes(router, db) {
   router.post('/api/release/attempt/:workspace_id', (req, res) => {
     try {
@@ -57,7 +64,7 @@ export default function releaseAttemptRoutes(router, db) {
   });
 
   router.post('/api/release/attempts/reconcile/:workspace_id', (req, res) => {
-    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
+    if (!requireWorkspaceReleaseReconcileAuthority(req, res, req.params.workspace_id)) return;
     try {
       const attempts = reconcileStaleReleaseAttempts(db, {
         staleAfterMs: req.body?.stale_after_ms,
