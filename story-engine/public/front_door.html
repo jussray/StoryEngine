@@ -202,12 +202,13 @@
         }
 
         const run = await res.json();
+        const runId = run.run_id || run.run?.run_id;
         const workspaceId = run.workspace_id || run.run?.workspace_id;
-        if (workspaceId) {
-          window.location.href = `/story_home.html?workspace_id=${encodeURIComponent(workspaceId)}`;
-        } else {
-          window.location.href = '/story_home.html';
-        }
+        if (!runId) throw new Error('Story Engine did not return a run id.');
+
+        const next = new URLSearchParams({ run_id: runId });
+        if (workspaceId) next.set('workspace_id', workspaceId);
+        window.location.href = `/story_engine.html?${next.toString()}`;
       } catch (err) {
         statusEl.textContent = err.message || 'Something went wrong. Try again.';
         statusEl.className = 'status error';
