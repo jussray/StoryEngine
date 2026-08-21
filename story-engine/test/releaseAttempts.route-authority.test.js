@@ -9,7 +9,7 @@ function captureRoutes() {
     get() {},
   };
   const db = new Proxy({}, {
-    get() { throw new Error('database must not be touched before global reconcile authority passes'); }
+    get() { throw new Error('database must not be touched before release reconcile authority passes'); }
   });
   releaseAttemptRoutes(router, db);
   return post;
@@ -53,6 +53,36 @@ test('global release reconciliation rejects workspace-limited administrators bef
   assert.equal(res.status, 403);
   assert.equal(res.body.error, 'global_workspace_forbidden');
   assert.equal(res.body.required_workspace_scope, '*');
+});
+
+test('workspace release reconciliation rejects low-privilege workspace members before database access', () => {
+  const handler = captureRoutes().get('/api/release/attempts/reconcile/:workspace_id');
+  const res = response();
+  handler({
+    auth: { role: 'viewer', workspace_ids: ['workspace-a'] },
+    params: { workspace_id: 'workspace-a' },
+    request_id: 'req-workspace-role',
+    body: { stale_after_ms: 60_000 },
+  }, res);
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.error, 'forbidden');
+  assert.deepEqual(res.body.required_roles, ['release_manager']);
+});
+
+test('workspace release reconciliation rejects release managers outside the target workspace before database access', () => {
+  const handler = captureRoutes().get('/api/release/attempts/reconcile/:workspace_id');
+  const res = response();
+  handler({
+    auth: { role: 'release_manager', workspace_ids: ['workspace-b'] },
+    params: { workspace_id: 'workspace-a' },
+    request_id: 'req-workspace-scope',
+    body: { stale_after_ms: 60_000 },
+  }, res);
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.error, 'workspace_forbidden');
+  assert.equal(res.body.workspace_id, 'workspace-a');
 });
 
 test('workspace-scoped reconciliation remains available at an explicit workspace route', () => {
