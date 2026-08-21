@@ -4,6 +4,7 @@ import * as Chapter from '../models/chapterModel.js';
 import { log } from '../models/eventModel.js';
 import { enqueueRuntime } from '../lib/runtimeDispatcher.js';
 import { getGenomeContext, patchMemoryFromChapter } from '../lib/memoryEngine.js';
+import { getWorkspaceAssist } from '../lib/assistMode.js';
 import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 function dispatchSummary(dispatch) {
@@ -14,6 +15,12 @@ function dispatchSummary(dispatch) {
     trigger_type: dispatch.trigger_type,
     chapter_id: dispatch.chapter_id ?? null
   } : null;
+}
+
+function enqueueChapterRuntimeIfAuthorized(db, workspaceId, triggerType, chapterId) {
+  const assistMode = getWorkspaceAssist(db, workspaceId).assist_mode;
+  if (assistMode === 'writer' || assistMode === 'co_writer') return null;
+  return enqueueRuntime(db, workspaceId, triggerType, chapterId);
 }
 
 export default function chapterRoutes(router, db) {
@@ -46,18 +53,19 @@ export default function chapterRoutes(router, db) {
       duration_ms: Date.now() - startedAt
     });
 
-    const dispatch = enqueueRuntime(db, workspace_id, 'chapter_created', Number(id));
-    json(res, 202, {
+    const dispatch = enqueueChapterRuntimeIfAuthorized(db, workspace_id, 'chapter_created', Number(id));
+    const queued = Boolean(dispatch);
+    json(res, queued ? 202 : 201, {
       id,
       ok: true,
-      queued: true,
+      queued,
       dispatch: dispatchSummary(dispatch),
       memory: {
         patched: true,
         diff_count: memoryDiffs.length,
         context: getGenomeContext(db, workspace_id)
       },
-      lindymode: { queued: true, incidents: [] }
+      lindymode: { queued, incidents: [] }
     });
   });
 
@@ -84,17 +92,18 @@ export default function chapterRoutes(router, db) {
       duration_ms: Date.now() - startedAt
     });
 
-    const dispatch = enqueueRuntime(db, chapter.workspace_id, 'chapter_updated', id);
-    json(res, 202, {
+    const dispatch = enqueueChapterRuntimeIfAuthorized(db, chapter.workspace_id, 'chapter_updated', id);
+    const queued = Boolean(dispatch);
+    json(res, queued ? 202 : 200, {
       ok: true,
-      queued: true,
+      queued,
       dispatch: dispatchSummary(dispatch),
       memory: {
         patched: true,
         diff_count: memoryDiffs.length,
         context: getGenomeContext(db, chapter.workspace_id)
       },
-      lindymode: { queued: true, incidents: [] }
+      lindymode: { queued, incidents: [] }
     });
   });
 }
