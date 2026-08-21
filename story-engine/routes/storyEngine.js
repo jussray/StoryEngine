@@ -16,6 +16,11 @@ import {
   setWorkspaceAssist,
   recordAssistContribution
 } from '../lib/assistMode.js';
+import {
+  isHumanLedAssistMode,
+  resolveStoryEngineAssistMode,
+  startHumanLedStoryEngineRun
+} from '../lib/storyEngineAssistAuthority.js';
 import { log } from '../models/eventModel.js';
 import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
@@ -119,8 +124,13 @@ export default function storyEngineRoutes(router, db) {
 
   router.post('/api/story-engine/runs', async (req, res) => {
     try {
+      const assistMode = resolveStoryEngineAssistMode(db, req.body?.assist_mode);
+      if (isHumanLedAssistMode(assistMode)) {
+        const run = await startHumanLedStoryEngineRun(db, req.body || {}, assistMode);
+        return json(res, 201, run);
+      }
       const run = await startStoryEngineRun(db, req.body || {});
-      json(res, 201, applyAssistMode(db, run, req.body?.assist_mode));
+      json(res, 201, applyAssistMode(db, run, assistMode));
     } catch (error) {
       json(res, 400, { error: error.message });
     }
@@ -142,7 +152,7 @@ export default function storyEngineRoutes(router, db) {
 
   router.get('/api/story-engine/runs/:run_id', async (req, res) => {
     try {
-      const run = await getStoryEngineRun(db, req.params.run_id);
+      const run = await getStoryEngineRun(db, req.params.run_id, { resume: false });
       if (!run) return json(res, 404, { error: 'Story Engine run not found.' });
       if (!requireWorkspaceAccess(req, res, run.workspace_id)) return;
       json(res, 200, run);
@@ -162,9 +172,16 @@ export default function storyEngineRoutes(router, db) {
 
   router.post('/api/story-engine/runs/:run_id/resume', async (req, res) => {
     try {
+      const target = db.prepare('SELECT workspace_id, status FROM story_engine_runs WHERE run_id=?').get(req.params.run_id);
+      if (!target) return json(res, 404, { error: 'Story Engine run not found.' });
+      if (!requireWorkspaceAccess(req, res, target.workspace_id)) return;
+      if (['writer_active', 'co_writer_ready'].includes(target.status)) {
+        return json(res, 409, {
+          error: 'Human-led Assist Mode does not permit autonomous pipeline resume.',
+          code: 'ASSIST_AUTHORITY_BLOCKS_AUTONOMOUS_RESUME'
+        });
+      }
       const run = await getStoryEngineRun(db, req.params.run_id, { resume: true });
-      if (!run) return json(res, 404, { error: 'Story Engine run not found.' });
-      if (!requireWorkspaceAccess(req, res, run.workspace_id)) return;
       json(res, 200, run);
     } catch (error) {
       json(res, 500, { error: error.message });
