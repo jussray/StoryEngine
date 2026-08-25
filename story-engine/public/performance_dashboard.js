@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 const pct = value => `${(Number(value || 0) * 100).toFixed(1)}%`;
-const ms = value => `${Math.round(Number(value || 0))}ms`;
+const ms = value => value == null ? '—' : `${Math.round(Number(value))}ms`;
 
 let source;
 
@@ -14,16 +14,17 @@ async function api(path) {
 
 function color(status) {
   if (status === 'critical' || status === 'BLOCKED') return 'bad';
-  if (status === 'warning' || status === 'WARNING') return 'warn';
+  if (status === 'warning' || status === 'WARNING' || status === 'unknown' || status === 'UNKNOWN') return 'warn';
   return 'ok';
 }
 
 function renderStats(data) {
   const o = data.overview || {};
+  const hasLatency = Number(o.latency_samples || 0) > 0 && o.max_p99 != null;
   const cards = [
     ['Workspaces', o.workspaces || 0, 'teal', 'with events in window'],
     ['Total Events', o.total_events || 0, 'blue', `${Math.round(data.window_ms / 60000)}m window`],
-    ['Max p99', ms(o.max_p99), o.max_p99 > 1000 ? 'warn' : 'ok', 'slowest workspace'],
+    ['Max p99', hasLatency ? ms(o.max_p99) : 'Unknown', hasLatency ? (o.max_p99 > 1000 ? 'warn' : 'ok') : 'warn', hasLatency ? 'slowest workspace' : 'no latency samples'],
     ['Rollback', pct(o.rollback_rate), o.rollback_rate > .02 ? 'bad' : 'ok', 'all workspaces'],
     ['Error Rate', pct(o.error_rate), o.error_rate > .05 ? 'bad' : 'ok', 'failed/blocked/error events'],
     ['Incidents', o.active_incidents || 0, o.active_incidents ? 'bad' : 'ok', 'active OODA signals'],
@@ -34,16 +35,19 @@ function renderStats(data) {
 }
 
 function renderWorkspaces(data) {
-  $('workspaces').innerHTML = (data.workspace_metrics || []).map(item => `<tr>
+  $('workspaces').innerHTML = (data.workspace_metrics || []).map(item => {
+    const hasLatency = Number(item.latency_sample_count || 0) > 0;
+    return `<tr>
     <td><strong>${esc(item.title)}</strong><div class="sub">${esc(item.workspace_id)}</div></td>
     <td class="${color(item.status)}">${esc(item.status)}</td>
     <td>${item.total_events}</td>
-    <td>${ms(item.p50)}</td>
-    <td>${ms(item.p99)}</td>
-    <td>${item.p99_ratio}</td>
+    <td>${hasLatency ? ms(item.p50) : '—'}</td>
+    <td>${hasLatency ? ms(item.p99) : '—'}</td>
+    <td>${hasLatency ? item.p99_ratio : '—'}</td>
     <td>${pct(item.error_rate)}</td>
     <td>${pct(item.rollback_rate)}</td>
-  </tr>`).join('') || '<tr><td colspan="8" class="sub">No events in the selected window.</td></tr>';
+  </tr>`;
+  }).join('') || '<tr><td colspan="8" class="sub">No events in the selected window.</td></tr>';
 }
 
 function renderEndpoints(data) {
