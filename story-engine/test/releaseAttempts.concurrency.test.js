@@ -40,8 +40,8 @@ function seedWorkspace(db, workspaceId = 'workspace-concurrency') {
     INSERT INTO autonomous_runtime_runs (
       run_id, correlation_id, workspace_id, trigger_type, status,
       steps_json, result_json, created_at, completed_at
-    ) VALUES ('run-concurrency', 'corr-concurrency', ?, 'test', 'completed', '[]', '{}', ?, ?)
-  `).run(workspaceId, now, now);
+    ) VALUES (?, ?, ?, 'test', 'completed', '[]', '{}', ?, ?)
+  `).run(`run-${workspaceId}`, `corr-${workspaceId}`, workspaceId, now, now);
   upsertCreativeProfile(db, workspaceId, {
     story_vision: 'A complete test story about courage and belonging.',
     story_kind: 'drama',
@@ -120,7 +120,50 @@ test('stale running attempts time out and allow a new attempt', () => {
   db.close();
 });
 
-test('manual stale reconciliation is idempotent', () => {
+test('creating work in one workspace cannot reconcile stale attempts in another workspace', () => {
+  const db = createDb();
+  const workspaceA = seedWorkspace(db, 'workspace-a');
+  const workspaceB = seedWorkspace(db, 'workspace-b');
+  const staleB = createReleaseAttempt(db, workspaceB, 'export');
+  db.prepare('UPDATE release_attempts SET created_at = ? WHERE attempt_id = ?')
+    .run(Date.now() - 20 * 60 * 1000, staleB.attempt.attempt_id);
+
+  const createdA = createReleaseAttempt(db, workspaceA, 'movie_beats_generate', {
+    staleAfterMs: 15 * 60 * 1000
+  });
+  const untouchedB = db.prepare('SELECT status, error FROM release_attempts WHERE attempt_id = ?')
+    .get(staleB.attempt.attempt_id);
+
+  assert.equal(createdA.allowed, true);
+  assert.equal(untouchedB.status, 'running');
+  assert.equal(untouchedB.error, null);
+  db.close();
+});
+
+test('workspace-scoped stale reconciliation cannot transition another workspace', () => {
+  const db = createDb();
+  const workspaceA = seedWorkspace(db, 'workspace-a');
+  const workspaceB = seedWorkspace(db, 'workspace-b');
+  const staleA = createReleaseAttempt(db, workspaceA, 'export');
+  const staleB = createReleaseAttempt(db, workspaceB, 'export');
+  const staleAt = Date.now() - 20 * 60 * 1000;
+  db.prepare('UPDATE release_attempts SET created_at = ? WHERE attempt_id IN (?, ?)')
+    .run(staleAt, staleA.attempt.attempt_id, staleB.attempt.attempt_id);
+
+  const reconciled = reconcileStaleReleaseAttempts(db, {
+    staleAfterMs: 15 * 60 * 1000,
+    workspaceId: workspaceA
+  });
+  const rowA = db.prepare('SELECT status FROM release_attempts WHERE attempt_id = ?').get(staleA.attempt.attempt_id);
+  const rowB = db.prepare('SELECT status FROM release_attempts WHERE attempt_id = ?').get(staleB.attempt.attempt_id);
+
+  assert.deepEqual(reconciled.map(attempt => attempt.workspace_id), [workspaceA]);
+  assert.equal(rowA.status, 'failed');
+  assert.equal(rowB.status, 'running');
+  db.close();
+});
+
+test('manual global stale reconciliation remains idempotent for explicitly privileged callers', () => {
   const db = createDb();
   const workspaceId = seedWorkspace(db);
   const attempt = createReleaseAttempt(db, workspaceId, 'export');
