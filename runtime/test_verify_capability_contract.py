@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "runtime" / "verify_capability_contract.py"
 BASE = json.loads((ROOT / ".control" / "capability.json").read_text(encoding="utf-8"))
-REPOSITORY = "jussray/StoryEngine"
+REPOSITORY = "jussray/l99-StoryEngine"
 SHA = "a" * 40
 
 
