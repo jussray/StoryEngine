@@ -74,8 +74,8 @@ async function load() {
   try {
     const data = await api('/api/performance/overview');
     render(data);
-    $('live').textContent = 'Live';
-    $('live').className = 'pill ok';
+      $('live').textContent = 'Live';
+      $('live').className = 'pill ok';
   } catch (error) {
     $('live').textContent = error.message;
     $('live').className = 'pill bad';
@@ -84,15 +84,16 @@ async function load() {
 
 function connect() {
   source?.close();
-  source = new EventSource('/api/performance/stream');
-  source.addEventListener('performance', event => {
-    render(JSON.parse(event.data));
-    $('live').textContent = 'Live';
-    $('live').className = 'pill ok';
-  });
-  source.addEventListener('error', () => {
-    $('live').textContent = 'Reconnecting…';
-    $('live').className = 'pill warn';
+  source = window.L99.authenticatedEventStream('/api/performance/stream', {
+    performance: event => {
+      render(JSON.parse(event.data));
+      $('live').textContent = 'Live';
+      $('live').className = 'pill ok';
+    },
+    error: () => {
+      $('live').textContent = 'Reconnecting…';
+      $('live').className = 'pill warn';
+    }
   });
 }
 

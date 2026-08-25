@@ -114,7 +114,7 @@ async function loadTimeline(correlationId) {
 async function refreshSnapshot() {
   try {
     const snapshot = await api('/api/ooda/snapshot');
-    renderIncidents(snapshot.incidents || []);
+      renderIncidents(snapshot.incidents || []);
   } catch (error) {
     listEl.innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
   }
@@ -127,34 +127,31 @@ listEl.addEventListener('click', event => {
 
 document.getElementById('refreshSnapshot').addEventListener('click', refreshSnapshot);
 
-const es = new EventSource('/api/ooda/incidents');
-
-es.addEventListener('heartbeat', () => {
-  statusEl.textContent = 'Connected';
-  statusEl.className = 'health-pill health-good';
-});
-
-es.addEventListener('incidents', event => {
-  try {
-    const incidents = JSON.parse(event.data);
-    renderIncidents(incidents);
-    statusEl.textContent = `Live · ${incidents.length}`;
-    statusEl.className = `health-pill ${incidents.some(item => item.severity === 'critical') ? 'health-critical' : incidents.length ? 'health-watch' : 'health-good'}`;
-  } catch (error) {
-    console.warn('[OODA] Bad payload', event.data, error);
-    statusEl.textContent = 'Bad payload';
-    statusEl.className = 'health-pill health-critical';
+const es = window.L99.authenticatedEventStream('/api/ooda/incidents', {
+  heartbeat: () => {
+    statusEl.textContent = 'Connected';
+    statusEl.className = 'health-pill health-good';
+  },
+  incidents: event => {
+    try {
+      const incidents = JSON.parse(event.data);
+      renderIncidents(incidents);
+      statusEl.textContent = `Live · ${incidents.length}`;
+      statusEl.className = `health-pill ${incidents.some(item => item.severity === 'critical') ? 'health-critical' : incidents.length ? 'health-watch' : 'health-good'}`;
+    } catch (error) {
+      console.warn('[OODA] Bad payload', event.data, error);
+      statusEl.textContent = 'Bad payload';
+      statusEl.className = 'health-pill health-critical';
+    }
+  },
+  open: () => {
+    statusEl.textContent = 'Connected';
+    statusEl.className = 'health-pill health-good';
+  },
+  error: () => {
+    statusEl.textContent = 'Reconnecting';
+    statusEl.className = 'health-pill health-watch';
   }
 });
-
-es.onopen = () => {
-  statusEl.textContent = 'Connected';
-  statusEl.className = 'health-pill health-good';
-};
-
-es.onerror = () => {
-  statusEl.textContent = 'Reconnecting';
-  statusEl.className = 'health-pill health-watch';
-};
 
 refreshSnapshot();

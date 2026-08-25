@@ -120,9 +120,10 @@ async function load(){
 }
 
 function connectStream(){
-  source?.close(); source=new EventSource('/api/control-room/stream');
-  source.addEventListener('snapshot',event=>{render(JSON.parse(event.data));$('liveState').textContent='Live';$('liveState').className='pill green';});
-  source.addEventListener('error',()=>{$('liveState').textContent='Reconnecting…';$('liveState').className='pill gold';});
+  source?.close(); source=window.L99.authenticatedEventStream('/api/control-room/stream',{
+    snapshot:event=>{render(JSON.parse(event.data));$('liveState').textContent='Live';$('liveState').className='pill green';},
+    error:()=>{$('liveState').textContent='Reconnecting…';$('liveState').className='pill gold';}
+  });
 }
 
 $('refresh').addEventListener('click',load);

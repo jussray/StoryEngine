@@ -33,5 +33,54 @@
     return originalFetch(input, { ...init, headers });
   };
 
+  function authenticatedEventStream(path, handlers = {}) {
+    const controller = new AbortController();
+    let retryTimer = null;
+
+    const connect = async () => {
+      try {
+        const response = await fetch(path, {
+          headers: { Accept: 'text/event-stream' },
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error(`Event stream failed: ${response.status}`);
+        if (!response.body) throw new Error('Event stream body is unavailable.');
+
+        handlers.open?.();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop() || '';
+          for (const chunk of chunks) {
+            const lines = chunk.split('\n');
+            const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim() || 'message';
+            const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
+            handlers[event]?.({ data });
+          }
+        }
+        if (!controller.signal.aborted) throw new Error('Event stream closed.');
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        handlers.error?.(error);
+        retryTimer = window.setTimeout(connect, 3000);
+      }
+    };
+
+    connect();
+    return {
+      close() {
+        if (retryTimer) window.clearTimeout(retryTimer);
+        controller.abort();
+      }
+    };
+  }
+
+  window.L99 = { ...(window.L99 || {}), authenticatedEventStream };
   ensureKey();
 })();
