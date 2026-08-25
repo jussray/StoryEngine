@@ -18,6 +18,10 @@ const START_LABELS = {
   autonomous_studio: 'Launch Autonomous Studio'
 };
 
+const TERMINAL_RUN_STATUSES = new Set([
+  'complete', 'failed', 'needs_review', 'awaiting_approval', 'writer_active', 'co_writer_ready'
+]);
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -64,6 +68,10 @@ document.querySelectorAll('.assist-option').forEach(button => {
   });
 });
 
+function shouldPoll(run) {
+  return !TERMINAL_RUN_STATUSES.has(run.status);
+}
+
 function renderRun(run) {
   currentRunId = run.run_id;
   ensureUniverseLink(run.workspace_id);
@@ -107,20 +115,28 @@ function renderRun(run) {
     </div>`;
   }).join('');
 
-  if (['complete', 'failed', 'needs_review', 'awaiting_approval', 'writer_active', 'co_writer_ready'].includes(run.status)) {
+  if (!shouldPoll(run)) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
 }
 
 async function refreshRun() {
-  if (!currentRunId) return;
+  if (!currentRunId) return null;
   try {
-    const run = await api(`/api/story-engine/runs/${currentRunId}`);
+    const run = await api(`/api/story-engine/runs/${encodeURIComponent(currentRunId)}`);
     renderRun(run);
+    return run;
   } catch (error) {
+    $('runPanel').classList.remove('hidden');
     $('runMeta').textContent = error.message;
+    return null;
   }
+}
+
+function startPolling() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(refreshRun, 3000);
 }
 
 async function loadDefaultAssistMode() {
@@ -152,10 +168,7 @@ $('storyForm').addEventListener('submit', async event => {
     };
     const run = await api('/api/story-engine/runs', { method: 'POST', body: JSON.stringify(payload) });
     renderRun(run);
-    if (!['complete', 'failed', 'needs_review', 'awaiting_approval', 'writer_active', 'co_writer_ready'].includes(run.status)) {
-      clearInterval(pollTimer);
-      pollTimer = setInterval(refreshRun, 3000);
-    }
+    if (shouldPoll(run)) startPolling();
   } catch (error) {
     alert(error.message);
   } finally {
@@ -168,10 +181,9 @@ $('approve').addEventListener('click', async () => {
   if (!currentRunId) return;
   $('approve').disabled = true;
   try {
-    const run = await api(`/api/story-engine/runs/${currentRunId}/approve`, { method: 'POST', body: '{}' });
+    const run = await api(`/api/story-engine/runs/${encodeURIComponent(currentRunId)}/approve`, { method: 'POST', body: '{}' });
     renderRun(run);
-    clearInterval(pollTimer);
-    pollTimer = setInterval(refreshRun, 3000);
+    if (shouldPoll(run)) startPolling();
   } catch (error) {
     alert(error.message);
   } finally {
@@ -179,6 +191,15 @@ $('approve').addEventListener('click', async () => {
   }
 });
 
-const initialWorkspaceId = new URLSearchParams(window.location.search).get('workspace_id');
+const initialParams = new URLSearchParams(window.location.search);
+const initialRunId = initialParams.get('run_id');
+const initialWorkspaceId = initialParams.get('workspace_id');
 ensureUniverseLink(initialWorkspaceId);
 loadDefaultAssistMode();
+
+if (initialRunId) {
+  currentRunId = initialRunId;
+  refreshRun().then(run => {
+    if (run && shouldPoll(run)) startPolling();
+  });
+}
