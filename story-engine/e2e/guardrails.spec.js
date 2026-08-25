@@ -109,3 +109,76 @@ test('control room does not turn missing health evidence into green truth', asyn
   await expect(releaseGateCard.locator('.value')).toHaveClass(/green/);
   await expect(runtimeCard.locator('.value')).toHaveClass(/green/);
 });
+
+test('performance dashboard keeps missing latency and gate evidence non-green', async ({ page }) => {
+  await page.route('**/api/performance/overview', async (route) => {
+    const payload = {
+      generated_at: Date.now(),
+      window_ms: 15 * 60 * 1000,
+      overview: {
+        workspaces: 1,
+        total_events: 1,
+        latency_samples: 0,
+        max_p99: null,
+        rollback_rate: 0,
+        error_rate: 0,
+        active_incidents: 0,
+        gate_ready: 0,
+        gate_warning: 0,
+        gate_blocked: 0,
+      },
+      workspace_metrics: [{
+        workspace_id: 'proof-workspace',
+        title: 'Proof Workspace',
+        total_events: 1,
+        latency_sample_count: 0,
+        p50: 0,
+        p99: 0,
+        p99_ratio: 0,
+        rollback_rate: 0,
+        error_rate: 0,
+        status: 'unknown',
+        latest_event_at: Date.now(),
+      }],
+      endpoint_metrics: [],
+      gate_pressure: {
+        ready: 0,
+        warning: 0,
+        blocked: 0,
+        gates: [{
+          workspace_id: 'proof-workspace',
+          status: 'UNKNOWN',
+          confidence: 0,
+          blockers: [],
+          warnings: [],
+          metrics: {},
+        }],
+      },
+      incidents: [],
+      recent_events: [],
+    };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+  });
+
+  await page.route('**/api/performance/stream', async (route) => {
+    await route.fulfill({ status: 204, body: '' });
+  });
+
+  await page.goto('/performance_dashboard.html');
+
+  const maxP99Card = page.locator('#stats .card').filter({ hasText: 'Max p99' });
+  await expect(maxP99Card.locator('.value')).toHaveText('Unknown');
+  await expect(maxP99Card.locator('.value')).toHaveClass(/warn/);
+  await expect(maxP99Card.locator('.value')).not.toHaveClass(/ok/);
+
+  const workspace = page.locator('#workspaces tr').filter({ hasText: 'Proof Workspace' });
+  await expect(workspace.locator('td').nth(1)).toHaveText('unknown');
+  await expect(workspace.locator('td').nth(1)).toHaveClass(/warn/);
+  await expect(workspace.locator('td').nth(3)).toHaveText('—');
+  await expect(workspace.locator('td').nth(4)).toHaveText('—');
+  await expect(workspace.locator('td').nth(5)).toHaveText('—');
+
+  const unknownGate = page.locator('#incidents .row-title').filter({ hasText: 'Release Gate UNKNOWN' });
+  await expect(unknownGate).toHaveClass(/warn/);
+  await expect(unknownGate).not.toHaveClass(/ok/);
+});
