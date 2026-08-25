@@ -80,9 +80,10 @@ function openChapter(id) {
 }
 
 function resetLindyPanel() {
+  currentIncidentId = null;
   lindyBadgeEl.textContent = 'Ready';
   lindyBadgeEl.className = 'health-pill health-good';
-  lindySummaryEl.textContent = 'Save or run Lindymode to analyze this chapter.';
+  lindySummaryEl.textContent = 'Run Lindymode when you want a continuity check.';
   lindyFindingsEl.innerHTML = '';
   lindyRecoveryEl.classList.add('hidden');
 }
@@ -176,8 +177,13 @@ async function saveChapter({ silent = false } = {}) {
       })
     });
     dirty = false;
-    setStatus(result.dispatch?.deduplicated ? 'Already queued' : 'Saved · queued');
-    renderQueuedDispatch(result.dispatch);
+    if (result.dispatch) {
+      setStatus(result.dispatch.deduplicated ? 'Already queued' : 'Saved · queued');
+      renderQueuedDispatch(result.dispatch);
+    } else {
+      setStatus('Saved');
+      resetLindyPanel();
+    }
     await Promise.all([loadChapters(currentId), loadHealth()]);
     setTimeout(() => { if (!dirty) setStatus(''); }, 2200);
   } catch (error) {
@@ -235,7 +241,8 @@ document.getElementById('addBtn').addEventListener('click', async () => {
       body: JSON.stringify({ title, position: chapters.length })
     });
     input.value = '';
-    renderQueuedDispatch(result.dispatch);
+    if (result.dispatch) renderQueuedDispatch(result.dispatch);
+    else resetLindyPanel();
     await Promise.all([loadChapters(Number(result.id)), loadHealth()]);
   } catch (error) {
     setStatus(error.message, true);
