@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 
 import memoryRoutes from '../routes/memory.js';
-import { getCanonAnchor } from '../lib/canonMemory.js';
+import { getCanonAnchor, listCanonChanges } from '../lib/canonMemory.js';
+import { analyzeStorySource, listSourceCanonState } from '../lib/sourceCanon.js';
 
 function makeDb() {
   const db = new DatabaseSync(':memory:');
@@ -78,18 +79,31 @@ test('canon promotion rejects machine, raw-key, and viewer identities before mut
   db.close();
 });
 
-test('human creator session may promote canon after global auth/workspace gates have admitted it', () => {
+test('human creator session may promote canon with durable reviewer evidence', () => {
   const db = makeDb();
   const router = captureRouter();
   memoryRoutes(router, db);
   const handler = router.handlers.get('POST /api/memory/:workspace_id/canon');
 
   const res = mockRes();
-  handler(canonRequest({ type: 'session', principal_type: 'human', role: 'creator' }), res);
+  handler(canonRequest({
+    type: 'session',
+    principal_type: 'human',
+    role: 'creator',
+    actor_id: 'creator-human',
+    session_id: 'session-creator-human'
+  }), res);
 
   assert.equal(res.status, 201);
   assert.equal(res.body.source, 'human');
   assert.equal(getCanonAnchor(db, 'workspace-authority', 'character', 'name').value, 'Maya');
+
+  const [change] = listCanonChanges(db, 'workspace-authority');
+  assert.ok(change.evidence_id);
+  assert.equal(change.evidence_authority, 'human');
+  assert.equal(change.evidence_statement, 'Maya');
+  assert.equal(change.evidence_source_ref, 'direct-entry:reviewer:creator-human');
+  assert.equal(change.evidence_source_version, 'request:canon-authority-test');
   db.close();
 });
 
@@ -110,5 +124,49 @@ test('source proposal review also rejects non-human authority before touching pr
 
   assert.equal(res.status, 403);
   assert.equal(res.body.error, 'human_authority_required');
+  db.close();
+});
+
+test('human source approval persists source hash and reviewer provenance into canon evidence', async () => {
+  const db = makeDb();
+  const router = captureRouter();
+  memoryRoutes(router, db);
+  const workspaceId = 'workspace-source-authority';
+
+  const analyzed = await analyzeStorySource(db, {
+    workspace_id: workspaceId,
+    provider: 'local',
+    title: 'Moon Key memory',
+    content: 'Nia Vale always carries the Moon Key. Nia Vale never leaves a friend behind.'
+  });
+  const proposal = listSourceCanonState(db, workspaceId).proposals.find(item => item.kind === 'character');
+  assert.ok(proposal);
+
+  const handler = router.handlers.get('POST /api/memory/:workspace_id/proposals/:proposal_id/review');
+  const res = mockRes();
+  handler({
+    request_id: 'proposal-human-review',
+    auth: {
+      type: 'session',
+      principal_type: 'human',
+      role: 'creator',
+      actor_id: 'source-reviewer-human',
+      session_id: 'session-source-reviewer'
+    },
+    params: { workspace_id: workspaceId, proposal_id: proposal.proposal_id },
+    body: { decision: 'approve', key: 'protagonist.name', value: 'Nia Vale', locked: true }
+  }, res);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.proposal.status, 'approved');
+  const [change] = listCanonChanges(db, workspaceId);
+  assert.ok(change.evidence_id);
+  assert.equal(change.evidence_authority, 'human');
+  assert.equal(change.evidence_statement, 'Nia Vale');
+  assert.equal(
+    change.evidence_source_ref,
+    `source:${analyzed.source_id};proposal:${proposal.proposal_id};reviewer:source-reviewer-human`
+  );
+  assert.match(change.evidence_source_version, /^sha256:[a-f0-9]{64}$/);
   db.close();
 });
