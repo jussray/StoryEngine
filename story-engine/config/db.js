@@ -3,15 +3,24 @@
 
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import '../lib/sqliteTransaction.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const configuredDbPath = String(process.env.L99_DB_PATH || '').trim();
 
-mkdirSync(join(__dirname, '../db'), { recursive: true });
+if (process.env.NODE_ENV === 'production' && !configuredDbPath) {
+  throw new Error('Production requires L99_DB_PATH bound to a persistent mounted path.');
+}
 
-const db = new DatabaseSync(join(__dirname, '../db/l99.db'));
+export const dbPath = configuredDbPath
+  ? resolve(configuredDbPath)
+  : join(__dirname, '../db/l99.db');
+
+mkdirSync(dirname(dbPath), { recursive: true });
+
+const db = new DatabaseSync(dbPath);
 
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA synchronous = NORMAL;');
