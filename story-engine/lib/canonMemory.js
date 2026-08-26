@@ -4,7 +4,9 @@
 // Redteam imports evaluateCanonFit() to gate drafts before passing.
 
 import { randomUUID } from 'node:crypto';
+import './sqliteTransaction.js';
 import { log } from '../models/eventModel.js';
+import { assertCanonEvidenceWritable } from './canonEvidence.js';
 
 function ensureSchema(db) {
   db.exec(`
@@ -35,39 +37,177 @@ function ensureSchema(db) {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_canon_violations_workspace ON canon_violations(workspace_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS canon_evidence (
+      evidence_id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      key TEXT NOT NULL,
+      statement TEXT NOT NULL,
+      source_ref TEXT NOT NULL,
+      source_version TEXT,
+      authority TEXT NOT NULL,
+      confidence REAL,
+      fingerprint TEXT NOT NULL,
+      established_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_canon_evidence_fingerprint ON canon_evidence(fingerprint);
+    CREATE INDEX IF NOT EXISTS idx_canon_evidence_workspace ON canon_evidence(workspace_id, kind, key, established_at DESC);
+
+    CREATE TABLE IF NOT EXISTS canon_change_ledger (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      change_id TEXT NOT NULL UNIQUE,
+      workspace_id TEXT NOT NULL,
+      anchor_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      key TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      previous_value TEXT,
+      next_value TEXT NOT NULL,
+      source TEXT NOT NULL,
+      evidence_id TEXT,
+      evidence_fingerprint TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(evidence_id) REFERENCES canon_evidence(evidence_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_canon_change_ledger_workspace ON canon_change_ledger(workspace_id, sequence DESC);
+    CREATE INDEX IF NOT EXISTS idx_canon_change_ledger_anchor ON canon_change_ledger(anchor_id, sequence DESC);
   `);
 }
 
 function now() { return Date.now(); }
 
+function persistCanonEvidence(db, evidence, { workspace_id, kind, key, value }) {
+  if (!evidence) return null;
+  assertCanonEvidenceWritable(evidence);
+  if (evidence.workspace_id !== workspace_id || evidence.kind !== kind || evidence.key !== key) {
+    throw new Error('Canon evidence scope does not match the anchor being written.');
+  }
+  if (String(evidence.statement) !== String(value)) {
+    throw new Error('Canon evidence statement does not match the canon value being written.');
+  }
+
+  const existing = db.prepare(
+    'SELECT evidence_id, fingerprint FROM canon_evidence WHERE evidence_id=?'
+  ).get(evidence.evidence_id);
+  if (existing) {
+    if (existing.fingerprint !== evidence.fingerprint) {
+      throw new Error('Canon evidence is immutable: evidence_id already exists with a different fingerprint.');
+    }
+    return existing;
+  }
+
+  db.prepare(`
+    INSERT INTO canon_evidence (
+      evidence_id, workspace_id, kind, key, statement, source_ref, source_version,
+      authority, confidence, fingerprint, established_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    evidence.evidence_id,
+    evidence.workspace_id,
+    evidence.kind,
+    evidence.key,
+    evidence.statement,
+    evidence.source_ref,
+    evidence.source_version,
+    evidence.authority,
+    evidence.confidence,
+    evidence.fingerprint,
+    evidence.established_at,
+    now()
+  );
+  return { evidence_id: evidence.evidence_id, fingerprint: evidence.fingerprint };
+}
+
+function recordCanonChange(db, { workspace_id, anchor_id, kind, key, operation, previous_value = null, next_value, source, evidence = null, created_at }) {
+  db.prepare(`
+    INSERT INTO canon_change_ledger (
+      change_id, workspace_id, anchor_id, kind, key, operation, previous_value,
+      next_value, source, evidence_id, evidence_fingerprint, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    `cc_${randomUUID()}`,
+    workspace_id,
+    anchor_id,
+    kind,
+    key,
+    operation,
+    previous_value == null ? null : String(previous_value),
+    String(next_value),
+    source,
+    evidence?.evidence_id || null,
+    evidence?.fingerprint || null,
+    created_at
+  );
+}
+
 // ─── Write ────────────────────────────────────────────────────────────────────
 
-export function setCanonAnchor(db, { workspace_id, kind, key, value, locked = false, source = 'human' }) {
+export function setCanonAnchor(db, { workspace_id, kind, key, value, locked = false, source = 'human', evidence = null }) {
   ensureSchema(db);
-  const existing = db.prepare(
-    'SELECT anchor_id, locked FROM canon_anchors WHERE workspace_id=? AND kind=? AND key=?'
-  ).get(workspace_id, kind, key);
-
-  if (existing && existing.locked && source !== 'human') {
-    throw new Error(`Canon anchor [${kind}/${key}] is locked and cannot be overwritten by source: ${source}.`);
+  if (source !== 'human') {
+    throw new Error('Canon promotion requires explicit human authority. Non-human sources may propose evidence but may not write canon.');
   }
 
-  const t = now();
-  if (existing) {
+  const commit = db.transaction(() => {
+    const existing = db.prepare(
+      'SELECT anchor_id, locked, value FROM canon_anchors WHERE workspace_id=? AND kind=? AND key=?'
+    ).get(workspace_id, kind, key);
+    const t = now();
+    persistCanonEvidence(db, evidence, { workspace_id, kind, key, value });
+
+    if (existing) {
+      db.prepare(
+        'UPDATE canon_anchors SET value=?, locked=?, source=?, updated_at=? WHERE anchor_id=?'
+      ).run(String(value), locked ? 1 : 0, source, t, existing.anchor_id);
+      recordCanonChange(db, {
+        workspace_id,
+        anchor_id: existing.anchor_id,
+        kind,
+        key,
+        operation: 'update',
+        previous_value: existing.value,
+        next_value: value,
+        source,
+        evidence,
+        created_at: t
+      });
+      log(db, {
+        workspace_id,
+        mode: 'canon_memory',
+        event_type: 'canon.anchor.updated',
+        payload: { kind, key, locked, source, evidence_id: evidence?.evidence_id || null }
+      });
+      return { ...existing, value, locked, source, updated_at: t };
+    }
+
+    const anchor_id = `canon_${randomUUID()}`;
     db.prepare(
-      'UPDATE canon_anchors SET value=?, locked=?, source=?, updated_at=? WHERE anchor_id=?'
-    ).run(String(value), locked ? 1 : 0, source, t, existing.anchor_id);
-    log(db, { workspace_id, mode: 'canon_memory', event_type: 'canon.anchor.updated', payload: { kind, key, locked, source } });
-    return { ...existing, value, locked, source, updated_at: t };
-  }
+      `INSERT INTO canon_anchors (anchor_id, workspace_id, kind, key, value, locked, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(anchor_id, workspace_id, kind, key, String(value), locked ? 1 : 0, source, t, t);
+    recordCanonChange(db, {
+      workspace_id,
+      anchor_id,
+      kind,
+      key,
+      operation: 'create',
+      next_value: value,
+      source,
+      evidence,
+      created_at: t
+    });
+    log(db, {
+      workspace_id,
+      mode: 'canon_memory',
+      event_type: 'canon.anchor.created',
+      payload: { kind, key, locked, source, evidence_id: evidence?.evidence_id || null }
+    });
+    return { anchor_id, workspace_id, kind, key, value, locked, source, created_at: t, updated_at: t };
+  });
 
-  const anchor_id = `canon_${randomUUID()}`;
-  db.prepare(
-    `INSERT INTO canon_anchors (anchor_id, workspace_id, kind, key, value, locked, source, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(anchor_id, workspace_id, kind, key, String(value), locked ? 1 : 0, source, t, t);
-  log(db, { workspace_id, mode: 'canon_memory', event_type: 'canon.anchor.created', payload: { kind, key, locked, source } });
-  return { anchor_id, workspace_id, kind, key, value, locked, source, created_at: t, updated_at: t };
+  return commit();
 }
 
 export function lockCanonAnchor(db, { workspace_id, kind, key }) {
@@ -96,6 +236,38 @@ export function getCanonAnchor(db, workspace_id, kind, key) {
   return db.prepare('SELECT * FROM canon_anchors WHERE workspace_id=? AND kind=? AND key=?').get(workspace_id, kind, key) || null;
 }
 
+export function getCanonEvidence(db, evidence_id) {
+  ensureSchema(db);
+  return db.prepare('SELECT * FROM canon_evidence WHERE evidence_id=?').get(evidence_id) || null;
+}
+
+export function listCanonChanges(db, workspace_id, { anchor_id = null, limit = 100 } = {}) {
+  ensureSchema(db);
+  const boundedLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  const rows = anchor_id
+    ? db.prepare(`
+        SELECT c.*, e.statement AS evidence_statement, e.source_ref AS evidence_source_ref,
+               e.source_version AS evidence_source_version, e.authority AS evidence_authority,
+               e.confidence AS evidence_confidence, e.established_at AS evidence_established_at
+        FROM canon_change_ledger c
+        LEFT JOIN canon_evidence e ON e.evidence_id=c.evidence_id
+        WHERE c.workspace_id=? AND c.anchor_id=?
+        ORDER BY c.sequence DESC
+        LIMIT ?
+      `).all(workspace_id, anchor_id, boundedLimit)
+    : db.prepare(`
+        SELECT c.*, e.statement AS evidence_statement, e.source_ref AS evidence_source_ref,
+               e.source_version AS evidence_source_version, e.authority AS evidence_authority,
+               e.confidence AS evidence_confidence, e.established_at AS evidence_established_at
+        FROM canon_change_ledger c
+        LEFT JOIN canon_evidence e ON e.evidence_id=c.evidence_id
+        WHERE c.workspace_id=?
+        ORDER BY c.sequence DESC
+        LIMIT ?
+      `).all(workspace_id, boundedLimit);
+  return rows;
+}
+
 export function canonSnapshot(db, workspace_id) {
   ensureSchema(db);
   const anchors = listCanonAnchors(db, workspace_id);
@@ -115,12 +287,6 @@ export function canonSnapshot(db, workspace_id) {
 
 // ─── Redteam Gate ─────────────────────────────────────────────────────────────
 
-const KIND_PATTERNS = {
-  character: (key, value) => [
-    { pattern: new RegExp(`\\b${escapeRegex(key)}\\b`, 'i'), field: 'name' }
-  ]
-};
-
 function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -130,9 +296,6 @@ function detectViolation(anchor, draft) {
   const violations = [];
 
   if (anchor.kind === 'world_rule') {
-    // World rules are free-text assertions. We check the draft doesn't directly contradict them
-    // using a simple keyword negation heuristic: if the rule contains a noun and the draft
-    // has "not [noun]" or "no [noun]" nearby, flag for human review.
     const ruleWords = anchor.value.split(/\s+/).filter(w => w.length > 4);
     for (const word of ruleWords) {
       const negPattern = new RegExp(`\\b(?:not|no|never|cannot|can't)\\s+${escapeRegex(word)}\\b`, 'i');
@@ -147,10 +310,8 @@ function detectViolation(anchor, draft) {
   }
 
   if (anchor.kind === 'character' && anchor.key.includes('name')) {
-    // Character names: if the stored name doesn't appear at all, flag possible rename.
     const name = anchor.value.trim();
     if (name && !new RegExp(`\\b${escapeRegex(name)}\\b`, 'i').test(text)) {
-      // Only flag if the draft is long enough to be expected to mention the character.
       if (text.split(/\s+/).length > 80) {
         violations.push({
           severity: 'info',
@@ -162,8 +323,6 @@ function detectViolation(anchor, draft) {
   }
 
   if (anchor.kind === 'tone_constant') {
-    // Tone constants: stored as a keyword (e.g. "hopeful", "gritty"). We don't auto-check prose tone —
-    // just surface the constant in the Redteam report for human verification.
     violations.push({
       severity: 'info',
       code: 'canon_tone_reminder',
@@ -181,14 +340,11 @@ export function evaluateCanonFit(db, workspace_id, draft) {
 
   const findings = [];
   for (const anchor of anchors) {
-    const violations = detectViolation(anchor, draft);
-    findings.push(...violations);
+    findings.push(...detectViolation(anchor, draft));
   }
 
   const criticals = findings.filter(f => f.severity === 'critical');
   const warnings = findings.filter(f => f.severity === 'warning');
-
-  // Persist violations for audit
   const t = now();
   const insert = db.prepare(
     `INSERT INTO canon_violations (violation_id, workspace_id, anchor_id, kind, key, expected, found, severity, created_at)
