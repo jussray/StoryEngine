@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "service": "l99-story-engine",
+  "runtime": {
+    "kind": "stateful-container",
+    "nodeMajor": 24,
+    "portEnvironmentVariable": "PORT"
+  },
+  "state": {
+    "backend": "sqlite",
+    "databaseEnvironmentVariable": "L99_DB_PATH",
+    "persistentMountRequired": true,
+    "recommendedMountPath": "/data",
+    "recommendedDatabasePath": "/data/l99.db"
+  },
+  "releaseIdentity": {
+    "environmentVariable": "L99_RELEASE_SHA",
+    "format": "git-sha-1",
+    "healthPath": "/healthz",
+    "identityPath": "/runtime-identity"
+  },
+  "secrets": {
+    "required": [
+      "L99_API_KEYS_JSON"
+    ],
+    "mustNotBeCommitted": true
+  },
+  "promotion": {
+    "productionOriginSource": "config/domain-authority.json",
+    "requiresProductionPlaywright": true,
+    "requiresExactReleaseIdentity": true,
+    "requiresPersistentState": true
+  }
+}

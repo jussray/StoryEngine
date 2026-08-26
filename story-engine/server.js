@@ -9,13 +9,15 @@ import { dirname } from 'node:path';
 
 import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
-import { requestContext, requireAuth, enforceWorkspaceAccess, securitySnapshot } from './lib/securityContext.js';
+import { requestContext, requireAuth, enforceWorkspaceAccess, enforceOperatorApiBoundary, securitySnapshot } from './lib/securityContext.js';
 import { enforcePageAccess } from './lib/pageGuard.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
 import { publicL99GuardrailSnapshot, renderL99GuardrailPage } from './lib/guardrails.js';
+import { runtimeIdentitySnapshot } from './lib/runtimeIdentity.js';
 
+import authSessionRoutes from './routes/authSession.js';
 import storyRoutes from './routes/story.js';
 import outlineRoutes from './routes/outline.js';
 import chapterRoutes from './routes/chapters.js';
@@ -52,6 +54,7 @@ import ipSeedRoutes from './routes/ipSeed.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const API_MAX_BODY_BYTES = Number(process.env.API_MAX_BODY_BYTES || 2 * 1024 * 1024);
+const RUNTIME_IDENTITY = runtimeIdentitySnapshot();
 
 const MIME = {
   '.html': 'text/html',
@@ -65,6 +68,8 @@ const router = createRouter({ maxBodyBytes: API_MAX_BODY_BYTES });
 router.use('/api', requestContext);
 router.use('/api', requireAuth);
 router.use('/api', enforceWorkspaceAccess);
+router.use('/api/control-room', enforceOperatorApiBoundary);
+authSessionRoutes(router, db);
 storyRoutes(router, db);
 outlineRoutes(router, db);
 chapterRoutes(router, db);
@@ -154,6 +159,24 @@ function serveStatic(filePath, ext, res) {
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
+  if (url.pathname === '/healthz') {
+    setPublicSecurityHeaders(res, 'application/json; charset=utf-8');
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: RUNTIME_IDENTITY.service,
+      release_sha: RUNTIME_IDENTITY.release_sha
+    }));
+    return;
+  }
+
+  if (url.pathname === '/runtime-identity') {
+    setPublicSecurityHeaders(res, 'application/json; charset=utf-8');
+    res.writeHead(200);
+    res.end(JSON.stringify(RUNTIME_IDENTITY));
+    return;
+  }
+
   if (url.pathname === '/guardrails') {
     setPublicSecurityHeaders(res, 'text/html; charset=utf-8');
     res.writeHead(200);
@@ -185,7 +208,7 @@ const server = createServer((req, res) => {
   const filePath = join(__dirname, 'public', urlPath);
   const ext = extname(filePath);
 
-  // Only gate HTML and JS files — images, icons, css pass through freely.
+  // Gate HTML and JavaScript clients through the creator/operator session boundary.
   if (ext === '.html' || ext === '.js') {
     enforcePageAccess(urlPath, req, res, () => {
       if (existsSync(filePath)) {
@@ -224,12 +247,13 @@ startRuntimeScheduler(db, {
 server.listen(PORT, () => {
   const llmSnapshot = llmRoutingSnapshot();
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
+  console.log('Runtime identity:', JSON.stringify(RUNTIME_IDENTITY));
   console.log('Security snapshot:', JSON.stringify(securitySnapshot()));
   console.log(`API body limit: ${API_MAX_BODY_BYTES} bytes`);
   console.log('LLM routing:', JSON.stringify(llmSnapshot));
   console.log(`LLM client started at: ${new Date(llmSnapshot.client_started_at).toISOString()} (${llmSnapshot.circuit_state_scope})`);
   console.log('Creator entry point: http://localhost:' + PORT + '/ → /front_door.html');
-  console.log('Operator entry point: http://localhost:' + PORT + '/control_room.html (administrator role required)');
+  console.log('Operator entry point: http://localhost:' + PORT + '/control_room.html (administrator session required)');
   console.log('L99 OS Alpha entry point: http://localhost:' + PORT + '/story_engine.html');
   console.log('Public guardrails: http://localhost:' + PORT + '/guardrails');
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');

@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { establishBrowserSession } from './session.js';
 
 async function mountBeat(page) {
+  await establishBrowserSession(page);
   await page.goto('/movie.html?workspace_id=motion-proof');
   await page.evaluate(() => {
     const beats = document.getElementById('beats');
@@ -28,6 +30,7 @@ async function loadRuntimeBeat(page, putStatus) {
   await page.route('**/api/movie/beats/beat-1', async route => {
     await route.fulfill({ status: putStatus, contentType: 'application/json', body: JSON.stringify({ ok: putStatus < 400 }) });
   });
+  await establishBrowserSession(page);
   await page.goto('/movie.html?workspace_id=motion-proof');
   return page.locator('.save-beat');
 }

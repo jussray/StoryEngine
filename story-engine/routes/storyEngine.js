@@ -22,6 +22,7 @@ import {
   resolveStoryEngineAssistMode,
   startHumanLedStoryEngineRun
 } from '../lib/storyEngineAssistAuthority.js';
+import { ensureRuntimeDispatchSchema } from '../lib/runtimeDispatcher.js';
 import { log } from '../models/eventModel.js';
 import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
@@ -106,6 +107,8 @@ function applyAssistMode(db, run, requestedMode) {
 }
 
 export default function storyEngineRoutes(router, db) {
+  ensureRuntimeDispatchSchema(db);
+
   router.get('/api/story-engine/options', (req, res) => {
     json(res, 200, {
       pipeline_stages: PIPELINE_STAGES,

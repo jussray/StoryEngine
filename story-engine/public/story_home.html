@@ -158,8 +158,7 @@
   <script>
     const params = new URLSearchParams(location.search);
     const workspaceId = params.get('workspace_id') || '';
-    const apiKey = window.L99_API_KEY || localStorage.getItem('l99_api_key') || '';
-    const headers = { 'Content-Type': 'application/json', ...(apiKey ? { 'x-api-key': apiKey } : {}) };
+    const headers = { 'Content-Type': 'application/json' };
 
     const CONVERT_OPTIONS = [
       { title: 'Turn into a movie', format: 'movie', desc: 'Write a screenplay version' },
@@ -187,7 +186,6 @@
           [run.medium, run.audience].filter(Boolean).join(' · ') +
           (run.created_at ? ' · started ' + new Date(run.created_at).toLocaleDateString() : '');
 
-        // Progress
         const totalStages = 6;
         const completedStages = Number(run.completed_stages || 0);
         const pct = Math.round((completedStages / totalStages) * 100);
@@ -196,7 +194,6 @@
           pct < 100 ? `${pct}% — ${run.current_stage || 'building your story'}` : 'Complete';
         document.getElementById('progressSection').style.display = '';
 
-        // Ghost draft
         const draft = run.ghost_draft || run.draft_unit;
         if (draft) {
           document.getElementById('draftLabel').textContent =
@@ -205,7 +202,6 @@
           document.getElementById('draftSection').style.display = '';
         }
 
-        // Conversion options
         const grid = document.getElementById('convertGrid');
         CONVERT_OPTIONS.forEach(opt => {
           const card = document.createElement('div');
@@ -215,7 +211,6 @@
           grid.appendChild(card);
         });
         document.getElementById('convertSection').style.display = '';
-
       } catch (err) {
         document.getElementById('storyTitle').textContent = 'Could not load your story.';
         document.getElementById('pageStatus').textContent = err.message;

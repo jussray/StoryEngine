@@ -1,6 +1,7 @@
 // routes/assistMode.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireRole } from '../lib/securityContext.js';
 import {
   ASSIST_MODES,
   getOperatorAssistDefault,
@@ -37,14 +38,18 @@ export default function assistModeRoutes(router, db) {
     });
   });
 
+  // Creators may read the operator-selected default so the first-run flow can
+  // choose its assist posture. Only an administrator may change that default.
   router.get('/api/control-room/operator/assist-default', (req, res) => {
     try { json(res, 200, getOperatorAssistDefault(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
 
   router.put('/api/control-room/operator/assist-default', (req, res) => {
-    try { json(res, 200, setOperatorAssistDefault(db, req.body?.default_assist_mode)); }
-    catch (error) { json(res, 400, { error: error.message }); }
+    requireRole('administrator')(req, res, () => {
+      try { json(res, 200, setOperatorAssistDefault(db, req.body?.default_assist_mode)); }
+      catch (error) { json(res, 400, { error: error.message }); }
+    });
   });
 
   router.get('/api/workspaces/:workspace_id/assist', (req, res) => {

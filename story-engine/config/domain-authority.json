@@ -6,7 +6,8 @@
   "productionOrigin": null,
   "promotionRequirements": [
     "choose a canonical HTTPS production origin",
-    "deploy a runtime with a public identity endpoint",
+    "deploy the stateful container with persistent storage bound to L99_DB_PATH",
+    "deploy a runtime with a public identity endpoint bound to the exact source SHA",
     "bind the production origin in source-controlled deployment config",
     "pass production Playwright browser proof before claiming the domain live"
   ]

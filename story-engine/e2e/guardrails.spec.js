@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { CREATOR_BOOTSTRAP_KEY, establishBrowserSession } from './session.js';
 
 test('publishes L99 vision and runtime guardrails', async ({ page }) => {
   await page.goto('/guardrails');
@@ -27,7 +28,8 @@ test('guardrail snapshot is public-safe and explicit', async ({ request }) => {
   expect(snapshot.creatorSeesOperatorSecrets).toBe(false);
 });
 
-test('creator surface is reachable while protected APIs deny anonymous access', async ({ page, request }) => {
+test('creator surface requires a creator session while protected APIs deny anonymous access', async ({ page, request }) => {
+  await establishBrowserSession(page, CREATOR_BOOTSTRAP_KEY);
   const creator = await page.goto('/story_engine.html');
   expect(creator?.status()).toBe(200);
   await expect(page.locator('body')).not.toContainText(/API_KEY|STRIPE_SECRET|RESEND_API_KEY/i);
@@ -93,6 +95,7 @@ test('control room does not turn missing health evidence into green truth', asyn
     await route.fulfill({ status: 204, body: '' });
   });
 
+  await establishBrowserSession(page);
   await page.goto('/control_room.html');
 
   const releaseGateCard = page.locator('#stats .card').filter({ hasText: 'Release Gate' });
@@ -164,6 +167,7 @@ test('performance dashboard keeps missing latency and gate evidence non-green', 
     await route.fulfill({ status: 204, body: '' });
   });
 
+  await establishBrowserSession(page);
   await page.goto('/performance_dashboard.html');
 
   const maxP99Card = page.locator('#stats .card').filter({ hasText: 'Max p99' });

@@ -25,90 +25,31 @@
       flex-direction: column;
       gap: 2rem;
     }
-    .wordmark {
-      font-size: 1rem;
-      letter-spacing: 0.3em;
-      text-transform: uppercase;
-      color: #888;
-      text-align: center;
-    }
-    h1 {
-      font-size: clamp(1.8rem, 5vw, 2.8rem);
-      font-weight: 400;
-      line-height: 1.2;
-      text-align: center;
-      color: #f0ede8;
-    }
-    .prompt-area {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-    label {
-      font-size: 0.85rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #888;
-    }
+    .wordmark { font-size: 1rem; letter-spacing: 0.3em; text-transform: uppercase; color: #888; text-align: center; }
+    h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 400; line-height: 1.2; text-align: center; color: #f0ede8; }
+    .prompt-area { display: flex; flex-direction: column; gap: 1rem; }
+    label { font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: #888; }
     textarea {
-      width: 100%;
-      min-height: 120px;
-      background: #141414;
-      border: 1px solid #2a2a2a;
-      border-radius: 6px;
-      color: #f0ede8;
-      font-family: 'Georgia', serif;
-      font-size: 1rem;
-      line-height: 1.6;
-      padding: 1rem;
-      resize: vertical;
+      width: 100%; min-height: 120px; background: #141414; border: 1px solid #2a2a2a; border-radius: 6px;
+      color: #f0ede8; font-family: 'Georgia', serif; font-size: 1rem; line-height: 1.6; padding: 1rem; resize: vertical;
       transition: border-color 0.2s;
     }
     textarea:focus { outline: none; border-color: #555; }
     textarea::placeholder { color: #444; }
-    .selectors {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
-    .selector-group {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-    }
+    .selectors { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .selector-group { display: flex; flex-direction: column; gap: 0.4rem; }
     select {
-      background: #141414;
-      border: 1px solid #2a2a2a;
-      border-radius: 6px;
-      color: #f0ede8;
-      font-family: 'Georgia', serif;
-      font-size: 0.95rem;
-      padding: 0.6rem 0.8rem;
-      cursor: pointer;
-      transition: border-color 0.2s;
+      background: #141414; border: 1px solid #2a2a2a; border-radius: 6px; color: #f0ede8;
+      font-family: 'Georgia', serif; font-size: 0.95rem; padding: 0.6rem 0.8rem; cursor: pointer; transition: border-color 0.2s;
     }
     select:focus { outline: none; border-color: #555; }
     .cta {
-      background: #f0ede8;
-      color: #0a0a0a;
-      border: none;
-      border-radius: 6px;
-      font-family: 'Georgia', serif;
-      font-size: 1rem;
-      font-weight: 600;
-      padding: 0.9rem 1.5rem;
-      cursor: pointer;
-      transition: opacity 0.2s;
-      width: 100%;
+      background: #f0ede8; color: #0a0a0a; border: none; border-radius: 6px; font-family: 'Georgia', serif;
+      font-size: 1rem; font-weight: 600; padding: 0.9rem 1.5rem; cursor: pointer; transition: opacity 0.2s; width: 100%;
     }
     .cta:hover { opacity: 0.88; }
     .cta:disabled { opacity: 0.35; cursor: not-allowed; }
-    .status {
-      font-size: 0.85rem;
-      color: #888;
-      text-align: center;
-      min-height: 1.2em;
-    }
+    .status { font-size: 0.85rem; color: #888; text-align: center; min-height: 1.2em; }
     .status.error { color: #e05555; }
     .status.ok { color: #5aab6e; }
   </style>
@@ -120,39 +61,23 @@
 
     <div class="prompt-area">
       <label for="vision">Your story in a sentence or two</label>
-      <textarea
-        id="vision"
-        placeholder="A retired astronaut discovers her late husband left clues to a life she never knew..."
-        maxlength="1000"
-      ></textarea>
+      <textarea id="vision" placeholder="A retired astronaut discovers her late husband left clues to a life she never knew..." maxlength="1000"></textarea>
     </div>
 
     <div class="selectors">
       <div class="selector-group">
         <label for="medium">Format</label>
         <select id="medium">
-          <option value="book">Book</option>
-          <option value="picture_book">Picture book</option>
-          <option value="movie">Movie</option>
-          <option value="tv">TV series</option>
-          <option value="song">Song</option>
-          <option value="podcast">Podcast</option>
-          <option value="game">Game</option>
-          <option value="comic">Comic</option>
-          <option value="play">Play</option>
-          <option value="short_clip">Short clip</option>
+          <option value="book">Book</option><option value="picture_book">Picture book</option><option value="movie">Movie</option>
+          <option value="tv">TV series</option><option value="song">Song</option><option value="podcast">Podcast</option>
+          <option value="game">Game</option><option value="comic">Comic</option><option value="play">Play</option><option value="short_clip">Short clip</option>
         </select>
       </div>
       <div class="selector-group">
         <label for="audience">Audience</label>
         <select id="audience">
-          <option value="adult">Adult</option>
-          <option value="young_adult">Young adult</option>
-          <option value="teen">Teen</option>
-          <option value="eli10">Kids (around 10)</option>
-          <option value="eli5">Young kids</option>
-          <option value="child">Child</option>
-          <option value="middle_grade">Middle grade</option>
+          <option value="adult">Adult</option><option value="young_adult">Young adult</option><option value="teen">Teen</option>
+          <option value="eli10">Kids (around 10)</option><option value="eli5">Young kids</option><option value="child">Child</option><option value="middle_grade">Middle grade</option>
         </select>
       </div>
     </div>
@@ -168,44 +93,30 @@
     const startBtn = document.getElementById('startBtn');
     const statusEl = document.getElementById('status');
 
-    function updateBtn() {
-      startBtn.disabled = visionEl.value.trim().length < 10;
-    }
+    function updateBtn() { startBtn.disabled = visionEl.value.trim().length < 10; }
     visionEl.addEventListener('input', updateBtn);
 
     startBtn.addEventListener('click', async () => {
       const vision = visionEl.value.trim();
       if (!vision) return;
-
       startBtn.disabled = true;
       statusEl.textContent = 'Starting your story\u2026';
       statusEl.className = 'status';
 
       try {
-        const key = window.L99_API_KEY || localStorage.getItem('l99_api_key') || '';
         const res = await fetch('/api/story-engine/runs', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(key ? { 'x-api-key': key } : {})
-          },
-          body: JSON.stringify({
-            story_vision: vision,
-            medium: mediumEl.value,
-            audience: audienceEl.value
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ story_vision: vision, medium: mediumEl.value, audience: audienceEl.value })
         });
-
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || `Server error ${res.status}`);
         }
-
         const run = await res.json();
         const runId = run.run_id || run.run?.run_id;
         const workspaceId = run.workspace_id || run.run?.workspace_id;
         if (!runId) throw new Error('Story Engine did not return a run id.');
-
         const next = new URLSearchParams({ run_id: runId });
         if (workspaceId) next.set('workspace_id', workspaceId);
         window.location.href = `/story_engine.html?${next.toString()}`;

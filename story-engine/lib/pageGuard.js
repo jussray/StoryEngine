@@ -1,9 +1,12 @@
 // lib/pageGuard.js
 // Closed-world creator/operator asset allowlist.
 //
-// Known HTML/JS files are presentation clients, never product authority. They
-// must read and mutate workspace state through the authenticated /api boundary,
-// where role and workspace checks are enforced. Unknown HTML/JS paths fail closed.
+// Presentation clients are never product authority. Unknown HTML/JS paths fail
+// closed. Creator/operator pages require an authenticated server-issued session;
+// the first-run entry point and auth bootstrap client remain reachable so a
+// session can be established without an authentication deadlock.
+
+import { resolveRequestIdentity, roleAtLeast } from './securityContext.js';
 
 const CREATOR_PAGES = new Set([
   '/front_door.html',
@@ -37,6 +40,11 @@ const OPERATOR_PAGES = new Set([
   '/campaign_studio.html'
 ]);
 
+const PUBLIC_BOOTSTRAP_PAGES = new Set([
+  '/front_door.html',
+  '/l99_auth.js'
+]);
+
 function canonicalPage(pathname) {
   if (pathname.endsWith('.js')) {
     const htmlVersion = pathname.replace(/\.js$/, '.html');
@@ -54,8 +62,40 @@ export function enforcePageAccess(pathname, req, res, next) {
     return false;
   }
 
+  if (PUBLIC_BOOTSTRAP_PAGES.has(pathname)) {
+    next();
+    return true;
+  }
+
+  let identity;
+  try {
+    identity = resolveRequestIdentity(req);
+  } catch {
+    res.writeHead(503);
+    res.end('Authentication unavailable');
+    return false;
+  }
+
+  if (!identity || identity.type !== 'session') {
+    res.writeHead(401);
+    res.end('Authentication required');
+    return false;
+  }
+
+  if (OPERATOR_PAGES.has(page) && !roleAtLeast(identity, 'administrator')) {
+    res.writeHead(403);
+    res.end('Operator access required');
+    return false;
+  }
+
+  if (CREATOR_PAGES.has(page) && !roleAtLeast(identity, 'creator')) {
+    res.writeHead(403);
+    res.end('Creator access required');
+    return false;
+  }
+
   next();
   return true;
 }
 
-export { CREATOR_PAGES, OPERATOR_PAGES };
+export { CREATOR_PAGES, OPERATOR_PAGES, PUBLIC_BOOTSTRAP_PAGES };

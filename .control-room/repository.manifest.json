@@ -208,7 +208,7 @@
     },
     {
       "id": "cookie-free-auth-transport",
-      "description": "Keeps the transitional browser API key tab-scoped and explicit while rejecting ambient cookie authentication.",
+      "description": "Compatibility capability id retained while L99 transitions from tab-scoped API-key transport to an opaque server-issued HttpOnly session. The explicit key is bootstrap-only and ordinary application requests use the declared l99_session cookie.",
       "status": "active",
       "evidencePaths": [
         ".security/cookies.json",
@@ -216,7 +216,11 @@
         "runtime/promotion_gates_all.py",
         "story-engine/public/l99_auth.js",
         "story-engine/lib/securityContext.js",
-        "story-engine/test/securityContext.test.js"
+        "story-engine/lib/pageGuard.js",
+        "story-engine/routes/authSession.js",
+        "story-engine/test/securityContext.test.js",
+        "story-engine/test/pageGuard.test.js",
+        "story-engine/test/authSession.test.js"
       ],
       "requiredSignals": [
         "promotion-gates"
@@ -226,25 +230,25 @@
           "id": "full-registry-registers-cookie-contract",
           "path": "runtime/promotion_gates_all.py",
           "marker": "promotion_gates.GATES[\"cookie_contract\"] = gate_cookie_contract",
-          "description": "The full promotion registry enforces the cookie-free contract."
+          "description": "The full promotion registry enforces the declared opaque-session cookie contract."
         },
         {
-          "id": "browser-auth-sends-explicit-header",
+          "id": "browser-auth-exchanges-bootstrap-key",
           "path": "story-engine/public/l99_auth.js",
-          "marker": "headers.set('x-api-key', key)",
-          "description": "The browser sends the tab-scoped credential through an explicit request header."
+          "marker": "/api/auth/session",
+          "description": "The browser exchanges the transitional explicit key once for a server-issued session and deletes the bootstrap key afterward."
         },
         {
-          "id": "server-auth-prefers-explicit-api-key",
+          "id": "server-auth-resolves-session-cookie",
           "path": "story-engine/lib/securityContext.js",
-          "marker": "const direct = req.headers?.['x-api-key'];",
-          "description": "Server authentication reads the explicit API-key header."
+          "marker": "requestSessionToken",
+          "description": "Server authentication resolves the opaque l99_session identifier without encoding identity or authorization claims in the cookie."
         },
         {
-          "id": "cookie-contract-rejects-server-cookie-paths",
+          "id": "cookie-contract-allows-only-declared-session",
           "path": "runtime/cookie_contract.py",
-          "marker": "for forbidden in (\"cookieCredential\", \"headers?.cookie\", \"headers.cookie\", \"l99_api_key\")",
-          "description": "The cookie contract rejects any restored server cookie credential path."
+          "marker": "EXPECTED_COOKIE = \"l99_session\"",
+          "description": "The cookie gate permits only the declared opaque session writer and rejects undeclared browser cookie operations."
         }
       ]
     },

@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { requireAuth, assertWorkspaceAccess, requireWorkspaceAccess, securitySnapshot } from '../lib/securityContext.js';
+import {
+  clearSessionCookie,
+  enforceOperatorApiBoundary,
+  issueSession,
+  requireAuth,
+  assertWorkspaceAccess,
+  requireWorkspaceAccess,
+  requestSessionToken,
+  resolveRequestIdentity,
+  revokeSession,
+  securitySnapshot,
+  sessionCookie
+} from '../lib/securityContext.js';
 
 function mockRes() {
   return {
@@ -40,7 +52,7 @@ test('security context resolves scoped actor identity from x-api-key', () => {
     assert.equal(req.auth.actor_id, 'actor-a');
     assert.equal(req.auth.tenant_id, 'tenant-a');
     assert.ok(securitySnapshot().scoped_key_count >= 1);
-    assert.equal(securitySnapshot().cookie_credentials_enabled, false);
+    assert.equal(securitySnapshot().cookie_credentials_enabled, true);
   });
 });
 
@@ -60,7 +72,7 @@ test('security context preserves Bearer authentication', () => {
   });
 });
 
-test('security context rejects a valid key supplied only through cookies', () => {
+test('security context rejects a valid API key supplied only through a legacy cookie name', () => {
   withRegistry([
     { key: 'cookie-secret', actor_id: 'cookie-actor', tenant_id: 'tenant-a', role: 'viewer', workspace_ids: ['workspace_1'] }
   ], () => {
@@ -80,28 +92,111 @@ test('security context rejects a valid key supplied only through cookies', () =>
   });
 });
 
-test('cookie credentials cannot override an explicit lower-privilege header identity', () => {
+test('opaque server session authenticates without putting claims or API keys in the cookie', () => {
+  const identity = {
+    type: 'scoped_api_key',
+    actor_id: 'actor-session',
+    tenant_id: 'tenant-session',
+    role: 'creator',
+    workspace_ids: ['workspace_session']
+  };
+  const session = issueSession(identity);
+  const cookie = sessionCookie(session.token, session.max_age_seconds);
+
+  assert.match(cookie, /^l99_session=/);
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /SameSite=Strict/);
+  assert.ok(!cookie.includes(identity.actor_id));
+  assert.ok(!cookie.includes(identity.tenant_id));
+  assert.ok(!cookie.includes('security-test-secret'));
+
+  const req = { method: 'GET', headers: { cookie }, request_id: 'req_session' };
+  const resolved = resolveRequestIdentity(req);
+  assert.equal(resolved.type, 'session');
+  assert.equal(resolved.actor_id, identity.actor_id);
+  assert.equal(resolved.role, 'creator');
+  assert.deepEqual(resolved.workspace_ids, ['workspace_session']);
+
+  assert.equal(requestSessionToken(req), session.token);
+  assert.equal(revokeSession(session.token), true);
+  assert.equal(resolveRequestIdentity(req), null);
+});
+
+test('explicit header identity wins over a higher-privilege session cookie', () => {
   withRegistry([
-    { key: 'security-test-header', actor_id: 'actor-header', tenant_id: 'tenant-header', role: 'viewer', workspace_ids: ['workspace_header'] },
-    { key: 'security-test-cookie-admin', actor_id: 'actor-cookie-admin', tenant_id: 'tenant-cookie', role: 'administrator', workspace_ids: ['*'] }
+    { key: 'security-test-header', actor_id: 'actor-header', tenant_id: 'tenant-header', role: 'viewer', workspace_ids: ['workspace_header'] }
   ], () => {
+    const session = issueSession({
+      actor_id: 'actor-session-admin',
+      tenant_id: 'tenant-session-admin',
+      role: 'administrator',
+      workspace_ids: ['*']
+    });
     const req = {
       method: 'GET',
       headers: {
         'x-api-key': 'security-test-header',
-        cookie: 'l99_api_key=security-test-cookie-admin'
+        cookie: sessionCookie(session.token, session.max_age_seconds)
       },
       request_id: 'req_mixed'
     };
+
+    const identity = resolveRequestIdentity(req);
+    assert.equal(identity.actor_id, 'actor-header');
+    assert.equal(identity.role, 'viewer');
+    revokeSession(session.token);
+  });
+});
+
+test('session cookie clear contract expires the opaque identifier', () => {
+  const cookie = clearSessionCookie();
+  assert.match(cookie, /^l99_session=/);
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /Max-Age=0/);
+});
+
+test('operator API membrane blocks creator access without blocking assist-default reads', () => {
+  const restricted = [
+    ['GET', '/api/control-room/operator'],
+    ['GET', '/api/control-room/operator/options'],
+    ['POST', '/api/control-room/operator/evaluate-cost'],
+    ['GET', '/api/control-room/operator/alerts'],
+    ['GET', '/api/control-room/founder'],
+    ['GET', '/api/control-room/founder/options']
+  ];
+
+  for (const [method, url] of restricted) {
+    const req = { method, url, auth: { role: 'creator' }, request_id: 'req_operator_boundary' };
     const res = mockRes();
     let nextCalled = false;
+    enforceOperatorApiBoundary(req, res, () => { nextCalled = true; });
+    assert.equal(nextCalled, false, `${method} ${url}`);
+    assert.equal(res.status, 403, `${method} ${url}`);
+  }
 
-    requireAuth(req, res, () => { nextCalled = true; });
+  const assistReq = {
+    method: 'GET',
+    url: '/api/control-room/operator/assist-default',
+    auth: { role: 'creator' },
+    request_id: 'req_assist_default'
+  };
+  const assistRes = mockRes();
+  let assistNext = false;
+  enforceOperatorApiBoundary(assistReq, assistRes, () => { assistNext = true; });
+  assert.equal(assistNext, true);
+  assert.equal(assistRes.writableEnded, false);
 
-    assert.equal(nextCalled, true);
-    assert.equal(req.auth.actor_id, 'actor-header');
-    assert.equal(req.auth.role, 'viewer');
-  });
+  const adminReq = {
+    method: 'GET',
+    url: '/api/control-room/operator',
+    auth: { role: 'administrator' },
+    request_id: 'req_operator_admin'
+  };
+  const adminRes = mockRes();
+  let adminNext = false;
+  enforceOperatorApiBoundary(adminReq, adminRes, () => { adminNext = true; });
+  assert.equal(adminNext, true);
+  assert.equal(adminRes.writableEnded, false);
 });
 
 test('security context refreshes cached registry when env source changes', () => {

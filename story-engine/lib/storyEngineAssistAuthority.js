@@ -13,6 +13,7 @@ import {
   parseStoryIntent,
   getStoryEngineRun
 } from './storyEngineOrchestrator.js';
+import { ensureRuntimeDispatchSchema } from './runtimeDispatcher.js';
 
 const LEGACY_MODE_MAP = Object.freeze({
   human_first: 'writer',
@@ -43,6 +44,7 @@ function addStageEvidence(db, { runId, workspaceId, stage, agent, summary, detai
 
 export async function startHumanLedStoryEngineRun(db, input = {}, resolvedMode = null) {
   ensureStoryEngineSchema(db);
+  ensureRuntimeDispatchSchema(db);
   const mode = resolvedMode || resolveStoryEngineAssistMode(db, input.assist_mode);
   if (!isHumanLedAssistMode(mode)) {
     throw new Error(`Human-led Story Engine initialization does not accept assist mode: ${mode}.`);
