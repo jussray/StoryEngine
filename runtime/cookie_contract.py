@@ -17,9 +17,11 @@ SOURCE_SUFFIXES = {".py", ".js", ".mjs", ".ts", ".tsx", ".html"}
 IGNORED_PARTS = {".git", "node_modules", "dist", "build", "coverage", "__pycache__"}
 VERIFIER_PATH = "runtime/cookie_contract.py"
 BROWSER_AUTH_PATH = "story-engine/public/l99_auth.js"
+PUBLIC_ROOT = "story-engine/public"
 SERVER_AUTH_PATH = "story-engine/lib/securityContext.js"
 SESSION_ROUTE_PATH = "story-engine/routes/authSession.js"
 EXPECTED_COOKIE = "l99_session"
+LEGACY_BROWSER_AUTH_MARKERS = ("l99_api_key", "L99_API_KEY", "x-api-key")
 
 
 def verify_cookie_contract(root: Path) -> list[str]:
@@ -99,6 +101,21 @@ def verify_cookie_contract(root: Path) -> list[str]:
             errors.append(f"browser auth missing bootstrap/session marker: {required}")
     if "headers.set('x-api-key'" in browser_auth or 'headers.set("x-api-key"' in browser_auth:
         errors.append("browser auth must not inject API keys into ordinary application fetches")
+
+    # The auth bootstrap client is the only browser asset allowed to know the
+    # transitional explicit credential exists. All ordinary presentation code
+    # must rely on same-origin HttpOnly session transport.
+    public_root = root / PUBLIC_ROOT
+    for path in public_root.rglob("*"):
+        if not path.is_file() or path.suffix not in {".js", ".html"}:
+            continue
+        repo_path = path.relative_to(root).as_posix()
+        if repo_path == BROWSER_AUTH_PATH:
+            continue
+        source = path.read_text(encoding="utf-8", errors="replace")
+        for marker in LEGACY_BROWSER_AUTH_MARKERS:
+            if marker in source:
+                errors.append(f"ordinary browser asset contains legacy auth marker {marker}: {repo_path}")
 
     server_auth = (root / SERVER_AUTH_PATH).read_text(encoding="utf-8", errors="replace")
     for required in (
