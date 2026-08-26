@@ -1,7 +1,7 @@
 // routes/memory.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireHumanAuthority } from '../lib/securityContext.js';
+import { requireHumanAuthority, roleAtLeast } from '../lib/securityContext.js';
 import {
   MEMORY_ENTITY_TYPES,
   getMemorySnapshot,
@@ -34,6 +34,20 @@ function requireCanonField(body, field) {
   return String(value).trim();
 }
 
+function requireCanonAuthority(req, res) {
+  if (!requireHumanAuthority(req, res)) return false;
+  if (!roleAtLeast(req.auth, 'creator')) {
+    json(res, 403, {
+      error: 'canon_role_forbidden',
+      required_role: 'creator',
+      actor_role: req.auth?.role || null,
+      request_id: req.request_id || null
+    });
+    return false;
+  }
+  return true;
+}
+
 export default function memoryRoutes(router, db) {
   router.get('/api/memory/types', (req, res) => {
     json(res, 200, { types: MEMORY_ENTITY_TYPES });
@@ -55,9 +69,10 @@ export default function memoryRoutes(router, db) {
     }
   });
 
-  // Story Universe authority: canon promotion is a human decision, not an
-  // authenticated-machine decision. The route therefore requires an explicitly
-  // classified human browser session in addition to the global auth/workspace gates.
+  // Story Universe authority: canon promotion is a human creator decision, not an
+  // authenticated-machine or viewer decision. The route therefore requires an
+  // explicitly classified human browser session in addition to global auth and
+  // workspace access, then checks creator-or-higher role before mutation.
   router.get('/api/memory/:workspace_id/canon', (req, res) => {
     try {
       json(res, 200, canonSnapshot(db, req.params.workspace_id));
@@ -67,7 +82,7 @@ export default function memoryRoutes(router, db) {
   });
 
   router.post('/api/memory/:workspace_id/canon', (req, res) => {
-    if (!requireHumanAuthority(req, res)) return;
+    if (!requireCanonAuthority(req, res)) return;
     try {
       const body = req.body || {};
       const anchor = setCanonAnchor(db, {
@@ -85,7 +100,7 @@ export default function memoryRoutes(router, db) {
   });
 
   // V2.1 source intelligence is deliberately proposal-only. Analysis never writes
-  // canon. A human-classified browser session must explicitly approve a proposal
+  // canon. A human-classified creator session must explicitly approve a proposal
   // before canonMemory runs.
   router.get('/api/memory/:workspace_id/sources', (req, res) => {
     try {
@@ -111,7 +126,7 @@ export default function memoryRoutes(router, db) {
   });
 
   router.post('/api/memory/:workspace_id/proposals/:proposal_id/review', (req, res) => {
-    if (!requireHumanAuthority(req, res)) return;
+    if (!requireCanonAuthority(req, res)) return;
     try {
       const result = reviewSourceProposal(db, {
         ...(req.body || {}),
