@@ -7,6 +7,16 @@ const ROLE_ORDER = Object.freeze({ viewer: 10, creator: 20, editor: 30, reviewer
 const SESSION_COOKIE_NAME = 'l99_session';
 const DEFAULT_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const MAX_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const ADMIN_CONTROL_ROOM_ENDPOINTS = new Set([
+  'GET /api/control-room/operator',
+  'GET /api/control-room/operator/options',
+  'POST /api/control-room/operator/evaluate-cost',
+  'GET /api/control-room/operator/alerts',
+  'GET /api/control-room/founder',
+  'GET /api/control-room/founder/options',
+  'POST /api/control-room/founder/evaluate-cost',
+  'GET /api/control-room/founder/alerts'
+]);
 
 let registryCache = null;
 let registryCacheSource = null;
@@ -198,6 +208,13 @@ export function requireRole(...allowedRoles) {
     }
     return next();
   };
+}
+
+export function enforceOperatorApiBoundary(req, res, next) {
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  const key = `${String(req.method || 'GET').toUpperCase()} ${pathname}`;
+  if (!ADMIN_CONTROL_ROOM_ENDPOINTS.has(key)) return next();
+  return requireRole('administrator')(req, res, next);
 }
 
 export function assertWorkspaceAccess(req, workspaceId) {
