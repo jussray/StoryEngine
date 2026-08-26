@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { establishBrowserSession } from './session.js';
 
 const apiKey = 'playwright-test-key';
 const headers = { 'x-api-key': apiKey, 'Content-Type': 'application/json' };
@@ -16,7 +17,7 @@ test('Story Universe persists creator-locked canon through the real runtime', as
   const story = await storyResponse.json();
   const workspaceId = story.workspace_id;
 
-  await page.addInitScript(key => window.sessionStorage.setItem('l99_api_key', key), apiKey);
+  await establishBrowserSession(page);
   await page.goto(`/story_universe.html?workspace_id=${encodeURIComponent(workspaceId)}`);
 
   await expect(page.getByTestId('story-universe')).toBeVisible();
