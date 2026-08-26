@@ -1,11 +1,16 @@
 // lib/securityContext.js
 
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { json } from './miniRouter.js';
 
 const ROLE_ORDER = Object.freeze({ viewer: 10, creator: 20, editor: 30, reviewer: 40, release_manager: 50, administrator: 60 });
+const SESSION_COOKIE_NAME = 'l99_session';
+const DEFAULT_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const MAX_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
 let registryCache = null;
 let registryCacheSource = null;
+const sessions = new Map();
 
 function safeEqual(left, right) {
   const a = Buffer.from(String(left || ''));
@@ -39,7 +44,7 @@ function keyRegistry() {
   return registryCache;
 }
 
-function suppliedCredential(req) {
+function explicitCredential(req) {
   const direct = req.headers?.['x-api-key'];
   if (typeof direct === 'string' && direct.trim()) return direct.trim();
   const authorization = req.headers?.authorization;
@@ -48,6 +53,23 @@ function suppliedCredential(req) {
     if (match) return match[1].trim();
   }
   return '';
+}
+
+function parseCookies(raw = '') {
+  const cookies = {};
+  for (const part of String(raw || '').split(';')) {
+    const index = part.indexOf('=');
+    if (index < 1) continue;
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (!key) continue;
+    try { cookies[key] = decodeURIComponent(value); } catch { cookies[key] = value; }
+  }
+  return cookies;
+}
+
+export function requestSessionToken(req) {
+  return parseCookies(req.headers?.cookie || '')[SESSION_COOKIE_NAME] || '';
 }
 
 function legacyIdentity(key) {
@@ -63,12 +85,81 @@ function legacyIdentity(key) {
   };
 }
 
-function resolveIdentity(key) {
+function resolveExplicitIdentity(key) {
   const registry = keyRegistry();
   for (const item of registry) {
     if (safeEqual(key, item.key)) return { type: 'scoped_api_key', ...item, key: undefined };
   }
   return legacyIdentity(key);
+}
+
+function sessionTtlMs() {
+  const configured = Number(process.env.L99_SESSION_TTL_MS || DEFAULT_SESSION_TTL_MS);
+  if (!Number.isFinite(configured) || configured < 60_000) return DEFAULT_SESSION_TTL_MS;
+  return Math.min(Math.floor(configured), MAX_SESSION_TTL_MS);
+}
+
+function resolveSessionIdentity(token) {
+  if (!token) return null;
+  const session = sessions.get(token);
+  if (!session) return null;
+  if (session.expires_at <= Date.now()) {
+    sessions.delete(token);
+    return null;
+  }
+  return {
+    type: 'session',
+    actor_id: session.actor_id,
+    tenant_id: session.tenant_id,
+    role: session.role,
+    workspace_ids: [...session.workspace_ids],
+    session_id: session.session_id,
+    expires_at: session.expires_at
+  };
+}
+
+export function resolveRequestIdentity(req) {
+  const explicit = explicitCredential(req);
+  if (explicit) return resolveExplicitIdentity(explicit);
+  return resolveSessionIdentity(requestSessionToken(req));
+}
+
+export function roleAtLeast(identity, role) {
+  return (ROLE_ORDER[identity?.role] || 0) >= (ROLE_ORDER[role] || Infinity);
+}
+
+export function issueSession(identity) {
+  if (!identity?.actor_id || !identity?.tenant_id || !ROLE_ORDER[identity?.role]) {
+    throw new Error('Cannot issue a session without a valid authenticated identity.');
+  }
+  const token = randomBytes(32).toString('base64url');
+  const ttlMs = sessionTtlMs();
+  const record = {
+    session_id: `session_${randomUUID()}`,
+    actor_id: String(identity.actor_id),
+    tenant_id: String(identity.tenant_id),
+    role: String(identity.role),
+    workspace_ids: Array.isArray(identity.workspace_ids) ? identity.workspace_ids.map(String) : [],
+    created_at: Date.now(),
+    expires_at: Date.now() + ttlMs
+  };
+  sessions.set(token, record);
+  return { token, ...record, max_age_seconds: Math.floor(ttlMs / 1000) };
+}
+
+export function revokeSession(token) {
+  if (!token) return false;
+  return sessions.delete(token);
+}
+
+export function sessionCookie(token, maxAgeSeconds) {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, Number(maxAgeSeconds) || 0)}${secure}`;
+}
+
+export function clearSessionCookie() {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure}`;
 }
 
 export function requestContext(req, res, next) {
@@ -85,12 +176,10 @@ export function requestContext(req, res, next) {
 
 export function requireAuth(req, res, next) {
   if (req.method === 'OPTIONS') return next();
-  const supplied = suppliedCredential(req);
-  if (!supplied) return json(res, 401, { error: 'unauthorized', request_id: req.request_id });
 
   let identity;
   try {
-    identity = resolveIdentity(supplied);
+    identity = resolveRequestIdentity(req);
   } catch (error) {
     return json(res, 503, { error: 'auth_registry_invalid', message: error.message, request_id: req.request_id });
   }
@@ -138,16 +227,26 @@ export function authSnapshot(req) {
     tenant_id: req.auth?.tenant_id || null,
     role: req.auth?.role || null,
     auth_type: req.auth?.type || null,
+    session_id: req.auth?.session_id || null,
+    expires_at: req.auth?.expires_at || null,
     request_id: req.request_id || null
   };
 }
 
 export function securitySnapshot() {
+  const now = Date.now();
+  for (const [token, session] of sessions) {
+    if (session.expires_at <= now) sessions.delete(token);
+  }
   return {
     scoped_key_count: keyRegistry().length,
     legacy_api_key_enabled: Boolean(process.env.API_KEY) && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_LEGACY_API_KEY === 'true'),
     registry_cached: Boolean(registryCache),
     registry_loaded_at_runtime: true,
-    cookie_credentials_enabled: false
+    cookie_credentials_enabled: true,
+    cookie_name: SESSION_COOKIE_NAME,
+    active_session_count: sessions.size,
+    session_store: 'process_memory',
+    session_recovery_supported: false
   };
 }
