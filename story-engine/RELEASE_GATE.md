@@ -114,3 +114,19 @@ Future export, publish, render, and release routes should use `assertReleaseAllo
 ## Warning policy
 
 Warnings are allowed by default for Movie Mode. Callers can set `allow_warning` to `false` when they require strict `READY` status.
+
+## Production promotion gate
+
+A workspace-level `READY` result is necessary but is not sufficient to claim the StoryEngine service itself is live.
+
+Production promotion remains blocked until all service-level runtime conditions are proven on the exact candidate SHA:
+
+1. `config/domain-authority.json` names the real canonical HTTPS production origin.
+2. The Node service runs on a stateful container host with durable storage mounted at `L99_DB_PATH`.
+3. `L99_RELEASE_SHA` equals the exact 40-character Git commit promoted to production.
+4. `GET /runtime-identity` reports that same release SHA from the deployed runtime.
+5. `GET /healthz` succeeds on the deployed origin.
+6. Production Playwright executes against the canonical HTTPS origin and passes the required creator/operator paths.
+7. Deployment/runtime evidence is retained for the promoted SHA.
+
+Until all seven conditions are satisfied, the service state is `NOT_LIVE` even when local and CI release gates are green.
