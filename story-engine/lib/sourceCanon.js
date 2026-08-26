@@ -354,7 +354,8 @@ export function reviewSourceProposal(db, input = {}) {
       key: finalKey,
       value: finalValue,
       locked,
-      source: 'human'
+      source: 'human',
+      evidence: input.evidence || null
     });
     db.prepare(`
       UPDATE source_canon_proposals
