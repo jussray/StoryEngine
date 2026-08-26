@@ -22,6 +22,7 @@
     .wordmark { font-size: 1rem; letter-spacing: .3em; text-transform: uppercase; color: #888; text-align: center; }
     h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 400; line-height: 1.15; text-align: center; }
     .lede { color: #999; text-align: center; line-height: 1.6; }
+    .context-note { color: #777; text-align: center; font-size: .86rem; line-height: 1.45; min-height: 1.25rem; }
     .intent-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
     .intent {
       text-align: left;
@@ -32,9 +33,10 @@
       padding: 1.1rem;
       cursor: pointer;
       font: inherit;
-      transition: border-color .2s, transform .2s;
+      transition: border-color .2s, transform .2s, opacity .2s;
     }
     .intent:hover, .intent:focus-visible { border-color: #777; transform: translateY(-1px); outline: none; }
+    .intent:disabled { opacity: .42; cursor: not-allowed; transform: none; border-color: #242424; }
     .intent strong { display: block; font-size: 1rem; margin-bottom: .35rem; }
     .intent span { color: #888; font-size: .88rem; line-height: 1.45; }
     .divider { display: flex; align-items: center; gap: 1rem; color: #555; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
@@ -74,8 +76,9 @@
       <button class="intent" data-intent="CANON"><strong>Manage characters, world, and canon</strong><span>Open Story Universe continuity and memory.</span></button>
       <button class="intent" data-intent="ADAPT"><strong>Adapt to video</strong><span>Move the story into Video Studio.</span></button>
       <button class="intent" data-intent="RELEASE"><strong>Inspect releases</strong><span>Review readiness, quality gates, and blockers.</span></button>
-      <button class="intent" data-intent="OPERATE"><strong>Operate system</strong><span>Open Control Room runtime and incidents.</span></button>
+      <button class="intent" data-intent="OPERATE"><strong>Operate system</strong><span>Open runtime, incidents, and system operations.</span></button>
     </section>
+    <p class="context-note" id="contextNote" aria-live="polite"></p>
 
     <div class="divider">or start a new story</div>
 
@@ -105,9 +108,42 @@
   </main>
 
   <script>
-    document.querySelectorAll('[data-intent]').forEach(button => {
+    const contextNote = document.getElementById('contextNote');
+    const intentButtons = [...document.querySelectorAll('[data-intent]')];
+
+    function syncIntentAvailability() {
+      let workspaceLocked = false;
+      let runLocked = false;
+
+      for (const button of intentButtons) {
+        const intent = button.dataset.intent;
+        const resolved = window.L99IntentRouter.resolve(intent);
+        const available = window.L99IntentRouter.isAvailable(intent);
+        button.disabled = !available;
+        button.setAttribute('aria-disabled', String(!available));
+
+        if (!available && resolved?.required_context === 'workspace_id') {
+          workspaceLocked = true;
+          button.title = 'Open or create a story first.';
+        } else if (!available && resolved?.required_context === 'run_id') {
+          runLocked = true;
+          button.title = 'Open a Story Engine run first.';
+        } else {
+          button.removeAttribute('title');
+        }
+      }
+
+      if (workspaceLocked || runLocked) {
+        contextNote.textContent = 'Open or create a story to unlock workspace actions. Active-run controls appear when a run ID is present.';
+      } else {
+        contextNote.textContent = '';
+      }
+    }
+
+    for (const button of intentButtons) {
       button.addEventListener('click', () => window.L99IntentRouter.route(button.dataset.intent));
-    });
+    }
+    syncIntentAvailability();
 
     const visionEl = document.getElementById('vision');
     const mediumEl = document.getElementById('medium');
