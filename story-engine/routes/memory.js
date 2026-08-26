@@ -13,6 +13,7 @@ import {
   getGenomeContext
 } from '../lib/memoryEngine.js';
 import { canonSnapshot, setCanonAnchor } from '../lib/canonMemory.js';
+import { createCanonEvidence } from '../lib/canonEvidence.js';
 import {
   analyzeStorySource,
   listSourceCanonState,
@@ -32,6 +33,54 @@ function requireCanonField(body, field) {
     throw new Error(`${field} is required for canon.`);
   }
   return String(value).trim();
+}
+
+function canonOverride(value, fallback) {
+  const normalized = String(value ?? '').trim();
+  return normalized || fallback;
+}
+
+function requireCanonReviewer(req) {
+  const actorId = String(req.auth?.actor_id || '').trim();
+  if (!actorId) throw new Error('Authenticated human actor_id is required for canon evidence.');
+  return actorId;
+}
+
+function directCanonEvidence(req, { workspace_id, kind, key, value }) {
+  const reviewer = requireCanonReviewer(req);
+  const requestId = String(req.request_id || '').trim();
+  return createCanonEvidence({
+    workspace_id,
+    kind,
+    key,
+    statement: value,
+    source_ref: `direct-entry:reviewer:${reviewer}`,
+    source_version: requestId ? `request:${requestId}` : null,
+    authority: 'human'
+  });
+}
+
+function proposalCanonEvidence(req, db, workspaceId, proposalId, body) {
+  const state = listSourceCanonState(db, workspaceId);
+  const proposal = state.proposals.find(item => item.proposal_id === proposalId);
+  if (!proposal) throw new Error('Source proposal not found.');
+
+  const reviewer = requireCanonReviewer(req);
+  const kind = canonOverride(body?.kind, proposal.kind);
+  const key = canonOverride(body?.key, proposal.key);
+  const value = canonOverride(body?.value, proposal.value);
+  const source = state.sources.find(item => item.source_id === proposal.source_id);
+
+  return createCanonEvidence({
+    workspace_id: workspaceId,
+    kind,
+    key,
+    statement: value,
+    source_ref: `source:${proposal.source_id};proposal:${proposal.proposal_id};reviewer:${reviewer}`,
+    source_version: source?.content_hash ? `sha256:${source.content_hash}` : null,
+    authority: 'human',
+    confidence: proposal.confidence
+  });
 }
 
 function requireCanonAuthority(req, res) {
@@ -85,13 +134,24 @@ export default function memoryRoutes(router, db) {
     if (!requireCanonAuthority(req, res)) return;
     try {
       const body = req.body || {};
+      const workspaceId = req.params.workspace_id;
+      const kind = requireCanonField(body, 'kind');
+      const key = requireCanonField(body, 'key');
+      const value = requireCanonField(body, 'value');
+      const evidence = directCanonEvidence(req, {
+        workspace_id: workspaceId,
+        kind,
+        key,
+        value
+      });
       const anchor = setCanonAnchor(db, {
-        workspace_id: req.params.workspace_id,
-        kind: requireCanonField(body, 'kind'),
-        key: requireCanonField(body, 'key'),
-        value: requireCanonField(body, 'value'),
+        workspace_id: workspaceId,
+        kind,
+        key,
+        value,
         locked: Boolean(body.locked),
-        source: 'human'
+        source: 'human',
+        evidence
       });
       json(res, 201, anchor);
     } catch (error) {
@@ -128,11 +188,18 @@ export default function memoryRoutes(router, db) {
   router.post('/api/memory/:workspace_id/proposals/:proposal_id/review', (req, res) => {
     if (!requireCanonAuthority(req, res)) return;
     try {
-      const result = reviewSourceProposal(db, {
-        ...(req.body || {}),
-        workspace_id: req.params.workspace_id,
-        proposal_id: req.params.proposal_id
-      });
+      const body = req.body || {};
+      const workspaceId = req.params.workspace_id;
+      const proposalId = req.params.proposal_id;
+      const input = {
+        ...body,
+        workspace_id: workspaceId,
+        proposal_id: proposalId
+      };
+      if (String(body.decision || '').trim().toLowerCase() === 'approve') {
+        input.evidence = proposalCanonEvidence(req, db, workspaceId, proposalId, body);
+      }
+      const result = reviewSourceProposal(db, input);
       json(res, 200, result);
     } catch (error) {
       respondError(res, error);
