@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { createCanonEvidence } from '../lib/canonEvidence.js';
 import {
-  setCanonAnchor, lockCanonAnchor, getCanonAnchor,
-  listCanonAnchors, canonSnapshot, evaluateCanonFit
+  setCanonAnchor, lockCanonAnchor, getCanonAnchor, getCanonEvidence,
+  listCanonAnchors, listCanonChanges, canonSnapshot, evaluateCanonFit
 } from '../lib/canonMemory.js';
 
 function makeDb() {
@@ -38,13 +39,112 @@ test('setCanonAnchor updates an existing anchor', () => {
   assert.strictEqual(a.value, 'Maya Chen');
 });
 
-test('lockCanonAnchor prevents AI overwrite', () => {
+test('non-human sources cannot write canon even when anchor is unlocked', () => {
   const db = makeDb();
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic does not exist in this world.', locked: false });
-  lockCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic' });
   assert.throws(() => {
     setCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic exists.', source: 'ai' });
-  }, /locked/);
+  }, /explicit human authority/);
+  assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic'), null);
+});
+
+test('locked canon still permits explicit human correction', () => {
+  const db = makeDb();
+  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic does not exist.', locked: false });
+  lockCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic' });
+  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic never existed.', locked: true });
+  assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic').value, 'Magic never existed.');
+});
+
+test('human evidence is persisted and resolvable from the change ledger', () => {
+  const db = makeDb();
+  const evidence = createCanonEvidence({
+    workspace_id: 'ws1',
+    kind: 'character',
+    key: 'eye_color',
+    statement: 'green',
+    source_ref: 'source:chapter-02#line-18',
+    source_version: 'sha256:abc',
+    authority: 'human'
+  });
+  setCanonAnchor(db, {
+    workspace_id: 'ws1', kind: 'character', key: 'eye_color', value: 'green', evidence
+  });
+
+  const stored = getCanonEvidence(db, evidence.evidence_id);
+  assert.ok(stored);
+  assert.strictEqual(stored.statement, 'green');
+  assert.strictEqual(stored.source_ref, 'source:chapter-02#line-18');
+  assert.strictEqual(stored.fingerprint, evidence.fingerprint);
+
+  const [change] = listCanonChanges(db, 'ws1');
+  assert.strictEqual(change.evidence_id, evidence.evidence_id);
+  assert.strictEqual(change.evidence_statement, 'green');
+  assert.strictEqual(change.evidence_source_ref, 'source:chapter-02#line-18');
+  assert.strictEqual(change.evidence_authority, 'human');
+});
+
+test('high-confidence AI evidence remains descriptive and cannot authorize canon', () => {
+  const db = makeDb();
+  const evidence = createCanonEvidence({
+    workspace_id: 'ws1', kind: 'lore', key: 'secret', statement: 'The door is sealed.',
+    source_ref: 'extract:chapter-04', authority: 'ai', confidence: 0.99
+  });
+  assert.throws(() => {
+    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'lore', key: 'secret', value: 'The door is sealed.', evidence });
+  }, /explicit human approval/);
+  assert.strictEqual(getCanonAnchor(db, 'ws1', 'lore', 'secret'), null);
+});
+
+test('evidence scope and statement must match the canon mutation', () => {
+  const db = makeDb();
+  const evidence = createCanonEvidence({
+    workspace_id: 'ws1', kind: 'character', key: 'name', statement: 'Maya',
+    source_ref: 'review:1', authority: 'human'
+  });
+  assert.throws(() => {
+    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya', evidence });
+  }, /statement does not match/);
+});
+
+test('canon mutation, evidence, ledger, and event remain atomic when ledger insert fails', () => {
+  const db = makeDb();
+  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
+  const beforeEvents = db.prepare('SELECT COUNT(*) AS count FROM events').get().count;
+  const beforeChanges = listCanonChanges(db, 'ws1').length;
+  db.exec(`
+    CREATE TRIGGER fail_canon_ledger
+    BEFORE INSERT ON canon_change_ledger
+    BEGIN
+      SELECT RAISE(ABORT, 'ledger_fail');
+    END;
+  `);
+
+  assert.throws(() => {
+    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya' });
+  }, /ledger_fail/);
+
+  assert.strictEqual(getCanonAnchor(db, 'ws1', 'character', 'name').value, 'Maya');
+  assert.strictEqual(listCanonChanges(db, 'ws1').length, beforeChanges);
+  assert.strictEqual(db.prepare('SELECT COUNT(*) AS count FROM events').get().count, beforeEvents);
+});
+
+test('change ledger uses monotonic sequence when timestamps tie', () => {
+  const db = makeDb();
+  const originalNow = Date.now;
+  Date.now = () => 1770000000000;
+  try {
+    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
+    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya' });
+  } finally {
+    Date.now = originalNow;
+  }
+
+  const changes = listCanonChanges(db, 'ws1');
+  assert.strictEqual(changes.length, 2);
+  assert.strictEqual(changes[0].operation, 'update');
+  assert.strictEqual(changes[0].next_value, 'Amaya');
+  assert.ok(changes[0].sequence > changes[1].sequence);
+  assert.strictEqual(changes[0].created_at, changes[1].created_at);
 });
 
 test('canonSnapshot groups anchors by kind', () => {
