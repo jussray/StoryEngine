@@ -93,7 +93,7 @@ test('only explicit approval promotes an editable proposal into creator canon', 
     value: 'Someone Else',
     locked: true,
     source: 'model'
-  }), /locked/);
+  }), /explicit human authority/);
   db.close();
 });
 
