@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { establishBrowserSession } from './session.js';
 
 test('front door hands the exact run identity to the Story Engine', async ({ page }) => {
   const run = {
@@ -17,6 +18,8 @@ test('front door hands the exact run identity to the Story Engine', async ({ pag
     }]
   };
   const requestedRunIds = [];
+
+  await establishBrowserSession(page);
 
   await page.route('**/api/control-room/operator/assist-default', async route => {
     await route.fulfill({
