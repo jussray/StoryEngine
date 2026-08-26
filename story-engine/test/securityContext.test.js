@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   clearSessionCookie,
+  enforceOperatorApiBoundary,
   issueSession,
   requireAuth,
   assertWorkspaceAccess,
@@ -152,6 +153,50 @@ test('session cookie clear contract expires the opaque identifier', () => {
   assert.match(cookie, /^l99_session=/);
   assert.match(cookie, /HttpOnly/);
   assert.match(cookie, /Max-Age=0/);
+});
+
+test('operator API membrane blocks creator access without blocking assist-default reads', () => {
+  const restricted = [
+    ['GET', '/api/control-room/operator'],
+    ['GET', '/api/control-room/operator/options'],
+    ['POST', '/api/control-room/operator/evaluate-cost'],
+    ['GET', '/api/control-room/operator/alerts'],
+    ['GET', '/api/control-room/founder'],
+    ['GET', '/api/control-room/founder/options']
+  ];
+
+  for (const [method, url] of restricted) {
+    const req = { method, url, auth: { role: 'creator' }, request_id: 'req_operator_boundary' };
+    const res = mockRes();
+    let nextCalled = false;
+    enforceOperatorApiBoundary(req, res, () => { nextCalled = true; });
+    assert.equal(nextCalled, false, `${method} ${url}`);
+    assert.equal(res.status, 403, `${method} ${url}`);
+  }
+
+  const assistReq = {
+    method: 'GET',
+    url: '/api/control-room/operator/assist-default',
+    auth: { role: 'creator' },
+    request_id: 'req_assist_default'
+  };
+  const assistRes = mockRes();
+  let assistNext = false;
+  enforceOperatorApiBoundary(assistReq, assistRes, () => { assistNext = true; });
+  assert.equal(assistNext, true);
+  assert.equal(assistRes.writableEnded, false);
+
+  const adminReq = {
+    method: 'GET',
+    url: '/api/control-room/operator',
+    auth: { role: 'administrator' },
+    request_id: 'req_operator_admin'
+  };
+  const adminRes = mockRes();
+  let adminNext = false;
+  enforceOperatorApiBoundary(adminReq, adminRes, () => { adminNext = true; });
+  assert.equal(adminNext, true);
+  assert.equal(adminRes.writableEnded, false);
 });
 
 test('security context refreshes cached registry when env source changes', () => {
