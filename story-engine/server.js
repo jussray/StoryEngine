@@ -9,7 +9,7 @@ import { dirname } from 'node:path';
 
 import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
-import { requestContext, requireAuth, enforceWorkspaceAccess, securitySnapshot } from './lib/securityContext.js';
+import { requestContext, requireAuth, enforceWorkspaceAccess, enforceOperatorApiBoundary, securitySnapshot } from './lib/securityContext.js';
 import { enforcePageAccess } from './lib/pageGuard.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
@@ -66,6 +66,7 @@ const router = createRouter({ maxBodyBytes: API_MAX_BODY_BYTES });
 router.use('/api', requestContext);
 router.use('/api', requireAuth);
 router.use('/api', enforceWorkspaceAccess);
+router.use('/api/control-room', enforceOperatorApiBoundary);
 authSessionRoutes(router, db);
 storyRoutes(router, db);
 outlineRoutes(router, db);
