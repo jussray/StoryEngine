@@ -6,15 +6,17 @@
     "runtime",
     "dashboards",
     "story-engine/public",
-    "story-engine/lib"
+    "story-engine/lib",
+    "story-engine/routes"
   ],
   "allowedCookieWriters": [
-    "story-engine/lib/securityContext.js"
+    "story-engine/routes/authSession.js"
   ],
   "cookies": [
     {
       "name": "l99_session",
-      "writer": "story-engine/lib/securityContext.js",
+      "writer": "story-engine/routes/authSession.js",
+      "generator": "story-engine/lib/securityContext.js",
       "purpose": "Opaque server-issued authentication session identifier only.",
       "httpOnly": true,
       "sameSite": "Strict",
