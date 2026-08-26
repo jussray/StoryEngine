@@ -28,6 +28,7 @@ export default defineConfig({
           actor_id: 'playwright-scoped-actor',
           tenant_id: 'playwright',
           role: 'creator',
+          principal_type: 'human',
           workspace_ids: ['playwright-allowed-workspace']
         }
       ]),
