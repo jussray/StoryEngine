@@ -17,6 +17,15 @@ function createDb() {
   return db;
 }
 
+function tableRowCount(db, tableName) {
+  const exists = db.prepare(`
+    SELECT 1 FROM sqlite_master
+    WHERE type='table' AND name=?
+  `).get(tableName);
+  if (!exists) return 0;
+  return db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get().count;
+}
+
 function captureRoutes(db) {
   const handlers = new Map();
   const router = {
@@ -70,7 +79,7 @@ test('unknown resume on a fresh database initializes schema and returns 404 with
   assert.equal(res.status, 404);
   assert.equal(res.body.error, 'Story Engine run not found.');
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM story_engine_runs').get().count, 0);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM runtime_dispatch_queue').get().count, 0);
+  assert.equal(tableRowCount(db, 'runtime_dispatch_queue'), 0);
   db.close();
 });
 
@@ -89,7 +98,7 @@ test('GET run is observational and cannot resume a Writer session', async () => 
   assert.equal(res.status, 200);
   assert.equal(res.body.status, 'writer_active');
   assert.equal(res.body.dispatch_id, null);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM runtime_dispatch_queue').get().count, 0);
+  assert.equal(tableRowCount(db, 'runtime_dispatch_queue'), 0);
   db.close();
 });
 
@@ -107,7 +116,7 @@ test('explicit resume is blocked for Writer before any provider/runtime work', a
 
   assert.equal(res.status, 409);
   assert.equal(res.body.code, 'ASSIST_AUTHORITY_BLOCKS_AUTONOMOUS_RESUME');
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM runtime_dispatch_queue').get().count, 0);
+  assert.equal(tableRowCount(db, 'runtime_dispatch_queue'), 0);
   db.close();
 });
 
@@ -126,6 +135,6 @@ test('workspace access is checked before resume can mutate a run', async () => {
 
   assert.equal(res.status, 403);
   assert.equal(res.body.error, 'workspace_forbidden');
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM runtime_dispatch_queue').get().count, 0);
+  assert.equal(tableRowCount(db, 'runtime_dispatch_queue'), 0);
   db.close();
 });
