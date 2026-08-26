@@ -16,6 +16,7 @@ import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
 import { publicL99GuardrailSnapshot, renderL99GuardrailPage } from './lib/guardrails.js';
 
+import authSessionRoutes from './routes/authSession.js';
 import storyRoutes from './routes/story.js';
 import outlineRoutes from './routes/outline.js';
 import chapterRoutes from './routes/chapters.js';
@@ -65,6 +66,7 @@ const router = createRouter({ maxBodyBytes: API_MAX_BODY_BYTES });
 router.use('/api', requestContext);
 router.use('/api', requireAuth);
 router.use('/api', enforceWorkspaceAccess);
+authSessionRoutes(router, db);
 storyRoutes(router, db);
 outlineRoutes(router, db);
 chapterRoutes(router, db);
@@ -185,7 +187,7 @@ const server = createServer((req, res) => {
   const filePath = join(__dirname, 'public', urlPath);
   const ext = extname(filePath);
 
-  // Only gate HTML and JS files — images, icons, css pass through freely.
+  // Gate HTML and JavaScript clients through the creator/operator session boundary.
   if (ext === '.html' || ext === '.js') {
     enforcePageAccess(urlPath, req, res, () => {
       if (existsSync(filePath)) {
@@ -229,7 +231,7 @@ server.listen(PORT, () => {
   console.log('LLM routing:', JSON.stringify(llmSnapshot));
   console.log(`LLM client started at: ${new Date(llmSnapshot.client_started_at).toISOString()} (${llmSnapshot.circuit_state_scope})`);
   console.log('Creator entry point: http://localhost:' + PORT + '/ → /front_door.html');
-  console.log('Operator entry point: http://localhost:' + PORT + '/control_room.html (administrator role required)');
+  console.log('Operator entry point: http://localhost:' + PORT + '/control_room.html (administrator session required)');
   console.log('L99 OS Alpha entry point: http://localhost:' + PORT + '/story_engine.html');
   console.log('Public guardrails: http://localhost:' + PORT + '/guardrails');
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
