@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { establishBrowserSession } from './session.js';
 
 const apiKey = 'playwright-test-key';
 const headers = { 'x-api-key': apiKey, 'Content-Type': 'application/json' };
@@ -21,7 +22,7 @@ test('source understanding stays outside canon until creator approval, then surv
   expect(storyResponse.status()).toBe(201);
   const { workspace_id: workspaceId } = await storyResponse.json();
 
-  await page.addInitScript(key => window.sessionStorage.setItem('l99_api_key', key), apiKey);
+  await establishBrowserSession(page);
   await page.goto(`/story_universe.html?workspace_id=${encodeURIComponent(workspaceId)}`);
   await expect(page.getByTestId('story-universe')).toBeVisible();
   await expect(page.locator('#pageStatus')).toContainText('Runtime connected');
