@@ -15,6 +15,7 @@ import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
 import { publicL99GuardrailSnapshot, renderL99GuardrailPage } from './lib/guardrails.js';
+import { runtimeIdentitySnapshot } from './lib/runtimeIdentity.js';
 
 import authSessionRoutes from './routes/authSession.js';
 import storyRoutes from './routes/story.js';
@@ -53,6 +54,7 @@ import ipSeedRoutes from './routes/ipSeed.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const API_MAX_BODY_BYTES = Number(process.env.API_MAX_BODY_BYTES || 2 * 1024 * 1024);
+const RUNTIME_IDENTITY = runtimeIdentitySnapshot();
 
 const MIME = {
   '.html': 'text/html',
@@ -157,6 +159,24 @@ function serveStatic(filePath, ext, res) {
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
+  if (url.pathname === '/healthz') {
+    setPublicSecurityHeaders(res, 'application/json; charset=utf-8');
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: RUNTIME_IDENTITY.service,
+      release_sha: RUNTIME_IDENTITY.release_sha
+    }));
+    return;
+  }
+
+  if (url.pathname === '/runtime-identity') {
+    setPublicSecurityHeaders(res, 'application/json; charset=utf-8');
+    res.writeHead(200);
+    res.end(JSON.stringify(RUNTIME_IDENTITY));
+    return;
+  }
+
   if (url.pathname === '/guardrails') {
     setPublicSecurityHeaders(res, 'text/html; charset=utf-8');
     res.writeHead(200);
@@ -227,6 +247,7 @@ startRuntimeScheduler(db, {
 server.listen(PORT, () => {
   const llmSnapshot = llmRoutingSnapshot();
   console.log(`L99 Story Engine running at http://localhost:${PORT}`);
+  console.log('Runtime identity:', JSON.stringify(RUNTIME_IDENTITY));
   console.log('Security snapshot:', JSON.stringify(securitySnapshot()));
   console.log(`API body limit: ${API_MAX_BODY_BYTES} bytes`);
   console.log('LLM routing:', JSON.stringify(llmSnapshot));
