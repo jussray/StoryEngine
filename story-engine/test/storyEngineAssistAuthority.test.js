@@ -20,6 +20,15 @@ function createDb() {
   return db;
 }
 
+function tableRowCount(db, tableName) {
+  const exists = db.prepare(`
+    SELECT 1 FROM sqlite_master
+    WHERE type='table' AND name=?
+  `).get(tableName);
+  if (!exists) return 0;
+  return db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get().count;
+}
+
 function storyInput(overrides = {}) {
   return {
     story_vision: 'Write a middle-grade fantasy novel about a girl who finds a sleeping moon.',
@@ -35,7 +44,7 @@ function assertNoProviderPipelineWork(db, run) {
   assert.deepEqual(run.ghost_plan, {});
   assert.deepEqual(run.ooda_decision, {});
   assert.equal(run.dispatch_id, null);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM runtime_dispatch_queue').get().count, 0);
+  assert.equal(tableRowCount(db, 'runtime_dispatch_queue'), 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM lindymode_state WHERE workspace_id=?').get(run.workspace_id).count, 0);
   assert.equal(run.stages.some(stage => stage.stage === 'ghost'), false);
   assert.equal(run.stages.some(stage => stage.stage === 'ooda'), false);
