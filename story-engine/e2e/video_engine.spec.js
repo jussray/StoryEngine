@@ -77,7 +77,12 @@ test('free Story Video Engine validates multiple non-anime styles and reports th
       memory_patches: [{ entity_type: 'character', entity_id: 'nia', field: 'name', new_value: 'Nia' }]
     }
   });
-  expect(chapterResponse.status()).toBe(202);
+  expect(chapterResponse.status()).toBe(201);
+  await expect(chapterResponse.json()).resolves.toMatchObject({
+    ok: true,
+    queued: false,
+    dispatch: null
+  });
 
   await createAndValidateJob(request, workspaceId, {
     mode: 'cinematic_3d',
