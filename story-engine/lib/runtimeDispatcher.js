@@ -5,7 +5,7 @@ import * as Chapter from '../models/chapterModel.js';
 import { runAutonomousRuntime } from './autonomousRuntime.js';
 import { log } from '../models/eventModel.js';
 
-function ensureSchema(db) {
+export function ensureRuntimeDispatchSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_dispatch_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,6 +33,8 @@ function ensureSchema(db) {
     db.exec('ALTER TABLE runtime_dispatch_queue ADD COLUMN chapter_id INTEGER');
   }
 }
+
+const ensureSchema = ensureRuntimeDispatchSchema;
 
 function workspaceFingerprint(db, workspaceId, chapterId = null) {
   const row = db.prepare(`
