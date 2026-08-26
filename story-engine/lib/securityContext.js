@@ -4,6 +4,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { json } from './miniRouter.js';
 
 const ROLE_ORDER = Object.freeze({ viewer: 10, creator: 20, editor: 30, reviewer: 40, release_manager: 50, administrator: 60 });
+const PRINCIPAL_TYPES = new Set(['human', 'agent', 'service', 'system', 'unknown']);
 const SESSION_COOKIE_NAME = 'l99_session';
 const DEFAULT_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const MAX_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -29,6 +30,11 @@ function safeEqual(left, right) {
   return timingSafeEqual(a, b);
 }
 
+function normalizePrincipalType(value) {
+  const normalized = String(value || 'unknown').trim().toLowerCase();
+  return PRINCIPAL_TYPES.has(normalized) ? normalized : 'unknown';
+}
+
 function parseKeyRegistry(raw = String(process.env.L99_API_KEYS_JSON || '').trim()) {
   if (!raw) return [];
   try {
@@ -39,6 +45,7 @@ function parseKeyRegistry(raw = String(process.env.L99_API_KEYS_JSON || '').trim
       actor_id: String(item.actor_id || item.user_id || '').trim(),
       tenant_id: String(item.tenant_id || '').trim(),
       role: String(item.role || 'viewer').trim(),
+      principal_type: normalizePrincipalType(item.principal_type),
       workspace_ids: Array.isArray(item.workspace_ids) ? item.workspace_ids.map(String) : ['*']
     })).filter(item => item.key && item.actor_id && item.tenant_id && ROLE_ORDER[item.role]);
   } catch (error) {
@@ -91,6 +98,7 @@ function legacyIdentity(key) {
     actor_id: 'legacy-founder',
     tenant_id: 'founder',
     role: 'administrator',
+    principal_type: 'unknown',
     workspace_ids: ['*']
   };
 }
@@ -122,6 +130,7 @@ function resolveSessionIdentity(token) {
     actor_id: session.actor_id,
     tenant_id: session.tenant_id,
     role: session.role,
+    principal_type: session.principal_type,
     workspace_ids: [...session.workspace_ids],
     session_id: session.session_id,
     expires_at: session.expires_at
@@ -149,6 +158,7 @@ export function issueSession(identity) {
     actor_id: String(identity.actor_id),
     tenant_id: String(identity.tenant_id),
     role: String(identity.role),
+    principal_type: normalizePrincipalType(identity.principal_type),
     workspace_ids: Array.isArray(identity.workspace_ids) ? identity.workspace_ids.map(String) : [],
     created_at: Date.now(),
     expires_at: Date.now() + ttlMs
@@ -210,6 +220,18 @@ export function requireRole(...allowedRoles) {
   };
 }
 
+export function requireHumanAuthority(req, res) {
+  const humanSession = req.auth?.type === 'session' && req.auth?.principal_type === 'human';
+  if (humanSession) return true;
+  json(res, 403, {
+    error: 'human_authority_required',
+    auth_type: req.auth?.type || null,
+    principal_type: req.auth?.principal_type || 'unknown',
+    request_id: req.request_id || null
+  });
+  return false;
+}
+
 export function enforceOperatorApiBoundary(req, res, next) {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   const key = `${String(req.method || 'GET').toUpperCase()} ${pathname}`;
@@ -243,6 +265,7 @@ export function authSnapshot(req) {
     actor_id: req.auth?.actor_id || null,
     tenant_id: req.auth?.tenant_id || null,
     role: req.auth?.role || null,
+    principal_type: req.auth?.principal_type || 'unknown',
     auth_type: req.auth?.type || null,
     session_id: req.auth?.session_id || null,
     expires_at: req.auth?.expires_at || null,
@@ -260,6 +283,7 @@ export function securitySnapshot() {
     legacy_api_key_enabled: Boolean(process.env.API_KEY) && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_LEGACY_API_KEY === 'true'),
     registry_cached: Boolean(registryCache),
     registry_loaded_at_runtime: true,
+    principal_classification_required_for_human_authority: true,
     cookie_credentials_enabled: true,
     cookie_name: SESSION_COOKIE_NAME,
     active_session_count: sessions.size,
