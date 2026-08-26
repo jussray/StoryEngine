@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { establishBrowserSession } from './session.js';
 
 const apiKey = 'playwright-test-key';
 const headers = { 'x-api-key': apiKey, 'Content-Type': 'application/json' };
@@ -46,7 +47,7 @@ async function createAndValidateJob(request, workspaceId, look) {
   return validated;
 }
 
-test('free Story Video Engine validates multiple non-anime styles and reports them in Control Room', async ({ page, request, context }) => {
+test('free Story Video Engine validates multiple non-anime styles and reports them in Control Room', async ({ page, request }) => {
   const optionsResponse = await request.get('/api/video-engine/options', { headers });
   expect(optionsResponse.ok()).toBe(true);
   const options = await optionsResponse.json();
@@ -104,8 +105,7 @@ test('free Story Video Engine validates multiple non-anime styles and reports th
     workspace_id: workspaceId
   });
 
-  await context.addCookies([{ name: 'l99_api_key', value: apiKey, domain: '127.0.0.1', path: '/', sameSite: 'Strict' }]);
-  await page.addInitScript(key => window.sessionStorage.setItem('l99_api_key', key), apiKey);
+  await establishBrowserSession(page);
   await page.goto('/control_room.html');
   await expect(page.getByTestId('video-engine-section')).toBeVisible();
   await expect(page.getByTestId('video-engine-machine-status')).toContainText(/verified|awaiting_validation/);
