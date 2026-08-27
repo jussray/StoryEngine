@@ -212,15 +212,44 @@ export function setCanonAnchor(db, { workspace_id, kind, key, value, locked = fa
   return commit();
 }
 
-export function lockCanonAnchor(db, { workspace_id, kind, key }) {
+export function lockCanonAnchor(db, { workspace_id, kind, key, evidence = null }) {
   ensureSchema(db);
-  const anchor = db.prepare(
-    'SELECT anchor_id FROM canon_anchors WHERE workspace_id=? AND kind=? AND key=?'
-  ).get(workspace_id, kind, key);
-  if (!anchor) throw new Error(`Canon anchor [${kind}/${key}] not found for workspace ${workspace_id}.`);
-  db.prepare('UPDATE canon_anchors SET locked=1, updated_at=? WHERE anchor_id=?').run(now(), anchor.anchor_id);
-  log(db, { workspace_id, mode: 'canon_memory', event_type: 'canon.anchor.locked', payload: { kind, key } });
-  return { locked: true };
+
+  const commit = db.transaction(() => {
+    const anchor = db.prepare(
+      'SELECT anchor_id, locked, value FROM canon_anchors WHERE workspace_id=? AND kind=? AND key=?'
+    ).get(workspace_id, kind, key);
+    if (!anchor) throw new Error(`Canon anchor [${kind}/${key}] not found for workspace ${workspace_id}.`);
+
+    if (anchor.locked) {
+      return { locked: true, already_locked: true, anchor_id: anchor.anchor_id };
+    }
+
+    const t = now();
+    persistCanonEvidence(db, evidence, { workspace_id, kind, key, value: anchor.value });
+    db.prepare('UPDATE canon_anchors SET locked=1, updated_at=? WHERE anchor_id=?').run(t, anchor.anchor_id);
+    recordCanonChange(db, {
+      workspace_id,
+      anchor_id: anchor.anchor_id,
+      kind,
+      key,
+      operation: 'lock',
+      previous_value: anchor.value,
+      next_value: anchor.value,
+      source: 'human',
+      evidence,
+      created_at: t
+    });
+    log(db, {
+      workspace_id,
+      mode: 'canon_memory',
+      event_type: 'canon.anchor.locked',
+      payload: { kind, key, evidence_id: evidence.evidence_id }
+    });
+    return { locked: true, already_locked: false, anchor_id: anchor.anchor_id };
+  });
+
+  return commit();
 }
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
