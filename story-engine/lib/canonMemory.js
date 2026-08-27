@@ -79,7 +79,9 @@ function ensureSchema(db) {
 function now() { return Date.now(); }
 
 function persistCanonEvidence(db, evidence, { workspace_id, kind, key, value }) {
-  if (!evidence) return null;
+  if (!evidence) {
+    throw new Error('Canon promotion requires explicit human evidence.');
+  }
   assertCanonEvidenceWritable(evidence);
   if (evidence.workspace_id !== workspace_id || evidence.kind !== kind || evidence.key !== key) {
     throw new Error('Canon evidence scope does not match the anchor being written.');
@@ -177,7 +179,7 @@ export function setCanonAnchor(db, { workspace_id, kind, key, value, locked = fa
         workspace_id,
         mode: 'canon_memory',
         event_type: 'canon.anchor.updated',
-        payload: { kind, key, locked, source, evidence_id: evidence?.evidence_id || null }
+        payload: { kind, key, locked, source, evidence_id: evidence.evidence_id }
       });
       return { ...existing, value, locked, source, updated_at: t };
     }
@@ -202,7 +204,7 @@ export function setCanonAnchor(db, { workspace_id, kind, key, value, locked = fa
       workspace_id,
       mode: 'canon_memory',
       event_type: 'canon.anchor.created',
-      payload: { kind, key, locked, source, evidence_id: evidence?.evidence_id || null }
+      payload: { kind, key, locked, source, evidence_id: evidence.evidence_id }
     });
     return { anchor_id, workspace_id, kind, key, value, locked, source, created_at: t, updated_at: t };
   });
