@@ -1,7 +1,7 @@
 // routes/memory.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireHumanAuthority, roleAtLeast } from '../lib/securityContext.js';
+import { issueCanonAuthorityGrant, requireHumanAuthority, roleAtLeast } from '../lib/securityContext.js';
 import {
   MEMORY_ENTITY_TYPES,
   getMemorySnapshot,
@@ -61,15 +61,26 @@ function directCanonEvidence(req, { workspace_id, kind, key, value }) {
 }
 
 function proposalCanonEvidence(req, db, workspaceId, proposalId, body) {
-  const state = listSourceCanonState(db, workspaceId);
-  const proposal = state.proposals.find(item => item.proposal_id === proposalId);
+  const proposal = db.prepare(`
+    SELECT proposal_id, source_id, workspace_id, kind, key, value, confidence
+    FROM source_canon_proposals
+    WHERE proposal_id=? AND workspace_id=?
+  `).get(proposalId, workspaceId);
   if (!proposal) throw new Error('Source proposal not found.');
+
+  const source = db.prepare(`
+    SELECT source_id, content_hash
+    FROM story_sources
+    WHERE source_id=? AND workspace_id=?
+  `).get(proposal.source_id, workspaceId);
+  if (!source?.content_hash) {
+    throw new Error('Source proposal cannot be approved without its immutable source hash.');
+  }
 
   const reviewer = requireCanonReviewer(req);
   const kind = canonOverride(body?.kind, proposal.kind);
   const key = canonOverride(body?.key, proposal.key);
   const value = canonOverride(body?.value, proposal.value);
-  const source = state.sources.find(item => item.source_id === proposal.source_id);
 
   return createCanonEvidence({
     workspace_id: workspaceId,
@@ -77,7 +88,7 @@ function proposalCanonEvidence(req, db, workspaceId, proposalId, body) {
     key,
     statement: value,
     source_ref: `source:${proposal.source_id};proposal:${proposal.proposal_id};reviewer:${reviewer}`,
-    source_version: source?.content_hash ? `sha256:${source.content_hash}` : null,
+    source_version: `sha256:${source.content_hash}`,
     authority: 'human',
     confidence: proposal.confidence
   });
@@ -118,10 +129,6 @@ export default function memoryRoutes(router, db) {
     }
   });
 
-  // Story Universe authority: canon promotion is a human creator decision, not an
-  // authenticated-machine or viewer decision. The route therefore requires an
-  // explicitly classified human browser session in addition to global auth and
-  // workspace access, then checks creator-or-higher role before mutation.
   router.get('/api/memory/:workspace_id/canon', (req, res) => {
     try {
       json(res, 200, canonSnapshot(db, req.params.workspace_id));
@@ -144,14 +151,16 @@ export default function memoryRoutes(router, db) {
         key,
         value
       });
+      const authorityGrant = issueCanonAuthorityGrant(req, workspaceId);
       const anchor = setCanonAnchor(db, {
         workspace_id: workspaceId,
         kind,
         key,
         value,
-        locked: Boolean(body.locked),
+        locked: body.locked === undefined ? undefined : Boolean(body.locked),
         source: 'human',
-        evidence
+        evidence,
+        authority_grant: authorityGrant
       });
       json(res, 201, anchor);
     } catch (error) {
@@ -159,9 +168,6 @@ export default function memoryRoutes(router, db) {
     }
   });
 
-  // V2.1 source intelligence is deliberately proposal-only. Analysis never writes
-  // canon. A human-classified creator session must explicitly approve a proposal
-  // before canonMemory runs.
   router.get('/api/memory/:workspace_id/sources', (req, res) => {
     try {
       json(res, 200, {
@@ -198,6 +204,7 @@ export default function memoryRoutes(router, db) {
       };
       if (String(body.decision || '').trim().toLowerCase() === 'approve') {
         input.evidence = proposalCanonEvidence(req, db, workspaceId, proposalId, body);
+        input.authority_grant = issueCanonAuthorityGrant(req, workspaceId);
       }
       const result = reviewSourceProposal(db, input);
       json(res, 200, result);
