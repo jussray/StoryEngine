@@ -106,35 +106,42 @@ test('security context rejects a valid API key supplied only through a legacy co
 });
 
 test('opaque server session preserves principal classification without putting claims or API keys in the cookie', () => {
-  const identity = {
-    type: 'scoped_api_key',
-    actor_id: 'actor-session',
-    tenant_id: 'tenant-session',
-    role: 'creator',
-    principal_type: 'human',
-    workspace_ids: ['workspace_session']
-  };
-  const session = issueSession(identity);
-  const cookie = sessionCookie(session.token, session.max_age_seconds);
+  withRegistry([
+    {
+      key: 'security-test-session-secret',
+      actor_id: 'actor-session',
+      tenant_id: 'tenant-session',
+      role: 'creator',
+      principal_type: 'human',
+      workspace_ids: ['workspace_session']
+    }
+  ], () => {
+    const identity = resolveRequestIdentity({
+      method: 'GET',
+      headers: { 'x-api-key': 'security-test-session-secret' }
+    });
+    const session = issueSession(identity);
+    const cookie = sessionCookie(session.token, session.max_age_seconds);
 
-  assert.match(cookie, /^l99_session=/);
-  assert.match(cookie, /HttpOnly/);
-  assert.match(cookie, /SameSite=Strict/);
-  assert.ok(!cookie.includes(identity.actor_id));
-  assert.ok(!cookie.includes(identity.tenant_id));
-  assert.ok(!cookie.includes('security-test-secret'));
+    assert.match(cookie, /^l99_session=/);
+    assert.match(cookie, /HttpOnly/);
+    assert.match(cookie, /SameSite=Strict/);
+    assert.ok(!cookie.includes(identity.actor_id));
+    assert.ok(!cookie.includes(identity.tenant_id));
+    assert.ok(!cookie.includes('security-test-session-secret'));
 
-  const req = { method: 'GET', headers: { cookie }, request_id: 'req_session' };
-  const resolved = resolveRequestIdentity(req);
-  assert.equal(resolved.type, 'session');
-  assert.equal(resolved.actor_id, identity.actor_id);
-  assert.equal(resolved.role, 'creator');
-  assert.equal(resolved.principal_type, 'human');
-  assert.deepEqual(resolved.workspace_ids, ['workspace_session']);
+    const req = { method: 'GET', headers: { cookie }, request_id: 'req_session' };
+    const resolved = resolveRequestIdentity(req);
+    assert.equal(resolved.type, 'session');
+    assert.equal(resolved.actor_id, identity.actor_id);
+    assert.equal(resolved.role, 'creator');
+    assert.equal(resolved.principal_type, 'human');
+    assert.deepEqual(resolved.workspace_ids, ['workspace_session']);
 
-  assert.equal(requestSessionToken(req), session.token);
-  assert.equal(revokeSession(session.token), true);
-  assert.equal(resolveRequestIdentity(req), null);
+    assert.equal(requestSessionToken(req), session.token);
+    assert.equal(revokeSession(session.token), true);
+    assert.equal(resolveRequestIdentity(req), null);
+  });
 });
 
 test('human authority requires a human-classified session, not a raw key or service session', () => {
