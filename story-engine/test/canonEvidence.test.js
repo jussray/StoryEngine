@@ -24,6 +24,16 @@ test('human canon evidence is provenance-backed and writable', () => {
   assert.doesNotThrow(() => assertCanonEvidenceWritable(evidence));
 });
 
+test('evidence authority must be explicit and never defaults to human', () => {
+  assert.throws(() => createCanonEvidence({
+    workspace_id: 'ws1',
+    kind: 'character',
+    key: 'name',
+    statement: 'Maya',
+    source_ref: 'review:missing-authority'
+  }), /authority must be a non-empty string/);
+});
+
 test('missing evidence is explicitly not evaluated, never green', () => {
   assert.deepStrictEqual(evaluateCanonEvidence(null), {
     status: CANON_EVALUATION.NOT_EVALUATED,
