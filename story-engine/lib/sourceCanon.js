@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import './sqliteTransaction.js';
 import { extractEntities } from './extractEntities.js';
-import { setCanonAnchor } from './canonMemory.js';
+import { getCanonAnchor, setCanonAnchor } from './canonMemory.js';
 import { log } from '../models/eventModel.js';
 
 const MAX_SOURCE_CHARS = Number(process.env.STORY_SOURCE_MAX_CHARS || 60_000);
@@ -180,9 +180,9 @@ function proposalsFromExtraction(extraction, content) {
 
   const seen = new Set();
   return proposals.filter(item => {
-    const key = `${item.kind}\u0000${item.key}\u0000${item.value}`;
-    if (!item.value || seen.has(key)) return false;
-    seen.add(key);
+    const dedupeKey = `${item.kind}\u0000${item.key}\u0000${item.value}`;
+    if (!item.value || seen.has(dedupeKey)) return false;
+    seen.add(dedupeKey);
     return true;
   }).slice(0, 40);
 }
@@ -344,7 +344,17 @@ export function reviewSourceProposal(db, input = {}) {
   const finalKey = cleanText(input.key, proposal.key);
   const finalValue = cleanText(input.value, proposal.value);
   if (!finalKind || !finalKey || !finalValue) throw new Error('Approved canon requires kind, key, and value.');
-  const locked = input.locked === undefined ? Boolean(proposal.locked) : Boolean(input.locked);
+
+  const existingAnchor = getCanonAnchor(db, workspaceId, finalKind, finalKey);
+  let createLocked;
+  if (existingAnchor) {
+    if (input.locked !== undefined && Boolean(input.locked) !== Boolean(existingAnchor.locked)) {
+      throw new Error('Proposal approval cannot change an existing canon lock; use the dedicated evidence-backed lock path.');
+    }
+    createLocked = undefined;
+  } else {
+    createLocked = input.locked === undefined ? Boolean(proposal.locked) : Boolean(input.locked);
+  }
   const reviewedAt = Date.now();
 
   const promote = db.transaction(() => {
@@ -353,15 +363,16 @@ export function reviewSourceProposal(db, input = {}) {
       kind: finalKind,
       key: finalKey,
       value: finalValue,
-      locked,
+      locked: createLocked,
       source: 'human',
-      evidence: input.evidence || null
+      evidence: input.evidence || null,
+      authority_grant: input.authority_grant || null
     });
     db.prepare(`
       UPDATE source_canon_proposals
       SET kind=?, key=?, value=?, locked=?, status='approved', canon_anchor_id=?, reviewed_at=?
       WHERE proposal_id=?
-    `).run(finalKind, finalKey, finalValue, locked ? 1 : 0, anchor.anchor_id, reviewedAt, proposalId);
+    `).run(finalKind, finalKey, finalValue, anchor.locked ? 1 : 0, anchor.anchor_id, reviewedAt, proposalId);
     log(db, {
       workspace_id: workspaceId,
       mode: 'story_universe',
@@ -372,7 +383,7 @@ export function reviewSourceProposal(db, input = {}) {
         anchor_id: anchor.anchor_id,
         kind: finalKind,
         key: finalKey,
-        locked
+        locked: Boolean(anchor.locked)
       }
     });
     return anchor;
