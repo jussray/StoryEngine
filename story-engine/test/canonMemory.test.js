@@ -3,9 +3,27 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createCanonEvidence } from '../lib/canonEvidence.js';
 import {
+  issueCanonAuthorityGrant, issueSession, resolveRequestIdentity
+} from '../lib/securityContext.js';
+import {
   setCanonAnchor, lockCanonAnchor, getCanonAnchor, getCanonEvidence,
   listCanonAnchors, listCanonChanges, canonSnapshot, evaluateCanonFit
 } from '../lib/canonMemory.js';
+
+const priorRegistry = process.env.L99_API_KEYS_JSON;
+process.env.L99_API_KEYS_JSON = JSON.stringify([{
+  key: 'canon-memory-human-key',
+  actor_id: 'canon-memory-human',
+  tenant_id: 'canon-memory-tenant',
+  role: 'creator',
+  principal_type: 'human',
+  workspace_ids: ['*']
+}]);
+
+test.after(() => {
+  if (priorRegistry === undefined) delete process.env.L99_API_KEYS_JSON;
+  else process.env.L99_API_KEYS_JSON = priorRegistry;
+});
 
 function makeDb() {
   const db = new DatabaseSync(':memory:');
@@ -22,6 +40,18 @@ function makeDb() {
   return db;
 }
 
+function humanGrant(workspace_id) {
+  const bootstrap = resolveRequestIdentity({ headers: { 'x-api-key': 'canon-memory-human-key' } });
+  const session = issueSession(bootstrap);
+  const cookie = `l99_session=${encodeURIComponent(session.token)}`;
+  const req = {
+    headers: { cookie },
+    auth: resolveRequestIdentity({ headers: { cookie } }),
+    request_id: `grant-${workspace_id}`
+  };
+  return issueCanonAuthorityGrant(req, workspace_id);
+}
+
 function humanEvidence({ workspace_id, kind, key, value, source_ref = 'test:human-review' }) {
   return createCanonEvidence({
     workspace_id,
@@ -34,7 +64,11 @@ function humanEvidence({ workspace_id, kind, key, value, source_ref = 'test:huma
 }
 
 function writeHumanCanon(db, input) {
-  return setCanonAnchor(db, { ...input, evidence: humanEvidence(input) });
+  return setCanonAnchor(db, {
+    ...input,
+    evidence: humanEvidence(input),
+    authority_grant: humanGrant(input.workspace_id)
+  });
 }
 
 test('setCanonAnchor creates and retrieves an anchor', () => {
@@ -62,17 +96,29 @@ test('non-human sources cannot write canon even when anchor is unlocked', () => 
   assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic'), null);
 });
 
+test('caller-created human evidence cannot substitute for verified session authority', () => {
+  const db = makeDb();
+  const input = { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' };
+  assert.throws(() => {
+    setCanonAnchor(db, { ...input, evidence: humanEvidence(input) });
+  }, /independently verified human session authority/);
+  assert.strictEqual(getCanonAnchor(db, 'ws1', 'character', 'name'), null);
+});
+
 test('human source without evidence fails closed before canon mutation', () => {
   const db = makeDb();
   assert.throws(() => {
-    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
+    setCanonAnchor(db, {
+      workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya',
+      authority_grant: humanGrant('ws1')
+    });
   }, /explicit human evidence/);
   assert.strictEqual(getCanonAnchor(db, 'ws1', 'character', 'name'), null);
   assert.strictEqual(listCanonChanges(db, 'ws1').length, 0);
   assert.strictEqual(db.prepare('SELECT COUNT(*) AS count FROM events').get().count, 0);
 });
 
-test('lockCanonAnchor requires evidence, records the lock, and is idempotent', () => {
+test('lockCanonAnchor requires evidence, records lock state, and is idempotent', () => {
   const db = makeDb();
   const input = { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic does not exist.' };
   writeHumanCanon(db, { ...input, locked: false });
@@ -80,7 +126,12 @@ test('lockCanonAnchor requires evidence, records the lock, and is idempotent', (
   const beforeChanges = listCanonChanges(db, 'ws1').length;
   const beforeEvents = db.prepare('SELECT COUNT(*) AS count FROM events').get().count;
   assert.throws(() => {
-    lockCanonAnchor(db, { workspace_id: input.workspace_id, kind: input.kind, key: input.key });
+    lockCanonAnchor(db, {
+      workspace_id: input.workspace_id,
+      kind: input.kind,
+      key: input.key,
+      authority_grant: humanGrant('ws1')
+    });
   }, /explicit human evidence/);
   assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic').locked, 0);
   assert.strictEqual(listCanonChanges(db, 'ws1').length, beforeChanges);
@@ -91,7 +142,8 @@ test('lockCanonAnchor requires evidence, records the lock, and is idempotent', (
     workspace_id: input.workspace_id,
     kind: input.kind,
     key: input.key,
-    evidence
+    evidence,
+    authority_grant: humanGrant('ws1')
   });
   assert.deepStrictEqual(result, {
     locked: true,
@@ -104,15 +156,24 @@ test('lockCanonAnchor requires evidence, records the lock, and is idempotent', (
   assert.strictEqual(lockChange.operation, 'lock');
   assert.strictEqual(lockChange.previous_value, input.value);
   assert.strictEqual(lockChange.next_value, input.value);
+  assert.strictEqual(lockChange.previous_locked, 0);
+  assert.strictEqual(lockChange.next_locked, 1);
   assert.strictEqual(lockChange.evidence_id, evidence.evidence_id);
   assert.strictEqual(lockChange.evidence_authority, 'human');
   assert.strictEqual(getCanonEvidence(db, evidence.evidence_id).source_ref, 'test:lock-review');
 
   const afterChanges = listCanonChanges(db, 'ws1').length;
   const afterEvents = db.prepare('SELECT COUNT(*) AS count FROM events').get().count;
-  const repeat = lockCanonAnchor(db, { workspace_id: input.workspace_id, kind: input.kind, key: input.key });
+  const repeat = lockCanonAnchor(db, {
+    workspace_id: input.workspace_id,
+    kind: input.kind,
+    key: input.key,
+    evidence,
+    authority_grant: humanGrant('ws1')
+  });
   assert.strictEqual(repeat.locked, true);
   assert.strictEqual(repeat.already_locked, true);
+  assert.strictEqual(repeat.idempotent, true);
   assert.strictEqual(listCanonChanges(db, 'ws1').length, afterChanges);
   assert.strictEqual(db.prepare('SELECT COUNT(*) AS count FROM events').get().count, afterEvents);
 });
@@ -139,7 +200,8 @@ test('lock mutation, evidence, ledger, and event roll back together when ledger 
       workspace_id: input.workspace_id,
       kind: input.kind,
       key: input.key,
-      evidence
+      evidence,
+      authority_grant: humanGrant('ws1')
     });
   }, /lock_ledger_fail/);
 
@@ -149,7 +211,7 @@ test('lock mutation, evidence, ledger, and event roll back together when ledger 
   assert.strictEqual(db.prepare('SELECT COUNT(*) AS count FROM events').get().count, beforeEvents);
 });
 
-test('locked canon still permits explicit human correction', () => {
+test('locked canon preserves the lock when a human correction omits locked', () => {
   const db = makeDb();
   const input = { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic does not exist.' };
   writeHumanCanon(db, { ...input, locked: false });
@@ -157,10 +219,26 @@ test('locked canon still permits explicit human correction', () => {
     workspace_id: input.workspace_id,
     kind: input.kind,
     key: input.key,
-    evidence: humanEvidence({ ...input, source_ref: 'test:lock-before-correction' })
+    evidence: humanEvidence({ ...input, source_ref: 'test:lock-before-correction' }),
+    authority_grant: humanGrant('ws1')
   });
-  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic never existed.', locked: true });
-  assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic').value, 'Magic never existed.');
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic never existed.' });
+  const anchor = getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic');
+  assert.strictEqual(anchor.value, 'Magic never existed.');
+  assert.strictEqual(anchor.locked, 1);
+  const [change] = listCanonChanges(db, 'ws1');
+  assert.strictEqual(change.previous_locked, 1);
+  assert.strictEqual(change.next_locked, 1);
+});
+
+test('setCanonAnchor rejects implicit unlock attempts', () => {
+  const db = makeDb();
+  const input = { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic does not exist.' };
+  writeHumanCanon(db, { ...input, locked: true });
+  assert.throws(() => writeHumanCanon(db, {
+    workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic never existed.', locked: false
+  }), /dedicated evidence-backed lock path/);
+  assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic').locked, 1);
 });
 
 test('human evidence is persisted and resolvable from the change ledger', () => {
@@ -175,7 +253,8 @@ test('human evidence is persisted and resolvable from the change ledger', () => 
     authority: 'human'
   });
   setCanonAnchor(db, {
-    workspace_id: 'ws1', kind: 'character', key: 'eye_color', value: 'green', evidence
+    workspace_id: 'ws1', kind: 'character', key: 'eye_color', value: 'green', evidence,
+    authority_grant: humanGrant('ws1')
   });
 
   const stored = getCanonEvidence(db, evidence.evidence_id);
@@ -191,6 +270,29 @@ test('human evidence is persisted and resolvable from the change ledger', () => 
   assert.strictEqual(change.evidence_authority, 'human');
 });
 
+test('persisted evidence is revalidated before reuse', () => {
+  const db = makeDb();
+  const input = { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' };
+  const evidence = humanEvidence(input);
+  setCanonAnchor(db, { ...input, evidence, authority_grant: humanGrant('ws1') });
+  db.prepare('UPDATE canon_evidence SET statement=? WHERE evidence_id=?').run('Tampered', evidence.evidence_id);
+  assert.throws(() => {
+    setCanonAnchor(db, { ...input, evidence, authority_grant: humanGrant('ws1') });
+  }, /stored evidence does not match its fingerprint/);
+});
+
+test('consumed evidence cannot authorize a later rollback mutation', () => {
+  const db = makeDb();
+  const first = { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' };
+  const evidenceA = humanEvidence(first);
+  setCanonAnchor(db, { ...first, evidence: evidenceA, authority_grant: humanGrant('ws1') });
+  writeHumanCanon(db, { ...first, value: 'Amaya' });
+  assert.throws(() => {
+    setCanonAnchor(db, { ...first, evidence: evidenceA, authority_grant: humanGrant('ws1') });
+  }, /evidence replay rejected/);
+  assert.strictEqual(getCanonAnchor(db, 'ws1', 'character', 'name').value, 'Amaya');
+});
+
 test('high-confidence AI evidence remains descriptive and cannot authorize canon', () => {
   const db = makeDb();
   const evidence = createCanonEvidence({
@@ -198,7 +300,10 @@ test('high-confidence AI evidence remains descriptive and cannot authorize canon
     source_ref: 'extract:chapter-04', authority: 'ai', confidence: 0.99
   });
   assert.throws(() => {
-    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'lore', key: 'secret', value: 'The door is sealed.', evidence });
+    setCanonAnchor(db, {
+      workspace_id: 'ws1', kind: 'lore', key: 'secret', value: 'The door is sealed.', evidence,
+      authority_grant: humanGrant('ws1')
+    });
   }, /explicit human approval/);
   assert.strictEqual(getCanonAnchor(db, 'ws1', 'lore', 'secret'), null);
 });
@@ -210,7 +315,10 @@ test('evidence scope and statement must match the canon mutation', () => {
     source_ref: 'review:1', authority: 'human'
   });
   assert.throws(() => {
-    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya', evidence });
+    setCanonAnchor(db, {
+      workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya', evidence,
+      authority_grant: humanGrant('ws1')
+    });
   }, /statement does not match/);
 });
 
