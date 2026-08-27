@@ -55,14 +55,18 @@ function humanGrant(workspaceId) {
   return issueCanonAuthorityGrant(req, workspaceId);
 }
 
-function proposalEvidence({ workspaceId, proposal, key, value }) {
+function proposalEvidence(db, { workspaceId, proposal, key, value, sourceVersion = null }) {
+  const source = db.prepare(`
+    SELECT content_hash FROM story_sources WHERE source_id=? AND workspace_id=?
+  `).get(proposal.source_id, workspaceId);
+  assert.ok(source?.content_hash);
   return createCanonEvidence({
     workspace_id: workspaceId,
     kind: proposal.kind,
     key,
     statement: value,
     source_ref: `test:proposal:${proposal.proposal_id}`,
-    source_version: 'test:review-v1',
+    source_version: sourceVersion || `sha256:${source.content_hash}`,
     authority: 'human',
     confidence: proposal.confidence
   });
@@ -114,7 +118,7 @@ test('only explicit approval with human evidence and live authority grant promot
     key,
     value,
     locked: true,
-    evidence: proposalEvidence({ workspaceId, proposal: character, key, value }),
+    evidence: proposalEvidence(db, { workspaceId, proposal: character, key, value }),
     authority_grant: humanGrant(workspaceId)
   });
 
@@ -162,10 +166,44 @@ test('direct proposal approval without evidence fails closed and remains pending
     value: 'Nia Vale',
     locked: true,
     authority_grant: humanGrant(workspaceId)
-  }), /explicit human evidence/);
+  }), /immutable source hash|explicit human evidence/);
 
   const state = listSourceCanonState(db, workspaceId);
   assert.equal(state.proposals.find(item => item.proposal_id === character.proposal_id).status, 'pending');
+  assert.equal(canonSnapshot(db, workspaceId).anchor_count, 0);
+  db.close();
+});
+
+test('domain proposal approval rejects mismatched immutable source hash', async () => {
+  const db = createDb();
+  const workspaceId = seedWorkspace(db, 'workspace-source-hash-mismatch');
+  await analyzeStorySource(db, {
+    workspace_id: workspaceId,
+    provider: 'local',
+    content: 'Nia Vale always carries the Moon Key. Nia Vale never leaves a friend behind.'
+  });
+  const proposal = listSourceCanonState(db, workspaceId).proposals.find(item => item.kind === 'character');
+  assert.ok(proposal);
+  const key = 'protagonist.name';
+  const value = 'Nia Vale';
+  const evidence = proposalEvidence(db, {
+    workspaceId,
+    proposal,
+    key,
+    value,
+    sourceVersion: `sha256:${'0'.repeat(64)}`
+  });
+
+  assert.throws(() => reviewSourceProposal(db, {
+    workspace_id: workspaceId,
+    proposal_id: proposal.proposal_id,
+    decision: 'approve',
+    key,
+    value,
+    evidence,
+    authority_grant: humanGrant(workspaceId)
+  }), /immutable source hash/);
+  assert.equal(listSourceCanonState(db, workspaceId).proposals.find(item => item.proposal_id === proposal.proposal_id).status, 'pending');
   assert.equal(canonSnapshot(db, workspaceId).anchor_count, 0);
   db.close();
 });
@@ -195,7 +233,7 @@ test('proposal approval cannot silently change an existing canon lock', async ()
   });
   const proposal = listSourceCanonState(db, workspaceId).proposals.find(item => item.kind === 'character');
   assert.ok(proposal);
-  const evidence = proposalEvidence({ workspaceId, proposal, key: 'protagonist.name', value: 'Nia Vale' });
+  const evidence = proposalEvidence(db, { workspaceId, proposal, key: 'protagonist.name', value: 'Nia Vale' });
   assert.throws(() => reviewSourceProposal(db, {
     workspace_id: workspaceId,
     proposal_id: proposal.proposal_id,

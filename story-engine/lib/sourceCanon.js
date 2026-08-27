@@ -345,6 +345,19 @@ export function reviewSourceProposal(db, input = {}) {
   const finalValue = cleanText(input.value, proposal.value);
   if (!finalKind || !finalKey || !finalValue) throw new Error('Approved canon requires kind, key, and value.');
 
+  const source = db.prepare(`
+    SELECT source_id, content_hash
+    FROM story_sources
+    WHERE source_id=? AND workspace_id=?
+  `).get(proposal.source_id, workspaceId);
+  if (!source?.content_hash) {
+    throw new Error('Source proposal cannot be approved without its immutable source hash.');
+  }
+  const expectedSourceVersion = `sha256:${source.content_hash}`;
+  if (!input.evidence || String(input.evidence.source_version || '') !== expectedSourceVersion) {
+    throw new Error('Source proposal evidence does not match the immutable source hash.');
+  }
+
   const existingAnchor = getCanonAnchor(db, workspaceId, finalKind, finalKey);
   let createLocked;
   if (existingAnchor) {

@@ -160,7 +160,9 @@ test('lockCanonAnchor requires evidence, records lock state, and is idempotent',
   assert.strictEqual(lockChange.next_locked, 1);
   assert.strictEqual(lockChange.evidence_id, evidence.evidence_id);
   assert.strictEqual(lockChange.evidence_authority, 'human');
-  assert.strictEqual(getCanonEvidence(db, evidence.evidence_id).source_ref, 'test:lock-review');
+  assert.strictEqual(lockChange.approver_actor_id, 'canon-memory-human');
+  assert.strictEqual(lockChange.evidence_approver_actor_id, 'canon-memory-human');
+  assert.strictEqual(getCanonEvidence(db, 'ws1', evidence.evidence_id).source_ref, 'test:lock-review');
 
   const afterChanges = listCanonChanges(db, 'ws1').length;
   const afterEvents = db.prepare('SELECT COUNT(*) AS count FROM events').get().count;
@@ -206,7 +208,7 @@ test('lock mutation, evidence, ledger, and event roll back together when ledger 
   }, /lock_ledger_fail/);
 
   assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic').locked, 0);
-  assert.strictEqual(getCanonEvidence(db, evidence.evidence_id), null);
+  assert.strictEqual(getCanonEvidence(db, 'ws1', evidence.evidence_id), null);
   assert.strictEqual(listCanonChanges(db, 'ws1').length, beforeChanges);
   assert.strictEqual(db.prepare('SELECT COUNT(*) AS count FROM events').get().count, beforeEvents);
 });
@@ -257,17 +259,21 @@ test('human evidence is persisted and resolvable from the change ledger', () => 
     authority_grant: humanGrant('ws1')
   });
 
-  const stored = getCanonEvidence(db, evidence.evidence_id);
+  const stored = getCanonEvidence(db, 'ws1', evidence.evidence_id);
   assert.ok(stored);
   assert.strictEqual(stored.statement, 'green');
   assert.strictEqual(stored.source_ref, 'source:chapter-02#line-18');
   assert.strictEqual(stored.fingerprint, evidence.fingerprint);
+  assert.strictEqual(stored.approver_actor_id, 'canon-memory-human');
+  assert.strictEqual(getCanonEvidence(db, 'ws-other', evidence.evidence_id), null);
 
   const [change] = listCanonChanges(db, 'ws1');
   assert.strictEqual(change.evidence_id, evidence.evidence_id);
   assert.strictEqual(change.evidence_statement, 'green');
   assert.strictEqual(change.evidence_source_ref, 'source:chapter-02#line-18');
   assert.strictEqual(change.evidence_authority, 'human');
+  assert.strictEqual(change.approver_actor_id, 'canon-memory-human');
+  assert.strictEqual(change.evidence_approver_actor_id, 'canon-memory-human');
 });
 
 test('persisted evidence is revalidated before reuse', () => {

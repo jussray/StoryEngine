@@ -23,6 +23,7 @@ let registryCache = null;
 let registryCacheSource = null;
 const sessions = new Map();
 const canonAuthorityGrants = new WeakSet();
+const canonAuthorityGrantSessions = new WeakMap();
 const consumedCanonAuthorityGrants = new WeakSet();
 
 function safeEqual(left, right) {
@@ -298,6 +299,7 @@ export function issueCanonAuthorityGrant(req, workspaceId) {
     request_id: String(req.request_id || '')
   });
   canonAuthorityGrants.add(grant);
+  canonAuthorityGrantSessions.set(grant, { token, session_id: identity.session_id });
   return grant;
 }
 
@@ -312,6 +314,26 @@ export function assertCanonAuthorityGrant(grant, workspaceId) {
   if (grant.workspace_id !== normalizedWorkspace) {
     throw new Error('Canon authority grant workspace does not match the mutation.');
   }
+
+  const origin = canonAuthorityGrantSessions.get(grant);
+  const identity = resolveSessionIdentity(origin?.token || '');
+  if (!origin || !identity || identity.type !== 'session' || identity.principal_type !== 'human') {
+    throw new Error('Canon authority grant is no longer backed by a live authenticated human session.');
+  }
+  if (identity.credential_type !== 'scoped_api_key') {
+    throw new Error('Canon authority grant is no longer backed by a live scoped credential.');
+  }
+  if (identity.session_id !== origin.session_id || identity.session_id !== grant.session_id || identity.actor_id !== grant.actor_id) {
+    throw new Error('Canon authority grant no longer matches its originating session and actor.');
+  }
+  if (!roleAtLeast(identity, 'creator')) {
+    throw new Error('Canon authority grant no longer has creator-or-higher role.');
+  }
+  const allowed = identity.workspace_ids || [];
+  if (!allowed.includes('*') && !allowed.includes(normalizedWorkspace)) {
+    throw new Error('Canon authority grant no longer allows this workspace.');
+  }
+
   consumedCanonAuthorityGrants.add(grant);
   return grant;
 }
