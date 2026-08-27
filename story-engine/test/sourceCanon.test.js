@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+import { createCanonEvidence } from '../lib/canonEvidence.js';
 import { analyzeStorySource, listSourceCanonState, reviewSourceProposal } from '../lib/sourceCanon.js';
 import { canonSnapshot, setCanonAnchor } from '../lib/canonMemory.js';
 
@@ -25,6 +26,19 @@ function seedWorkspace(db, workspaceId = 'workspace-source-canon') {
     VALUES (?, 'Source Canon Story', '1.0.0', ?, ?)
   `).run(workspaceId, now, now);
   return workspaceId;
+}
+
+function proposalEvidence({ workspaceId, proposal, key, value }) {
+  return createCanonEvidence({
+    workspace_id: workspaceId,
+    kind: proposal.kind,
+    key,
+    statement: value,
+    source_ref: `test:proposal:${proposal.proposal_id}`,
+    source_version: 'test:review-v1',
+    authority: 'human',
+    confidence: proposal.confidence
+  });
 }
 
 test('source extraction creates pending proposals without changing canon', async () => {
@@ -50,7 +64,7 @@ test('source extraction creates pending proposals without changing canon', async
   db.close();
 });
 
-test('only explicit approval promotes an editable proposal into creator canon', async () => {
+test('only explicit approval with human evidence promotes an editable proposal into creator canon', async () => {
   const db = createDb();
   const workspaceId = seedWorkspace(db);
 
@@ -63,14 +77,17 @@ test('only explicit approval promotes an editable proposal into creator canon', 
   const pending = listSourceCanonState(db, workspaceId).proposals;
   const character = pending.find(item => item.kind === 'character');
   assert.ok(character);
+  const key = 'protagonist.name';
+  const value = 'Nia Vale';
 
   const reviewed = reviewSourceProposal(db, {
     workspace_id: workspaceId,
     proposal_id: character.proposal_id,
     decision: 'approve',
-    key: 'protagonist.name',
-    value: 'Nia Vale',
-    locked: true
+    key,
+    value,
+    locked: true,
+    evidence: proposalEvidence({ workspaceId, proposal: character, key, value })
   });
 
   assert.equal(reviewed.proposal.status, 'approved');
@@ -94,6 +111,33 @@ test('only explicit approval promotes an editable proposal into creator canon', 
     locked: true,
     source: 'model'
   }), /explicit human authority/);
+  db.close();
+});
+
+test('direct proposal approval without evidence fails closed and remains pending', async () => {
+  const db = createDb();
+  const workspaceId = seedWorkspace(db, 'workspace-missing-evidence');
+
+  await analyzeStorySource(db, {
+    workspace_id: workspaceId,
+    provider: 'local',
+    content: 'Nia Vale always carries the Moon Key. Nia Vale never leaves a friend behind.'
+  });
+
+  const character = listSourceCanonState(db, workspaceId).proposals.find(item => item.kind === 'character');
+  assert.ok(character);
+  assert.throws(() => reviewSourceProposal(db, {
+    workspace_id: workspaceId,
+    proposal_id: character.proposal_id,
+    decision: 'approve',
+    key: 'protagonist.name',
+    value: 'Nia Vale',
+    locked: true
+  }), /explicit human evidence/);
+
+  const state = listSourceCanonState(db, workspaceId);
+  assert.equal(state.proposals.find(item => item.proposal_id === character.proposal_id).status, 'pending');
+  assert.equal(canonSnapshot(db, workspaceId).anchor_count, 0);
   db.close();
 });
 
