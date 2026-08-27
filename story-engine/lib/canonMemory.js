@@ -3,10 +3,18 @@
 // Characters, world rules, tone constants, and unbreakable facts live here.
 // Redteam imports evaluateCanonFit() to gate drafts before passing.
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import './sqliteTransaction.js';
 import { log } from '../models/eventModel.js';
-import { assertCanonEvidenceWritable } from './canonEvidence.js';
+import { assertCanonEvidenceWritable, fingerprintCanonEvidence } from './canonEvidence.js';
+import { assertCanonAuthorityGrant } from './securityContext.js';
+
+function ensureColumn(db, table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some(item => item.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
 
 function ensureSchema(db) {
   db.exec(`
@@ -65,6 +73,8 @@ function ensureSchema(db) {
       operation TEXT NOT NULL,
       previous_value TEXT,
       next_value TEXT NOT NULL,
+      previous_locked INTEGER,
+      next_locked INTEGER,
       source TEXT NOT NULL,
       evidence_id TEXT,
       evidence_fingerprint TEXT,
@@ -73,10 +83,44 @@ function ensureSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_canon_change_ledger_workspace ON canon_change_ledger(workspace_id, sequence DESC);
     CREATE INDEX IF NOT EXISTS idx_canon_change_ledger_anchor ON canon_change_ledger(anchor_id, sequence DESC);
+
+    CREATE TABLE IF NOT EXISTS canon_evidence_usage (
+      evidence_id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      anchor_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      key TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      previous_value TEXT,
+      next_value TEXT NOT NULL,
+      previous_locked INTEGER,
+      next_locked INTEGER NOT NULL,
+      transition_fingerprint TEXT NOT NULL,
+      ledger_sequence INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(evidence_id) REFERENCES canon_evidence(evidence_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_canon_evidence_usage_anchor ON canon_evidence_usage(anchor_id, ledger_sequence DESC);
   `);
+  ensureColumn(db, 'canon_change_ledger', 'previous_locked', 'INTEGER');
+  ensureColumn(db, 'canon_change_ledger', 'next_locked', 'INTEGER');
 }
 
 function now() { return Date.now(); }
+
+function transitionFingerprint({ workspace_id, anchor_id, kind, key, operation, previous_value, next_value, previous_locked, next_locked }) {
+  return createHash('sha256').update(JSON.stringify({
+    workspace_id: String(workspace_id),
+    anchor_id: String(anchor_id),
+    kind: String(kind),
+    key: String(key),
+    operation: String(operation),
+    previous_value: previous_value == null ? null : String(previous_value),
+    next_value: String(next_value),
+    previous_locked: previous_locked == null ? null : Boolean(previous_locked),
+    next_locked: Boolean(next_locked)
+  })).digest('hex');
+}
 
 function persistCanonEvidence(db, evidence, { workspace_id, kind, key, value }) {
   if (!evidence) {
@@ -90,14 +134,18 @@ function persistCanonEvidence(db, evidence, { workspace_id, kind, key, value }) 
     throw new Error('Canon evidence statement does not match the canon value being written.');
   }
 
-  const existing = db.prepare(
-    'SELECT evidence_id, fingerprint FROM canon_evidence WHERE evidence_id=?'
-  ).get(evidence.evidence_id);
+  const existing = db.prepare('SELECT * FROM canon_evidence WHERE evidence_id=?').get(evidence.evidence_id);
   if (existing) {
-    if (existing.fingerprint !== evidence.fingerprint) {
-      throw new Error('Canon evidence is immutable: evidence_id already exists with a different fingerprint.');
+    let recomputed;
+    try {
+      recomputed = fingerprintCanonEvidence(existing);
+    } catch (error) {
+      throw new Error(`Stored canon evidence is invalid: ${error.message}`);
     }
-    return existing;
+    if (existing.fingerprint !== recomputed || existing.fingerprint !== evidence.fingerprint) {
+      throw new Error('Canon evidence is immutable: stored evidence does not match its fingerprint.');
+    }
+    return { evidence_id: existing.evidence_id, fingerprint: existing.fingerprint };
   }
 
   db.prepare(`
@@ -122,12 +170,90 @@ function persistCanonEvidence(db, evidence, { workspace_id, kind, key, value }) 
   return { evidence_id: evidence.evidence_id, fingerprint: evidence.fingerprint };
 }
 
-function recordCanonChange(db, { workspace_id, anchor_id, kind, key, operation, previous_value = null, next_value, source, evidence = null, created_at }) {
+function latestAnchorSequence(db, anchor_id) {
+  const row = db.prepare('SELECT MAX(sequence) AS sequence FROM canon_change_ledger WHERE anchor_id=?').get(anchor_id);
+  return row?.sequence == null ? null : Number(row.sequence);
+}
+
+function idempotentEvidenceReplay(db, evidence, { workspace_id, kind, key, value, locked }) {
+  if (!evidence?.evidence_id) return null;
+  const usage = db.prepare('SELECT * FROM canon_evidence_usage WHERE evidence_id=?').get(evidence.evidence_id);
+  if (!usage) {
+    const legacyUse = db.prepare(
+      'SELECT sequence FROM canon_change_ledger WHERE evidence_id=? ORDER BY sequence DESC LIMIT 1'
+    ).get(evidence.evidence_id);
+    if (legacyUse) {
+      throw new Error('Canon evidence replay rejected: this evidence receipt was consumed before transition binding was introduced.');
+    }
+    return null;
+  }
+
+  const anchor = db.prepare(
+    'SELECT anchor_id, workspace_id, kind, key, value, locked, source, created_at, updated_at FROM canon_anchors WHERE anchor_id=?'
+  ).get(usage.anchor_id);
+  const sameTarget = anchor
+    && usage.workspace_id === workspace_id
+    && usage.kind === kind
+    && usage.key === key
+    && String(usage.next_value) === String(value)
+    && Boolean(usage.next_locked) === Boolean(locked)
+    && String(anchor.value) === String(value)
+    && Boolean(anchor.locked) === Boolean(locked)
+    && latestAnchorSequence(db, usage.anchor_id) === Number(usage.ledger_sequence);
+
+  if (sameTarget) {
+    return { ...anchor, locked: Boolean(anchor.locked), idempotent: true };
+  }
+  throw new Error('Canon evidence replay rejected: evidence is already bound to a different or superseded mutation.');
+}
+
+function bindEvidenceUsage(db, evidence, transition) {
+  const fingerprint = transitionFingerprint(transition);
   db.prepare(`
+    INSERT INTO canon_evidence_usage (
+      evidence_id, workspace_id, anchor_id, kind, key, operation, previous_value,
+      next_value, previous_locked, next_locked, transition_fingerprint, ledger_sequence, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+  `).run(
+    evidence.evidence_id,
+    transition.workspace_id,
+    transition.anchor_id,
+    transition.kind,
+    transition.key,
+    transition.operation,
+    transition.previous_value == null ? null : String(transition.previous_value),
+    String(transition.next_value),
+    transition.previous_locked == null ? null : (transition.previous_locked ? 1 : 0),
+    transition.next_locked ? 1 : 0,
+    fingerprint,
+    now()
+  );
+  return fingerprint;
+}
+
+function bindEvidenceLedgerSequence(db, evidence_id, sequence) {
+  db.prepare('UPDATE canon_evidence_usage SET ledger_sequence=? WHERE evidence_id=?').run(sequence, evidence_id);
+}
+
+function recordCanonChange(db, {
+  workspace_id,
+  anchor_id,
+  kind,
+  key,
+  operation,
+  previous_value = null,
+  next_value,
+  previous_locked = null,
+  next_locked,
+  source,
+  evidence = null,
+  created_at
+}) {
+  const result = db.prepare(`
     INSERT INTO canon_change_ledger (
       change_id, workspace_id, anchor_id, kind, key, operation, previous_value,
-      next_value, source, evidence_id, evidence_fingerprint, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      next_value, previous_locked, next_locked, source, evidence_id, evidence_fingerprint, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     `cc_${randomUUID()}`,
     workspace_id,
@@ -137,33 +263,57 @@ function recordCanonChange(db, { workspace_id, anchor_id, kind, key, operation, 
     operation,
     previous_value == null ? null : String(previous_value),
     String(next_value),
+    previous_locked == null ? null : (previous_locked ? 1 : 0),
+    next_locked ? 1 : 0,
     source,
     evidence?.evidence_id || null,
     evidence?.fingerprint || null,
     created_at
   );
+  return Number(result.lastInsertRowid);
 }
 
 // ─── Write ────────────────────────────────────────────────────────────────────
 
-export function setCanonAnchor(db, { workspace_id, kind, key, value, locked = false, source = 'human', evidence = null }) {
+export function setCanonAnchor(db, {
+  workspace_id,
+  kind,
+  key,
+  value,
+  locked = undefined,
+  source = 'human',
+  evidence = null,
+  authority_grant = null
+}) {
   ensureSchema(db);
   if (source !== 'human') {
     throw new Error('Canon promotion requires explicit human authority. Non-human sources may propose evidence but may not write canon.');
   }
+  assertCanonAuthorityGrant(authority_grant, workspace_id);
 
   const commit = db.transaction(() => {
     const existing = db.prepare(
       'SELECT anchor_id, locked, value FROM canon_anchors WHERE workspace_id=? AND kind=? AND key=?'
     ).get(workspace_id, kind, key);
     const t = now();
-    persistCanonEvidence(db, evidence, { workspace_id, kind, key, value });
 
     if (existing) {
-      db.prepare(
-        'UPDATE canon_anchors SET value=?, locked=?, source=?, updated_at=? WHERE anchor_id=?'
-      ).run(String(value), locked ? 1 : 0, source, t, existing.anchor_id);
-      recordCanonChange(db, {
+      const currentLocked = Boolean(existing.locked);
+      const nextLocked = locked === undefined ? currentLocked : Boolean(locked);
+      const replay = idempotentEvidenceReplay(db, evidence, {
+        workspace_id,
+        kind,
+        key,
+        value,
+        locked: nextLocked
+      });
+      if (replay) return replay;
+      if (locked !== undefined && nextLocked !== currentLocked) {
+        throw new Error('Canon lock transitions require the dedicated evidence-backed lock path; updates preserve the current lock state.');
+      }
+
+      persistCanonEvidence(db, evidence, { workspace_id, kind, key, value });
+      bindEvidenceUsage(db, evidence, {
         workspace_id,
         anchor_id: existing.anchor_id,
         kind,
@@ -171,49 +321,92 @@ export function setCanonAnchor(db, { workspace_id, kind, key, value, locked = fa
         operation: 'update',
         previous_value: existing.value,
         next_value: value,
+        previous_locked: currentLocked,
+        next_locked: currentLocked
+      });
+      db.prepare(
+        'UPDATE canon_anchors SET value=?, source=?, updated_at=? WHERE anchor_id=?'
+      ).run(String(value), source, t, existing.anchor_id);
+      const sequence = recordCanonChange(db, {
+        workspace_id,
+        anchor_id: existing.anchor_id,
+        kind,
+        key,
+        operation: 'update',
+        previous_value: existing.value,
+        next_value: value,
+        previous_locked: currentLocked,
+        next_locked: currentLocked,
         source,
         evidence,
         created_at: t
       });
+      bindEvidenceLedgerSequence(db, evidence.evidence_id, sequence);
       log(db, {
         workspace_id,
         mode: 'canon_memory',
         event_type: 'canon.anchor.updated',
-        payload: { kind, key, locked, source, evidence_id: evidence.evidence_id }
+        payload: { kind, key, locked: currentLocked, source, evidence_id: evidence.evidence_id }
       });
-      return { ...existing, value, locked, source, updated_at: t };
+      return { ...existing, value, locked: currentLocked, source, updated_at: t };
     }
 
+    const nextLocked = Boolean(locked);
+    const replay = idempotentEvidenceReplay(db, evidence, {
+      workspace_id,
+      kind,
+      key,
+      value,
+      locked: nextLocked
+    });
+    if (replay) return replay;
+
     const anchor_id = `canon_${randomUUID()}`;
+    persistCanonEvidence(db, evidence, { workspace_id, kind, key, value });
+    bindEvidenceUsage(db, evidence, {
+      workspace_id,
+      anchor_id,
+      kind,
+      key,
+      operation: 'create',
+      previous_value: null,
+      next_value: value,
+      previous_locked: null,
+      next_locked: nextLocked
+    });
     db.prepare(
       `INSERT INTO canon_anchors (anchor_id, workspace_id, kind, key, value, locked, source, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(anchor_id, workspace_id, kind, key, String(value), locked ? 1 : 0, source, t, t);
-    recordCanonChange(db, {
+    ).run(anchor_id, workspace_id, kind, key, String(value), nextLocked ? 1 : 0, source, t, t);
+    const sequence = recordCanonChange(db, {
       workspace_id,
       anchor_id,
       kind,
       key,
       operation: 'create',
       next_value: value,
+      previous_locked: null,
+      next_locked: nextLocked,
       source,
       evidence,
       created_at: t
     });
+    bindEvidenceLedgerSequence(db, evidence.evidence_id, sequence);
     log(db, {
       workspace_id,
       mode: 'canon_memory',
       event_type: 'canon.anchor.created',
-      payload: { kind, key, locked, source, evidence_id: evidence.evidence_id }
+      payload: { kind, key, locked: nextLocked, source, evidence_id: evidence.evidence_id }
     });
-    return { anchor_id, workspace_id, kind, key, value, locked, source, created_at: t, updated_at: t };
+    return { anchor_id, workspace_id, kind, key, value, locked: nextLocked, source, created_at: t, updated_at: t };
   });
 
   return commit();
 }
 
-export function lockCanonAnchor(db, { workspace_id, kind, key, evidence = null }) {
+export function lockCanonAnchor(db, { workspace_id, kind, key, evidence = null, authority_grant = null }) {
   ensureSchema(db);
+  assertCanonAuthorityGrant(authority_grant, workspace_id);
 
   const commit = db.transaction(() => {
     const anchor = db.prepare(
@@ -222,13 +415,35 @@ export function lockCanonAnchor(db, { workspace_id, kind, key, evidence = null }
     if (!anchor) throw new Error(`Canon anchor [${kind}/${key}] not found for workspace ${workspace_id}.`);
 
     if (anchor.locked) {
+      if (evidence) {
+        const replay = idempotentEvidenceReplay(db, evidence, {
+          workspace_id,
+          kind,
+          key,
+          value: anchor.value,
+          locked: true
+        });
+        if (replay) {
+          return { locked: true, already_locked: true, anchor_id: anchor.anchor_id, idempotent: true };
+        }
+      }
       return { locked: true, already_locked: true, anchor_id: anchor.anchor_id };
+    }
+
+    const replay = idempotentEvidenceReplay(db, evidence, {
+      workspace_id,
+      kind,
+      key,
+      value: anchor.value,
+      locked: true
+    });
+    if (replay) {
+      return { locked: true, already_locked: true, anchor_id: anchor.anchor_id, idempotent: true };
     }
 
     const t = now();
     persistCanonEvidence(db, evidence, { workspace_id, kind, key, value: anchor.value });
-    db.prepare('UPDATE canon_anchors SET locked=1, updated_at=? WHERE anchor_id=?').run(t, anchor.anchor_id);
-    recordCanonChange(db, {
+    bindEvidenceUsage(db, evidence, {
       workspace_id,
       anchor_id: anchor.anchor_id,
       kind,
@@ -236,10 +451,25 @@ export function lockCanonAnchor(db, { workspace_id, kind, key, evidence = null }
       operation: 'lock',
       previous_value: anchor.value,
       next_value: anchor.value,
+      previous_locked: false,
+      next_locked: true
+    });
+    db.prepare('UPDATE canon_anchors SET locked=1, updated_at=? WHERE anchor_id=?').run(t, anchor.anchor_id);
+    const sequence = recordCanonChange(db, {
+      workspace_id,
+      anchor_id: anchor.anchor_id,
+      kind,
+      key,
+      operation: 'lock',
+      previous_value: anchor.value,
+      next_value: anchor.value,
+      previous_locked: false,
+      next_locked: true,
       source: 'human',
       evidence,
       created_at: t
     });
+    bindEvidenceLedgerSequence(db, evidence.evidence_id, sequence);
     log(db, {
       workspace_id,
       mode: 'canon_memory',
