@@ -8,9 +8,24 @@ import { dirname, join } from 'node:path';
 import { createCanonEvidence } from '../lib/canonEvidence.js';
 import { analyzeStorySource, listSourceCanonState, reviewSourceProposal } from '../lib/sourceCanon.js';
 import { canonSnapshot, setCanonAnchor } from '../lib/canonMemory.js';
+import { issueCanonAuthorityGrant, issueSession, resolveRequestIdentity } from '../lib/securityContext.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+const priorRegistry = process.env.L99_API_KEYS_JSON;
+process.env.L99_API_KEYS_JSON = JSON.stringify([{
+  key: 'source-canon-human-key',
+  actor_id: 'source-canon-human',
+  tenant_id: 'source-canon-tenant',
+  role: 'creator',
+  principal_type: 'human',
+  workspace_ids: ['*']
+}]);
+
+test.after(() => {
+  if (priorRegistry === undefined) delete process.env.L99_API_KEYS_JSON;
+  else process.env.L99_API_KEYS_JSON = priorRegistry;
+});
 
 function createDb() {
   const db = new DatabaseSync(':memory:');
@@ -26,6 +41,18 @@ function seedWorkspace(db, workspaceId = 'workspace-source-canon') {
     VALUES (?, 'Source Canon Story', '1.0.0', ?, ?)
   `).run(workspaceId, now, now);
   return workspaceId;
+}
+
+function humanGrant(workspaceId) {
+  const bootstrap = resolveRequestIdentity({ headers: { 'x-api-key': 'source-canon-human-key' } });
+  const session = issueSession(bootstrap);
+  const cookie = `l99_session=${encodeURIComponent(session.token)}`;
+  const req = {
+    headers: { cookie },
+    auth: resolveRequestIdentity({ headers: { cookie } }),
+    request_id: `source-canon-${workspaceId}`
+  };
+  return issueCanonAuthorityGrant(req, workspaceId);
 }
 
 function proposalEvidence({ workspaceId, proposal, key, value }) {
@@ -64,7 +91,7 @@ test('source extraction creates pending proposals without changing canon', async
   db.close();
 });
 
-test('only explicit approval with human evidence promotes an editable proposal into creator canon', async () => {
+test('only explicit approval with human evidence and live authority grant promotes canon', async () => {
   const db = createDb();
   const workspaceId = seedWorkspace(db);
 
@@ -87,7 +114,8 @@ test('only explicit approval with human evidence promotes an editable proposal i
     key,
     value,
     locked: true,
-    evidence: proposalEvidence({ workspaceId, proposal: character, key, value })
+    evidence: proposalEvidence({ workspaceId, proposal: character, key, value }),
+    authority_grant: humanGrant(workspaceId)
   });
 
   assert.equal(reviewed.proposal.status, 'approved');
@@ -132,12 +160,53 @@ test('direct proposal approval without evidence fails closed and remains pending
     decision: 'approve',
     key: 'protagonist.name',
     value: 'Nia Vale',
-    locked: true
+    locked: true,
+    authority_grant: humanGrant(workspaceId)
   }), /explicit human evidence/);
 
   const state = listSourceCanonState(db, workspaceId);
   assert.equal(state.proposals.find(item => item.proposal_id === character.proposal_id).status, 'pending');
   assert.equal(canonSnapshot(db, workspaceId).anchor_count, 0);
+  db.close();
+});
+
+test('proposal approval cannot silently change an existing canon lock', async () => {
+  const db = createDb();
+  const workspaceId = seedWorkspace(db, 'workspace-existing-lock');
+  const baseInput = { workspace_id: workspaceId, kind: 'character', key: 'protagonist.name', value: 'Nia Vale' };
+  setCanonAnchor(db, {
+    ...baseInput,
+    locked: false,
+    evidence: createCanonEvidence({
+      workspace_id: workspaceId,
+      kind: 'character',
+      key: 'protagonist.name',
+      statement: 'Nia Vale',
+      source_ref: 'test:seed-existing',
+      authority: 'human'
+    }),
+    authority_grant: humanGrant(workspaceId)
+  });
+
+  await analyzeStorySource(db, {
+    workspace_id: workspaceId,
+    provider: 'local',
+    content: 'Nia Vale always carries the Moon Key. Nia Vale never leaves a friend behind.'
+  });
+  const proposal = listSourceCanonState(db, workspaceId).proposals.find(item => item.kind === 'character');
+  assert.ok(proposal);
+  const evidence = proposalEvidence({ workspaceId, proposal, key: 'protagonist.name', value: 'Nia Vale' });
+  assert.throws(() => reviewSourceProposal(db, {
+    workspace_id: workspaceId,
+    proposal_id: proposal.proposal_id,
+    decision: 'approve',
+    key: 'protagonist.name',
+    value: 'Nia Vale',
+    locked: true,
+    evidence,
+    authority_grant: humanGrant(workspaceId)
+  }), /cannot change an existing canon lock/);
+  assert.equal(canonSnapshot(db, workspaceId).anchors.character['protagonist.name'].locked, false);
   db.close();
 });
 
