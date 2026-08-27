@@ -22,9 +22,24 @@ function makeDb() {
   return db;
 }
 
+function humanEvidence({ workspace_id, kind, key, value, source_ref = 'test:human-review' }) {
+  return createCanonEvidence({
+    workspace_id,
+    kind,
+    key,
+    statement: String(value),
+    source_ref,
+    authority: 'human'
+  });
+}
+
+function writeHumanCanon(db, input) {
+  return setCanonAnchor(db, { ...input, evidence: humanEvidence(input) });
+}
+
 test('setCanonAnchor creates and retrieves an anchor', () => {
   const db = makeDb();
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'protagonist_name', value: 'Maya' });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'character', key: 'protagonist_name', value: 'Maya' });
   const a = getCanonAnchor(db, 'ws1', 'character', 'protagonist_name');
   assert.ok(a);
   assert.strictEqual(a.value, 'Maya');
@@ -33,8 +48,8 @@ test('setCanonAnchor creates and retrieves an anchor', () => {
 
 test('setCanonAnchor updates an existing anchor', () => {
   const db = makeDb();
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'protagonist_name', value: 'Maya' });
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'protagonist_name', value: 'Maya Chen' });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'character', key: 'protagonist_name', value: 'Maya' });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'character', key: 'protagonist_name', value: 'Maya Chen' });
   const a = getCanonAnchor(db, 'ws1', 'character', 'protagonist_name');
   assert.strictEqual(a.value, 'Maya Chen');
 });
@@ -47,11 +62,21 @@ test('non-human sources cannot write canon even when anchor is unlocked', () => 
   assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic'), null);
 });
 
+test('human source without evidence fails closed before canon mutation', () => {
+  const db = makeDb();
+  assert.throws(() => {
+    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
+  }, /explicit human evidence/);
+  assert.strictEqual(getCanonAnchor(db, 'ws1', 'character', 'name'), null);
+  assert.strictEqual(listCanonChanges(db, 'ws1').length, 0);
+  assert.strictEqual(db.prepare('SELECT COUNT(*) AS count FROM events').get().count, 0);
+});
+
 test('locked canon still permits explicit human correction', () => {
   const db = makeDb();
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic does not exist.', locked: false });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic does not exist.', locked: false });
   lockCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic' });
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic never existed.', locked: true });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'no_magic', value: 'Magic never existed.', locked: true });
   assert.strictEqual(getCanonAnchor(db, 'ws1', 'world_rule', 'no_magic').value, 'Magic never existed.');
 });
 
@@ -108,7 +133,7 @@ test('evidence scope and statement must match the canon mutation', () => {
 
 test('canon mutation, evidence, ledger, and event remain atomic when ledger insert fails', () => {
   const db = makeDb();
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
   const beforeEvents = db.prepare('SELECT COUNT(*) AS count FROM events').get().count;
   const beforeChanges = listCanonChanges(db, 'ws1').length;
   db.exec(`
@@ -120,7 +145,7 @@ test('canon mutation, evidence, ledger, and event remain atomic when ledger inse
   `);
 
   assert.throws(() => {
-    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya' });
+    writeHumanCanon(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya' });
   }, /ledger_fail/);
 
   assert.strictEqual(getCanonAnchor(db, 'ws1', 'character', 'name').value, 'Maya');
@@ -133,8 +158,8 @@ test('change ledger uses monotonic sequence when timestamps tie', () => {
   const originalNow = Date.now;
   Date.now = () => 1770000000000;
   try {
-    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
-    setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya' });
+    writeHumanCanon(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
+    writeHumanCanon(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Amaya' });
   } finally {
     Date.now = originalNow;
   }
@@ -149,9 +174,9 @@ test('change ledger uses monotonic sequence when timestamps tie', () => {
 
 test('canonSnapshot groups anchors by kind', () => {
   const db = makeDb();
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'rule1', value: 'No flying.' });
-  setCanonAnchor(db, { workspace_id: 'ws1', kind: 'tone_constant', key: 'mood', value: 'hopeful' });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'character', key: 'name', value: 'Maya' });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'world_rule', key: 'rule1', value: 'No flying.' });
+  writeHumanCanon(db, { workspace_id: 'ws1', kind: 'tone_constant', key: 'mood', value: 'hopeful' });
   const snap = canonSnapshot(db, 'ws1');
   assert.strictEqual(snap.anchor_count, 3);
   assert.ok(snap.anchors.character);
@@ -168,7 +193,7 @@ test('evaluateCanonFit passes when no anchors set', () => {
 
 test('evaluateCanonFit detects world rule possible contradiction', () => {
   const db = makeDb();
-  setCanonAnchor(db, { workspace_id: 'ws2', kind: 'world_rule', key: 'magic_rule', value: 'Magic does not exist in this story world.' });
+  writeHumanCanon(db, { workspace_id: 'ws2', kind: 'world_rule', key: 'magic_rule', value: 'Magic does not exist in this story world.' });
   const draft = 'There was no magic in the valley, or so they thought. She cast a spell and the stones flew.';
   const result = evaluateCanonFit(db, 'ws2', draft);
   const codes = result.findings.map(f => f.code);
@@ -177,7 +202,7 @@ test('evaluateCanonFit detects world rule possible contradiction', () => {
 
 test('evaluateCanonFit surfaces tone constant as info reminder', () => {
   const db = makeDb();
-  setCanonAnchor(db, { workspace_id: 'ws3', kind: 'tone_constant', key: 'mood', value: 'hopeful' });
+  writeHumanCanon(db, { workspace_id: 'ws3', kind: 'tone_constant', key: 'mood', value: 'hopeful' });
   const result = evaluateCanonFit(db, 'ws3', 'The city was cold and dark and everyone was suffering.');
   const codes = result.findings.map(f => f.code);
   assert.ok(codes.includes('canon_tone_reminder'));
