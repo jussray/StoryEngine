@@ -63,7 +63,7 @@ export function fingerprintCanonEvidence(input) {
 export function createCanonEvidence(input) {
   const payload = normalizedPayload({
     ...input,
-    authority: input.authority || 'human',
+    authority: input.authority,
     established_at: input.established_at || Date.now()
   });
   const evidence = {
