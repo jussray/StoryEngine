@@ -122,6 +122,21 @@ function transitionFingerprint({ workspace_id, anchor_id, kind, key, operation, 
   })).digest('hex');
 }
 
+function assertStoredEvidenceIntegrity(db, evidence) {
+  const existing = db.prepare('SELECT * FROM canon_evidence WHERE evidence_id=?').get(evidence?.evidence_id);
+  if (!existing) return null;
+  let recomputed;
+  try {
+    recomputed = fingerprintCanonEvidence(existing);
+  } catch (error) {
+    throw new Error(`Stored canon evidence is invalid: ${error.message}`);
+  }
+  if (existing.fingerprint !== recomputed || existing.fingerprint !== evidence.fingerprint) {
+    throw new Error('Canon evidence is immutable: stored evidence does not match its fingerprint.');
+  }
+  return existing;
+}
+
 function persistCanonEvidence(db, evidence, { workspace_id, kind, key, value }) {
   if (!evidence) {
     throw new Error('Canon promotion requires explicit human evidence.');
@@ -134,17 +149,8 @@ function persistCanonEvidence(db, evidence, { workspace_id, kind, key, value }) 
     throw new Error('Canon evidence statement does not match the canon value being written.');
   }
 
-  const existing = db.prepare('SELECT * FROM canon_evidence WHERE evidence_id=?').get(evidence.evidence_id);
+  const existing = assertStoredEvidenceIntegrity(db, evidence);
   if (existing) {
-    let recomputed;
-    try {
-      recomputed = fingerprintCanonEvidence(existing);
-    } catch (error) {
-      throw new Error(`Stored canon evidence is invalid: ${error.message}`);
-    }
-    if (existing.fingerprint !== recomputed || existing.fingerprint !== evidence.fingerprint) {
-      throw new Error('Canon evidence is immutable: stored evidence does not match its fingerprint.');
-    }
     return { evidence_id: existing.evidence_id, fingerprint: existing.fingerprint };
   }
 
@@ -177,6 +183,7 @@ function latestAnchorSequence(db, anchor_id) {
 
 function idempotentEvidenceReplay(db, evidence, { workspace_id, kind, key, value, locked }) {
   if (!evidence?.evidence_id) return null;
+  assertStoredEvidenceIntegrity(db, evidence);
   const usage = db.prepare('SELECT * FROM canon_evidence_usage WHERE evidence_id=?').get(evidence.evidence_id);
   if (!usage) {
     const legacyUse = db.prepare(
