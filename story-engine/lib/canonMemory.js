@@ -122,6 +122,18 @@ function transitionFingerprint({ workspace_id, anchor_id, kind, key, operation, 
   })).digest('hex');
 }
 
+function sameNullableValue(left, right) {
+  const a = left == null ? null : String(left);
+  const b = right == null ? null : String(right);
+  return a === b;
+}
+
+function sameNullableLock(left, right) {
+  const a = left == null ? null : Boolean(left);
+  const b = right == null ? null : Boolean(right);
+  return a === b;
+}
+
 function assertStoredEvidenceIntegrity(db, evidence) {
   const existing = db.prepare('SELECT * FROM canon_evidence WHERE evidence_id=?').get(evidence?.evidence_id);
   if (!existing) return null;
@@ -183,7 +195,7 @@ function latestAnchorSequence(db, anchor_id) {
 
 function idempotentEvidenceReplay(db, evidence, { workspace_id, kind, key, value, locked }) {
   if (!evidence?.evidence_id) return null;
-  assertStoredEvidenceIntegrity(db, evidence);
+  const storedEvidence = assertStoredEvidenceIntegrity(db, evidence);
   const usage = db.prepare('SELECT * FROM canon_evidence_usage WHERE evidence_id=?').get(evidence.evidence_id);
   if (!usage) {
     const legacyUse = db.prepare(
@@ -193,6 +205,48 @@ function idempotentEvidenceReplay(db, evidence, { workspace_id, kind, key, value
       throw new Error('Canon evidence replay rejected: this evidence receipt was consumed before transition binding was introduced.');
     }
     return null;
+  }
+
+  if (!storedEvidence) {
+    throw new Error('Canon evidence replay rejected: persisted evidence record is missing.');
+  }
+
+  const recomputedTransition = transitionFingerprint({
+    workspace_id: usage.workspace_id,
+    anchor_id: usage.anchor_id,
+    kind: usage.kind,
+    key: usage.key,
+    operation: usage.operation,
+    previous_value: usage.previous_value,
+    next_value: usage.next_value,
+    previous_locked: usage.previous_locked,
+    next_locked: usage.next_locked
+  });
+  if (usage.transition_fingerprint !== recomputedTransition) {
+    throw new Error('Canon evidence replay rejected: transition binding failed integrity verification.');
+  }
+
+  const ledger = db.prepare(`
+    SELECT sequence, evidence_id, evidence_fingerprint, anchor_id, workspace_id, kind, key,
+           operation, previous_value, next_value, previous_locked, next_locked
+    FROM canon_change_ledger
+    WHERE sequence=?
+  `).get(usage.ledger_sequence);
+  const ledgerMatches = ledger
+    && Number(ledger.sequence) === Number(usage.ledger_sequence)
+    && ledger.evidence_id === evidence.evidence_id
+    && ledger.evidence_fingerprint === storedEvidence.fingerprint
+    && ledger.anchor_id === usage.anchor_id
+    && ledger.workspace_id === usage.workspace_id
+    && ledger.kind === usage.kind
+    && ledger.key === usage.key
+    && ledger.operation === usage.operation
+    && sameNullableValue(ledger.previous_value, usage.previous_value)
+    && String(ledger.next_value) === String(usage.next_value)
+    && sameNullableLock(ledger.previous_locked, usage.previous_locked)
+    && Boolean(ledger.next_locked) === Boolean(usage.next_locked);
+  if (!ledgerMatches) {
+    throw new Error('Canon evidence replay rejected: ledger binding failed integrity verification.');
   }
 
   const anchor = db.prepare(
