@@ -32,6 +32,7 @@ export default defineConfig({
         }
       ]),
       SOURCE_CANON_PROVIDER: process.env.SOURCE_CANON_PROVIDER || 'local',
+      OODA_INTERVAL_MS: '250',
       RUNTIME_SCAN_INTERVAL_MS: '3600000',
       RUNTIME_DRAIN_INTERVAL_MS: '3600000'
     }
