@@ -2,8 +2,20 @@ import { test, expect } from '@playwright/test';
 import { establishBrowserSession } from './session.js';
 
 async function mountBeat(page) {
+  await page.route('**/api/movie/beats/motion-proof', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+    await route.fallback();
+  });
   await establishBrowserSession(page);
   await page.goto('/movie.html?workspace_id=motion-proof');
+  await expect(page.locator('#beats')).toContainText('No beats yet. Generate from chapters.');
   await page.evaluate(() => {
     const beats = document.getElementById('beats');
     const card = document.createElement('div');
