@@ -110,19 +110,24 @@
   <script>
     const contextNote = document.getElementById('contextNote');
     const intentButtons = [...document.querySelectorAll('[data-intent]')];
+    let sessionRole = null;
 
     function syncIntentAvailability() {
       let workspaceLocked = false;
       let runLocked = false;
+      let operatorLocked = false;
 
       for (const button of intentButtons) {
         const intent = button.dataset.intent;
         const resolved = window.L99IntentRouter.resolve(intent);
-        const available = window.L99IntentRouter.isAvailable(intent);
+        const available = window.L99IntentRouter.isAvailable(intent, window.location.href, sessionRole);
         button.disabled = !available;
         button.setAttribute('aria-disabled', String(!available));
 
-        if (!available && resolved?.required_context === 'workspace_id') {
+        if (!available && resolved?.required_role && sessionRole !== resolved.required_role) {
+          operatorLocked = true;
+          button.title = 'Administrator access required.';
+        } else if (!available && resolved?.required_context === 'workspace_id') {
           workspaceLocked = true;
           button.title = 'Open or create a story first.';
         } else if (!available && resolved?.required_context === 'run_id') {
@@ -133,17 +138,35 @@
         }
       }
 
+      const notes = [];
       if (workspaceLocked || runLocked) {
-        contextNote.textContent = 'Open or create a story to unlock workspace actions. Active-run controls appear when a run ID is present.';
-      } else {
-        contextNote.textContent = '';
+        notes.push('Open or create a story to unlock workspace actions. Active-run controls appear when a run ID is present.');
       }
+      if (operatorLocked && sessionRole) {
+        notes.push('System and release operations require an administrator session.');
+      }
+      contextNote.textContent = notes.join(' ');
+    }
+
+    async function refreshIntentAuthority() {
+      try {
+        const auth = await window.L99Auth.ensureSession();
+        sessionRole = auth?.session?.role || null;
+      } catch {
+        sessionRole = null;
+      }
+      syncIntentAvailability();
     }
 
     for (const button of intentButtons) {
-      button.addEventListener('click', () => window.L99IntentRouter.route(button.dataset.intent));
+      button.addEventListener('click', () => window.L99IntentRouter.route(
+        button.dataset.intent,
+        window.location.href,
+        sessionRole
+      ));
     }
     syncIntentAvailability();
+    void refreshIntentAuthority();
 
     const visionEl = document.getElementById('vision');
     const mediumEl = document.getElementById('medium');
