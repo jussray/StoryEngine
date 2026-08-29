@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { establishBrowserSession } from './session.js';
+import {
+  establishBrowserSession,
+  CREATOR_BOOTSTRAP_KEY
+} from './session.js';
 
 const routes = [
   ['Write manuscript', '/chapters.html'],
@@ -15,6 +18,12 @@ const workspaceScopedLabels = [
   'Manage characters, world, and canon',
   'Adapt to video',
   'Inspect releases'
+];
+
+const creatorWorkspaceLabels = [
+  'Write manuscript',
+  'Manage characters, world, and canon',
+  'Adapt to video'
 ];
 
 test('intent router is a public bootstrap asset and scoped intents fail closed without context', async ({ page, request }) => {
@@ -39,7 +48,7 @@ test('intent router is a public bootstrap asset and scoped intents fail closed w
   await expect(page).toHaveURL(/\/front_door\.html$/);
 });
 
-test('workspace context unlocks workspace rooms without fabricating active-run authority', async ({ page }) => {
+test('workspace context unlocks workspace rooms for an administrator without fabricating active-run authority', async ({ page }) => {
   await establishBrowserSession(page);
   await page.goto('/front_door.html?workspace_id=proof-workspace');
 
@@ -47,6 +56,27 @@ test('workspace context unlocks workspace rooms without fabricating active-run a
     await expect(page.getByRole('button', { name: label, exact: false })).toBeEnabled();
   }
   await expect(page.getByRole('button', { name: 'Control current AI run', exact: false })).toBeDisabled();
+});
+
+test('creator sessions can use creator rooms but operator intents fail closed', async ({ page }) => {
+  await establishBrowserSession(page, CREATOR_BOOTSTRAP_KEY);
+  await page.goto('/front_door.html?workspace_id=playwright-allowed-workspace&run_id=proof-run');
+
+  for (const label of creatorWorkspaceLabels) {
+    await expect(page.getByRole('button', { name: label, exact: false })).toBeEnabled();
+  }
+  await expect(page.getByRole('button', { name: 'Control current AI run', exact: false })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Inspect releases', exact: false })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Operate system', exact: false })).toBeDisabled();
+  await expect(page.locator('#contextNote')).toContainText('administrator session');
+
+  const directOperatorRoute = await page.evaluate(() => window.L99IntentRouter.route(
+    'OPERATE',
+    window.location.href,
+    'creator'
+  ));
+  expect(directOperatorRoute).toBe(false);
+  await expect(page).toHaveURL(/\/front_door\.html\?/);
 });
 
 for (const [label, destination] of routes) {
