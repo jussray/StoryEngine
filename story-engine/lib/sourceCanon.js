@@ -359,9 +359,13 @@ export function reviewSourceProposal(db, input = {}) {
   const reviewerRef = evidenceSourceRef.startsWith(expectedSourceRefPrefix)
     ? evidenceSourceRef.slice(expectedSourceRefPrefix.length).trim()
     : '';
-  if (!input.evidence
-      || String(input.evidence.source_version || '') !== expectedSourceVersion
-      || !reviewerRef) {
+  if (!input.evidence) {
+    throw new Error('Source proposal approval requires explicit human evidence.');
+  }
+  if (String(input.evidence.source_version || '') !== expectedSourceVersion) {
+    throw new Error('Source proposal evidence does not match the immutable source hash.');
+  }
+  if (!reviewerRef) {
     throw new Error('Source proposal evidence does not match the exact workspace-scoped source and proposal.');
   }
 
