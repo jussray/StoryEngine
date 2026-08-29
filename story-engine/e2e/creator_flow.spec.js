@@ -63,7 +63,7 @@ test('front door hands the exact run identity to the Story Engine', async ({ pag
   await expect(page.getByTestId('writing-room-link')).toBeVisible();
   await expect(page.getByTestId('writing-room-link')).toHaveAttribute(
     'href',
-    `/chapters.html?workspace_id=${run.workspace_id}`
+    `/chapters.html?workspace_id=${run.workspace_id}&run_id=${run.run_id}`
   );
 
   expect(requestedRunIds).toEqual([run.run_id]);
