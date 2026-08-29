@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import './sqliteTransaction.js';
 import { extractEntities } from './extractEntities.js';
-import { getCanonAnchor, setCanonAnchor } from './canonMemory.js';
+import { getCanonAnchor, setCanonAnchor, transitionCanonAnchor } from './canonMemory.js';
 import { log } from '../models/eventModel.js';
 
 const MAX_SOURCE_CHARS = Number(process.env.STORY_SOURCE_MAX_CHARS || 60_000);
@@ -354,16 +354,26 @@ export function reviewSourceProposal(db, input = {}) {
     throw new Error('Source proposal cannot be approved without its immutable source hash.');
   }
   const expectedSourceVersion = `sha256:${source.content_hash}`;
-  if (!input.evidence || String(input.evidence.source_version || '') !== expectedSourceVersion) {
-    throw new Error('Source proposal evidence does not match the immutable source hash.');
+  const evidenceSourceRef = String(input.evidence?.source_ref || '');
+  const expectedSourceRefPrefix = `source:${source.source_id};proposal:${proposal.proposal_id};reviewer:`;
+  const reviewerRef = evidenceSourceRef.startsWith(expectedSourceRefPrefix)
+    ? evidenceSourceRef.slice(expectedSourceRefPrefix.length).trim()
+    : '';
+  if (!input.evidence
+      || String(input.evidence.source_version || '') !== expectedSourceVersion
+      || !reviewerRef) {
+    throw new Error('Source proposal evidence does not match the exact workspace-scoped source and proposal.');
   }
 
   const existingAnchor = getCanonAnchor(db, workspaceId, finalKind, finalKey);
   let createLocked;
+  let transitionLocked;
   if (existingAnchor) {
-    if (input.locked !== undefined && Boolean(input.locked) !== Boolean(existingAnchor.locked)) {
-      throw new Error('Proposal approval cannot change an existing canon lock; use the dedicated evidence-backed lock path.');
+    const requestedLocked = input.locked === undefined ? Boolean(existingAnchor.locked) : Boolean(input.locked);
+    if (existingAnchor.locked && requestedLocked === false) {
+      throw new Error('Proposal approval cannot unlock canon; use the dedicated evidence-backed unlock path.');
     }
+    transitionLocked = !existingAnchor.locked && requestedLocked === true ? true : undefined;
     createLocked = undefined;
   } else {
     createLocked = input.locked === undefined ? Boolean(proposal.locked) : Boolean(input.locked);
@@ -371,12 +381,13 @@ export function reviewSourceProposal(db, input = {}) {
   const reviewedAt = Date.now();
 
   const promote = db.transaction(() => {
-    const anchor = setCanonAnchor(db, {
+    const write = transitionLocked === true ? transitionCanonAnchor : setCanonAnchor;
+    const anchor = write(db, {
       workspace_id: workspaceId,
       kind: finalKind,
       key: finalKey,
       value: finalValue,
-      locked: createLocked,
+      locked: transitionLocked === true ? true : createLocked,
       source: 'human',
       evidence: input.evidence || null,
       authority_grant: input.authority_grant || null

@@ -64,17 +64,31 @@ For every material candidate, implementation state, review state, merge decision
 
 ### Work fingerprint
 
-A work fingerprint is a deterministic SHA-256 digest over a canonical, normalized payload containing the material identity of the work. Include, when applicable:
+A work fingerprint is a deterministic SHA-256 digest over **one versioned canonical payload**. For schema `l99.work-fingerprint.v1`, every implementation must emit all keys below in this exact order; unknown scalar values are JSON `null`, never omitted:
 
-- repository;
-- target branch;
-- base SHA;
-- exact head SHA;
-- goal;
-- bounded scope / changed surfaces;
-- proof references and proof status.
+```json
+{
+  "schema": "l99.work-fingerprint.v1",
+  "repository": "owner/repo",
+  "target_branch": "main",
+  "base_sha": "40-hex-or-null",
+  "head_sha": "40-hex-or-null",
+  "goal": "normalized text",
+  "scope": ["normalized/path-or-surface"],
+  "proof": [{"ref": "normalized reference", "status": "normalized status"}]
+}
+```
 
-If any material input changes, the fingerprint must change. Evidence attached to an older fingerprint is historical and cannot certify the new state.
+Canonicalization rules are part of the contract:
+
+1. Strings are Unicode NFC, trimmed at both ends, with internal bytes otherwise preserved and encoded as UTF-8.
+2. `scope` is always an array, deduplicated and sorted by UTF-8 byte order.
+3. `proof` is always an array. Normalize each object to exactly `{ "ref", "status" }`, then sort by `ref` and then `status` using UTF-8 byte order.
+4. No extra keys are allowed. No key is omitted. Use JSON `null` for unknown scalar values and `[]` for empty arrays.
+5. Serialize as compact JSON with the exact key order shown above, no insignificant whitespace, and no trailing newline.
+6. Hash the serialized UTF-8 bytes with SHA-256 and render lowercase hex as `sha256:<64-hex>`.
+
+Two builders observing identical normalized state must therefore produce byte-identical payloads and the same digest. Any material input change must change the fingerprint. Evidence attached to an older fingerprint is historical and cannot certify the new state. The fingerprint is an integrity/continuity receipt only; it never creates authentication, approval, merge, deployment, publication, or execution authority.
 
 ### Continuity cookie
 

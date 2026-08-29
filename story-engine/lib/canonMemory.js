@@ -108,6 +108,34 @@ function ensureSchema(db) {
   ensureColumn(db, 'canon_change_ledger', 'approver_actor_id', 'TEXT');
   ensureColumn(db, 'canon_evidence_usage', 'source', 'TEXT');
   ensureColumn(db, 'canon_evidence_usage', 'approver_actor_id', 'TEXT');
+
+  db.prepare(`
+    INSERT OR IGNORE INTO canon_change_ledger (
+      change_id, workspace_id, anchor_id, kind, key, operation, previous_value,
+      next_value, previous_locked, next_locked, source, evidence_id, evidence_fingerprint,
+      created_at, approver_actor_id
+    )
+    SELECT
+      'legacy_baseline:' || a.anchor_id,
+      a.workspace_id,
+      a.anchor_id,
+      a.kind,
+      a.key,
+      'legacy_baseline',
+      NULL,
+      a.value,
+      NULL,
+      a.locked,
+      'legacy-baseline',
+      NULL,
+      NULL,
+      a.created_at,
+      NULL
+    FROM canon_anchors a
+    WHERE NOT EXISTS (
+      SELECT 1 FROM canon_change_ledger c WHERE c.anchor_id = a.anchor_id
+    )
+  `).run();
 }
 
 function now() { return Date.now(); }
@@ -372,7 +400,7 @@ function recordCanonChange(db, {
 
 // ─── Write ────────────────────────────────────────────────────────────────────
 
-export function setCanonAnchor(db, {
+function writeCanonAnchor(db, {
   workspace_id,
   kind,
   key,
@@ -380,7 +408,8 @@ export function setCanonAnchor(db, {
   locked = undefined,
   source = 'human',
   evidence = null,
-  authority_grant = null
+  authority_grant = null,
+  allow_lock_transition = false
 }) {
   ensureSchema(db);
   if (source !== 'human') {
@@ -408,9 +437,11 @@ export function setCanonAnchor(db, {
         approver_actor_id: approverActorId
       });
       if (replay) return replay;
-      if (locked !== undefined && nextLocked !== currentLocked) {
-        throw new Error('Canon lock transitions require the dedicated evidence-backed lock path; updates preserve the current lock state.');
+      const lockChanged = nextLocked !== currentLocked;
+      if (lockChanged && !allow_lock_transition) {
+        throw new Error('Canon lock transitions require the dedicated evidence-backed transition path; ordinary updates preserve the current lock state.');
       }
+      const operation = lockChanged ? (nextLocked ? 'update_lock' : 'update_unlock') : 'update';
 
       persistCanonEvidence(db, evidence, { workspace_id, kind, key, value, approver_actor_id: approverActorId });
       bindEvidenceUsage(db, evidence, {
@@ -418,27 +449,27 @@ export function setCanonAnchor(db, {
         anchor_id: existing.anchor_id,
         kind,
         key,
-        operation: 'update',
+        operation,
         previous_value: existing.value,
         next_value: value,
         previous_locked: currentLocked,
-        next_locked: currentLocked,
+        next_locked: nextLocked,
         source,
         approver_actor_id: approverActorId
       });
       db.prepare(
-        'UPDATE canon_anchors SET value=?, source=?, updated_at=? WHERE anchor_id=?'
-      ).run(String(value), source, t, existing.anchor_id);
+        'UPDATE canon_anchors SET value=?, locked=?, source=?, updated_at=? WHERE anchor_id=?'
+      ).run(String(value), nextLocked ? 1 : 0, source, t, existing.anchor_id);
       const sequence = recordCanonChange(db, {
         workspace_id,
         anchor_id: existing.anchor_id,
         kind,
         key,
-        operation: 'update',
+        operation,
         previous_value: existing.value,
         next_value: value,
         previous_locked: currentLocked,
-        next_locked: currentLocked,
+        next_locked: nextLocked,
         source,
         evidence,
         approver_actor_id: approverActorId,
@@ -448,10 +479,12 @@ export function setCanonAnchor(db, {
       log(db, {
         workspace_id,
         mode: 'canon_memory',
-        event_type: 'canon.anchor.updated',
-        payload: { kind, key, locked: currentLocked, source, evidence_id: evidence.evidence_id, approver_actor_id: approverActorId }
+        event_type: lockChanged
+          ? (nextLocked ? 'canon.anchor.updated_and_locked' : 'canon.anchor.updated_and_unlocked')
+          : 'canon.anchor.updated',
+        payload: { kind, key, locked: nextLocked, source, evidence_id: evidence.evidence_id, approver_actor_id: approverActorId }
       });
-      return { ...existing, value, locked: currentLocked, source, updated_at: t };
+      return { ...existing, value, locked: nextLocked, source, updated_at: t };
     }
 
     const nextLocked = Boolean(locked);
@@ -510,6 +543,17 @@ export function setCanonAnchor(db, {
   });
 
   return commit();
+}
+
+export function setCanonAnchor(db, input) {
+  return writeCanonAnchor(db, input);
+}
+
+export function transitionCanonAnchor(db, input = {}) {
+  if (input.locked !== true) {
+    throw new Error('Composite canon transition supports explicit lock only; use unlockCanonAnchor to unlock.');
+  }
+  return writeCanonAnchor(db, { ...input, allow_lock_transition: true });
 }
 
 export function lockCanonAnchor(db, { workspace_id, kind, key, evidence = null, authority_grant = null }) {
@@ -594,6 +638,93 @@ export function lockCanonAnchor(db, { workspace_id, kind, key, evidence = null, 
       payload: { kind, key, evidence_id: evidence.evidence_id, approver_actor_id: approverActorId }
     });
     return { locked: true, already_locked: false, anchor_id: anchor.anchor_id };
+  });
+
+  return commit();
+}
+
+export function unlockCanonAnchor(db, { workspace_id, kind, key, evidence = null, authority_grant = null }) {
+  ensureSchema(db);
+  const authority = assertCanonAuthorityGrant(authority_grant, workspace_id);
+  const approverActorId = requireApproverActorId(authority.actor_id);
+  const source = 'human';
+
+  const commit = db.transaction(() => {
+    const anchor = db.prepare(
+      'SELECT anchor_id, locked, value FROM canon_anchors WHERE workspace_id=? AND kind=? AND key=?'
+    ).get(workspace_id, kind, key);
+    if (!anchor) throw new Error(`Canon anchor [${kind}/${key}] not found for workspace ${workspace_id}.`);
+
+    if (!anchor.locked) {
+      if (evidence) {
+        const replay = idempotentEvidenceReplay(db, evidence, {
+          workspace_id,
+          kind,
+          key,
+          value: anchor.value,
+          locked: false,
+          source,
+          approver_actor_id: approverActorId
+        });
+        if (replay) {
+          return { locked: false, already_unlocked: true, anchor_id: anchor.anchor_id, idempotent: true };
+        }
+      }
+      return { locked: false, already_unlocked: true, anchor_id: anchor.anchor_id };
+    }
+
+    const replay = idempotentEvidenceReplay(db, evidence, {
+      workspace_id,
+      kind,
+      key,
+      value: anchor.value,
+      locked: false,
+      source,
+      approver_actor_id: approverActorId
+    });
+    if (replay) {
+      return { locked: false, already_unlocked: true, anchor_id: anchor.anchor_id, idempotent: true };
+    }
+
+    const t = now();
+    persistCanonEvidence(db, evidence, { workspace_id, kind, key, value: anchor.value, approver_actor_id: approverActorId });
+    bindEvidenceUsage(db, evidence, {
+      workspace_id,
+      anchor_id: anchor.anchor_id,
+      kind,
+      key,
+      operation: 'unlock',
+      previous_value: anchor.value,
+      next_value: anchor.value,
+      previous_locked: true,
+      next_locked: false,
+      source,
+      approver_actor_id: approverActorId
+    });
+    db.prepare('UPDATE canon_anchors SET locked=0, updated_at=? WHERE anchor_id=?').run(t, anchor.anchor_id);
+    const sequence = recordCanonChange(db, {
+      workspace_id,
+      anchor_id: anchor.anchor_id,
+      kind,
+      key,
+      operation: 'unlock',
+      previous_value: anchor.value,
+      next_value: anchor.value,
+      previous_locked: true,
+      next_locked: false,
+      source,
+      evidence,
+      approver_actor_id: approverActorId,
+      created_at: t
+    });
+    bindEvidenceLedgerSequence(db, evidence.evidence_id, sequence);
+    log(db, {
+      workspace_id,
+      mode: 'canon_memory',
+      event_type: 'canon.anchor.unlocked',
+      payload: { kind, key, evidence_id: evidence.evidence_id, approver_actor_id: approverActorId }
+    });
+    return { locked: false, already_unlocked: false, anchor_id: anchor.anchor_id };
   });
 
   return commit();
