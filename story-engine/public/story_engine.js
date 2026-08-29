@@ -57,7 +57,7 @@ function syncWritingRoomLink(run) {
 
   let link = document.getElementById('writingRoomLink');
   const humanLed = Boolean(
-    run?.workspace_id && ['writer_active', 'co_writer_ready'].includes(run.status)
+    run?.workspace_id && run?.run_id && ['writer_active', 'co_writer_ready'].includes(run.status)
   );
 
   if (!humanLed) {
@@ -73,7 +73,11 @@ function syncWritingRoomLink(run) {
     links.prepend(link);
   }
 
-  link.href = `/chapters.html?workspace_id=${encodeURIComponent(run.workspace_id)}`;
+  const params = new URLSearchParams({
+    workspace_id: run.workspace_id,
+    run_id: run.run_id
+  });
+  link.href = `/chapters.html?${params.toString()}`;
 }
 
 document.querySelectorAll('.type').forEach(button => {
