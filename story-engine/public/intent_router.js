@@ -32,12 +32,14 @@
     RELEASE: {
       label: 'Inspect releases',
       description: 'Review release readiness and blockers.',
-      required_context: 'workspace_id'
+      required_context: 'workspace_id',
+      required_role: 'administrator'
     },
     OPERATE: {
       label: 'Operate system',
       description: 'Open runtime, incidents, and system operations.',
-      required_context: null
+      required_context: null,
+      required_role: 'administrator'
     }
   });
 
@@ -53,9 +55,10 @@
     return new URL(source, window.location.origin);
   }
 
-  function isAvailable(intent, source = window.location.href) {
+  function isAvailable(intent, source = window.location.href, role = null) {
     const resolved = resolve(intent);
     if (!resolved) return false;
+    if (resolved.required_role && role !== resolved.required_role) return false;
     if (!resolved.required_context) return true;
     return Boolean(sourceUrl(source).searchParams.get(resolved.required_context));
   }
@@ -70,9 +73,9 @@
     return `${targetUrl.pathname}${targetUrl.search}`;
   }
 
-  function route(intent, source = window.location.href) {
+  function route(intent, source = window.location.href, role = null) {
     const resolved = resolve(intent);
-    if (!resolved || !isAvailable(intent, source)) return false;
+    if (!resolved || !isAvailable(intent, source, role)) return false;
     window.location.assign(preserveContext(resolved.destination, source));
     return true;
   }
