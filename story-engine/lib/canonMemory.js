@@ -439,7 +439,7 @@ function writeCanonAnchor(db, {
       if (replay) return replay;
       const lockChanged = nextLocked !== currentLocked;
       if (lockChanged && !allow_lock_transition) {
-        throw new Error('Canon lock transitions require the dedicated evidence-backed transition path; ordinary updates preserve the current lock state.');
+        throw new Error('Canon lock transitions require the dedicated evidence-backed lock path; ordinary updates preserve the current lock state.');
       }
       const operation = lockChanged ? (nextLocked ? 'update_lock' : 'update_unlock') : 'update';
 
