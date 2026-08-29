@@ -7,6 +7,19 @@ function percentile(sorted, p) {
   return sorted[Math.max(0, idx)];
 }
 
+export function filterOodaRecordsForIdentity(records = [], identity = {}) {
+  const allowed = new Set(
+    Array.isArray(identity?.workspace_ids)
+      ? identity.workspace_ids.map(value => String(value).trim()).filter(Boolean)
+      : []
+  );
+  if (allowed.has('*')) return [...records];
+  return records.filter(record => {
+    const workspaceId = String(record?.workspace_id || '').trim();
+    return workspaceId && allowed.has(workspaceId);
+  });
+}
+
 export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
   const since = Date.now() - windowMs;
   const rows = db.prepare(`
@@ -33,7 +46,7 @@ export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
     }
     groups[key].total++;
     if (row.duration_ms != null) groups[key].durations.push(row.duration_ms);
-    if (row.rollback) groups[key].rollbacks++;
+    if (row.rollback) group.rollbacks++;
   }
 
   return Object.values(groups).map(group => {
