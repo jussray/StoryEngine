@@ -46,7 +46,7 @@ export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
     }
     groups[key].total++;
     if (row.duration_ms != null) groups[key].durations.push(row.duration_ms);
-    if (row.rollback) group.rollbacks++;
+    if (row.rollback) groups[key].rollbacks++;
   }
 
   return Object.values(groups).map(group => {
