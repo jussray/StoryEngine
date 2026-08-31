@@ -100,7 +100,7 @@ test('unlockCanonAnchor is evidence-backed, ledgered, and fail-closed', () => {
   db.close();
 });
 
-test('legacy anchors receive an idempotent replay baseline without invented approval provenance', () => {
+test('legacy anchors are baselined once and later ledger loss fails closed', () => {
   const db = dbWithEvents();
   db.exec(`CREATE TABLE canon_anchors (
     anchor_id TEXT PRIMARY KEY,
@@ -129,5 +129,19 @@ test('legacy anchors receive an idempotent replay baseline without invented appr
 
   const second = listCanonChanges(db, 'ws-legacy');
   assert.equal(second.length, 1);
+  const migration = db.prepare(
+    'SELECT COUNT(*) AS count FROM canon_schema_migrations WHERE migration_id=?'
+  ).get('canon_change_ledger_legacy_baseline_v1');
+  assert.equal(Number(migration.count), 1);
+
+  db.prepare('DELETE FROM canon_change_ledger WHERE anchor_id=?').run('legacy-1');
+  assert.throws(
+    () => listCanonChanges(db, 'ws-legacy'),
+    /Canon ledger integrity violation: anchor legacy-1 has no change history after canon_change_ledger_legacy_baseline_v1\./
+  );
+  const remaining = db.prepare(
+    'SELECT COUNT(*) AS count FROM canon_change_ledger WHERE anchor_id=?'
+  ).get('legacy-1');
+  assert.equal(Number(remaining.count), 0);
   db.close();
 });

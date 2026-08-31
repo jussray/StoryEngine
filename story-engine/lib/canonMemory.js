@@ -9,6 +9,8 @@ import { log } from '../models/eventModel.js';
 import { assertCanonEvidenceWritable, fingerprintCanonEvidence } from './canonEvidence.js';
 import { assertCanonAuthorityGrant } from './securityContext.js';
 
+const LEGACY_CANON_LEDGER_MIGRATION = 'canon_change_ledger_legacy_baseline_v1';
+
 function ensureColumn(db, table, column, definition) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all();
   if (!columns.some(item => item.name === column)) {
@@ -101,6 +103,11 @@ function ensureSchema(db) {
       FOREIGN KEY(evidence_id) REFERENCES canon_evidence(evidence_id)
     );
     CREATE INDEX IF NOT EXISTS idx_canon_evidence_usage_anchor ON canon_evidence_usage(anchor_id, ledger_sequence DESC);
+
+    CREATE TABLE IF NOT EXISTS canon_schema_migrations (
+      migration_id TEXT PRIMARY KEY,
+      applied_at INTEGER NOT NULL
+    );
   `);
   ensureColumn(db, 'canon_evidence', 'approver_actor_id', 'TEXT');
   ensureColumn(db, 'canon_change_ledger', 'previous_locked', 'INTEGER');
@@ -109,33 +116,58 @@ function ensureSchema(db) {
   ensureColumn(db, 'canon_evidence_usage', 'source', 'TEXT');
   ensureColumn(db, 'canon_evidence_usage', 'approver_actor_id', 'TEXT');
 
-  db.prepare(`
-    INSERT OR IGNORE INTO canon_change_ledger (
-      change_id, workspace_id, anchor_id, kind, key, operation, previous_value,
-      next_value, previous_locked, next_locked, source, evidence_id, evidence_fingerprint,
-      created_at, approver_actor_id
-    )
-    SELECT
-      'legacy_baseline:' || a.anchor_id,
-      a.workspace_id,
-      a.anchor_id,
-      a.kind,
-      a.key,
-      'legacy_baseline',
-      NULL,
-      a.value,
-      NULL,
-      a.locked,
-      'legacy-baseline',
-      NULL,
-      NULL,
-      a.created_at,
-      NULL
+  const migrateLegacyCanonLedger = db.transaction(() => {
+    const applied = db.prepare(
+      'SELECT 1 FROM canon_schema_migrations WHERE migration_id=?'
+    ).get(LEGACY_CANON_LEDGER_MIGRATION);
+    if (applied) return;
+
+    db.prepare(`
+      INSERT OR IGNORE INTO canon_change_ledger (
+        change_id, workspace_id, anchor_id, kind, key, operation, previous_value,
+        next_value, previous_locked, next_locked, source, evidence_id, evidence_fingerprint,
+        created_at, approver_actor_id
+      )
+      SELECT
+        'legacy_baseline:' || a.anchor_id,
+        a.workspace_id,
+        a.anchor_id,
+        a.kind,
+        a.key,
+        'legacy_baseline',
+        NULL,
+        a.value,
+        NULL,
+        a.locked,
+        'legacy-baseline',
+        NULL,
+        NULL,
+        a.created_at,
+        NULL
+      FROM canon_anchors a
+      WHERE NOT EXISTS (
+        SELECT 1 FROM canon_change_ledger c WHERE c.anchor_id = a.anchor_id
+      )
+    `).run();
+    db.prepare(
+      'INSERT INTO canon_schema_migrations (migration_id, applied_at) VALUES (?, ?)'
+    ).run(LEGACY_CANON_LEDGER_MIGRATION, now());
+  });
+  migrateLegacyCanonLedger();
+
+  const ledgerGap = db.prepare(`
+    SELECT a.anchor_id
     FROM canon_anchors a
     WHERE NOT EXISTS (
       SELECT 1 FROM canon_change_ledger c WHERE c.anchor_id = a.anchor_id
     )
-  `).run();
+    LIMIT 1
+  `).get();
+  if (ledgerGap) {
+    throw new Error(
+      `Canon ledger integrity violation: anchor ${ledgerGap.anchor_id} has no change history after ${LEGACY_CANON_LEDGER_MIGRATION}.`
+    );
+  }
 }
 
 function now() { return Date.now(); }
