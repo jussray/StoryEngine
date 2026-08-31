@@ -344,6 +344,9 @@ function idempotentEvidenceReplay(db, evidence, { workspace_id, kind, key, value
     && usage.workspace_id === workspace_id
     && usage.kind === kind
     && usage.key === key
+    && anchor.workspace_id === usage.workspace_id
+    && anchor.kind === usage.kind
+    && anchor.key === usage.key
     && String(usage.next_value) === String(value)
     && Boolean(usage.next_locked) === Boolean(locked)
     && String(anchor.value) === String(value)
