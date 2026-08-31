@@ -1,6 +1,7 @@
 // routes/memory.js
 
 import { json } from '../lib/miniRouter.js';
+import { issueCanonAuthorityGrant, requireHumanAuthority, roleAtLeast } from '../lib/securityContext.js';
 import {
   MEMORY_ENTITY_TYPES,
   getMemorySnapshot,
@@ -11,7 +12,8 @@ import {
   listMemoryDiffs,
   getGenomeContext
 } from '../lib/memoryEngine.js';
-import { canonSnapshot, setCanonAnchor } from '../lib/canonMemory.js';
+import { canonSnapshot, getCanonAnchor, lockCanonAnchor, setCanonAnchor } from '../lib/canonMemory.js';
+import { createCanonEvidence } from '../lib/canonEvidence.js';
 import {
   analyzeStorySource,
   listSourceCanonState,
@@ -31,6 +33,93 @@ function requireCanonField(body, field) {
     throw new Error(`${field} is required for canon.`);
   }
   return String(value).trim();
+}
+
+function canonOverride(value, fallback) {
+  const normalized = String(value ?? '').trim();
+  return normalized || fallback;
+}
+
+function requireCanonReviewer(req) {
+  const actorId = String(req.auth?.actor_id || '').trim();
+  if (!actorId) throw new Error('Authenticated human actor_id is required for canon evidence.');
+  return actorId;
+}
+
+function directCanonEvidence(req, { workspace_id, kind, key, value }) {
+  const reviewer = requireCanonReviewer(req);
+  const requestId = String(req.request_id || '').trim();
+  return createCanonEvidence({
+    workspace_id,
+    kind,
+    key,
+    statement: value,
+    source_ref: `direct-entry:reviewer:${reviewer}`,
+    source_version: requestId ? `request:${requestId}` : null,
+    authority: 'human'
+  });
+}
+
+function directCanonLockEvidence(req, { workspace_id, kind, key, value }) {
+  const reviewer = requireCanonReviewer(req);
+  const requestId = String(req.request_id || '').trim();
+  return createCanonEvidence({
+    workspace_id,
+    kind,
+    key,
+    statement: value,
+    source_ref: `direct-lock:reviewer:${reviewer}`,
+    source_version: requestId ? `request:${requestId}` : null,
+    authority: 'human'
+  });
+}
+
+function proposalCanonEvidence(req, db, workspaceId, proposalId, body) {
+  const proposal = db.prepare(`
+    SELECT proposal_id, source_id, workspace_id, kind, key, value, confidence
+    FROM source_canon_proposals
+    WHERE proposal_id=? AND workspace_id=?
+  `).get(proposalId, workspaceId);
+  if (!proposal) throw new Error('Source proposal not found.');
+
+  const source = db.prepare(`
+    SELECT source_id, content_hash
+    FROM story_sources
+    WHERE source_id=? AND workspace_id=?
+  `).get(proposal.source_id, workspaceId);
+  if (!source?.content_hash) {
+    throw new Error('Source proposal cannot be approved without its immutable source hash.');
+  }
+
+  const reviewer = requireCanonReviewer(req);
+  const kind = canonOverride(body?.kind, proposal.kind);
+  const key = canonOverride(body?.key, proposal.key);
+  const value = canonOverride(body?.value, proposal.value);
+
+  return createCanonEvidence({
+    workspace_id: workspaceId,
+    kind,
+    key,
+    statement: value,
+    source_ref: `source:${proposal.source_id};proposal:${proposal.proposal_id};reviewer:${reviewer}`,
+    source_version: `sha256:${source.content_hash}`,
+    authority: 'human',
+    confidence: proposal.confidence
+  });
+}
+
+function requireCanonAuthority(req, res) {
+  if (!requireHumanAuthority(req, res)) return false;
+  if (!roleAtLeast(req.auth, 'creator')) {
+    json(res, 403, {
+      error: 'canon_role_forbidden',
+      required_role: 'creator',
+      actor_role: req.auth?.role || null,
+      request_id: req.request_id || null
+    });
+    return false;
+  }
+  return true;
 }
 
 export default function memoryRoutes(router, db) {
@@ -54,9 +143,6 @@ export default function memoryRoutes(router, db) {
     }
   });
 
-  // Story Universe authority: human-authored canon anchors are persisted server-side
-  // and remain separate from presentation. Locked anchors cannot be overwritten by
-  // non-human sources inside canonMemory, preserving creator authority across formats.
   router.get('/api/memory/:workspace_id/canon', (req, res) => {
     try {
       json(res, 200, canonSnapshot(db, req.params.workspace_id));
@@ -66,24 +152,64 @@ export default function memoryRoutes(router, db) {
   });
 
   router.post('/api/memory/:workspace_id/canon', (req, res) => {
+    if (!requireCanonAuthority(req, res)) return;
     try {
       const body = req.body || {};
-      const anchor = setCanonAnchor(db, {
-        workspace_id: req.params.workspace_id,
-        kind: requireCanonField(body, 'kind'),
-        key: requireCanonField(body, 'key'),
-        value: requireCanonField(body, 'value'),
-        locked: Boolean(body.locked),
-        source: 'human'
+      const workspaceId = req.params.workspace_id;
+      const kind = requireCanonField(body, 'kind');
+      const key = requireCanonField(body, 'key');
+      const value = requireCanonField(body, 'value');
+      const existingAnchor = getCanonAnchor(db, workspaceId, kind, key);
+      const requestedLocked = body.locked === undefined ? undefined : Boolean(body.locked);
+
+      if (existingAnchor?.locked && requestedLocked === false) {
+        throw new Error('Canon unlock requires a dedicated evidence-backed unlock path; implicit creator unlock is not allowed.');
+      }
+
+      const evidence = directCanonEvidence(req, {
+        workspace_id: workspaceId,
+        kind,
+        key,
+        value
       });
+      const authorityGrant = issueCanonAuthorityGrant(req, workspaceId);
+      const shouldLockExisting = Boolean(existingAnchor && !existingAnchor.locked && requestedLocked === true);
+      const lockEvidence = shouldLockExisting
+        ? directCanonLockEvidence(req, { workspace_id: workspaceId, kind, key, value })
+        : null;
+      const lockAuthorityGrant = shouldLockExisting ? issueCanonAuthorityGrant(req, workspaceId) : null;
+
+      const commit = db.transaction(() => {
+        const updated = setCanonAnchor(db, {
+          workspace_id: workspaceId,
+          kind,
+          key,
+          value,
+          locked: existingAnchor ? undefined : requestedLocked,
+          source: 'human',
+          evidence,
+          authority_grant: authorityGrant
+        });
+
+        if (!shouldLockExisting) return updated;
+
+        lockCanonAnchor(db, {
+          workspace_id: workspaceId,
+          kind,
+          key,
+          evidence: lockEvidence,
+          authority_grant: lockAuthorityGrant
+        });
+        return getCanonAnchor(db, workspaceId, kind, key);
+      });
+
+      const anchor = commit();
       json(res, 201, anchor);
     } catch (error) {
       respondError(res, error);
     }
   });
 
-  // V2.1 source intelligence is deliberately proposal-only. Analysis never writes
-  // canon. The creator must explicitly approve a proposal before canonMemory runs.
   router.get('/api/memory/:workspace_id/sources', (req, res) => {
     try {
       json(res, 200, {
@@ -108,12 +234,21 @@ export default function memoryRoutes(router, db) {
   });
 
   router.post('/api/memory/:workspace_id/proposals/:proposal_id/review', (req, res) => {
+    if (!requireCanonAuthority(req, res)) return;
     try {
-      const result = reviewSourceProposal(db, {
-        ...(req.body || {}),
-        workspace_id: req.params.workspace_id,
-        proposal_id: req.params.proposal_id
-      });
+      const body = req.body || {};
+      const workspaceId = req.params.workspace_id;
+      const proposalId = req.params.proposal_id;
+      const input = {
+        ...body,
+        workspace_id: workspaceId,
+        proposal_id: proposalId
+      };
+      if (String(body.decision || '').trim().toLowerCase() === 'approve') {
+        input.evidence = proposalCanonEvidence(req, db, workspaceId, proposalId, body);
+        input.authority_grant = issueCanonAuthorityGrant(req, workspaceId);
+      }
+      const result = reviewSourceProposal(db, input);
       json(res, 200, result);
     } catch (error) {
       respondError(res, error);
