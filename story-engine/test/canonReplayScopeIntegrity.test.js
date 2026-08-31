@@ -101,11 +101,9 @@ test('idempotent evidence replay rejects a live anchor whose persisted scope was
   const corrupted = db.prepare(
     'SELECT workspace_id, kind, key FROM canon_anchors WHERE anchor_id=?'
   ).get(created.anchor_id);
-  assert.deepEqual(corrupted, {
-    workspace_id: 'ws-corrupted-scope',
-    kind,
-    key
-  });
+  assert.equal(corrupted.workspace_id, 'ws-corrupted-scope');
+  assert.equal(corrupted.kind, kind);
+  assert.equal(corrupted.key, key);
 
   db.close();
 });
