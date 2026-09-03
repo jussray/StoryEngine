@@ -74,8 +74,8 @@ async function saveState() {
 
   saveStatusEl.textContent = 'Saving…';
   try {
-    const state = await api(`/api/lindymode/state/${encodeURIComponent(id)}`, {
-      method: 'PUT',
+    const state = await api(`/api/intents/update-continuity-state/${encodeURIComponent(id)}`, {
+      method: 'POST',
       body: JSON.stringify({
         summary: summaryEl.value,
         pov: povEl.value,
@@ -99,7 +99,7 @@ async function analyzeChapter() {
   }
   analysisResultEl.textContent = 'Analyzing…';
   try {
-    const result = await api(`/api/lindymode/analyze/${chapterId}`, {
+    const result = await api(`/api/intents/check-continuity/${chapterId}`, {
       method: 'POST',
       body: '{}'
     });
@@ -135,7 +135,7 @@ async function loadIncidents() {
     const incidents = await api(`/api/lindymode/incidents/${encodeURIComponent(id)}?limit=100`);
     incidentListEl.innerHTML = incidents.length
       ? incidents.map(incidentCard).join('')
-      : '<p class="subtitle">No Lindymode incidents for this workspace.</p>';
+      : '<p class="subtitle">No continuity incidents for this workspace.</p>';
   } catch (error) {
     incidentListEl.innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
   }
@@ -143,9 +143,9 @@ async function loadIncidents() {
 
 async function recoverIncident(incidentId) {
   try {
-    await api(`/api/lindymode/recover/${encodeURIComponent(incidentId)}`, {
+    await api(`/api/intents/resolve-continuity-incident/${encodeURIComponent(incidentId)}`, {
       method: 'POST',
-      body: JSON.stringify({ recovery_action: 'reviewed_in_lindymode_dashboard' })
+      body: JSON.stringify({ recovery_action: 'reviewed_in_continuity_dashboard' })
     });
     await loadIncidents();
   } catch (error) {
