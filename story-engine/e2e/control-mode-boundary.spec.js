@@ -42,22 +42,33 @@ test('neutral intent boundary rejects caller-selected mode and workflow fields',
   }
 });
 
-test('browser clients request continuity outcomes rather than Lindymode execution', async ({ request }) => {
-  const chapters = await request.get('/chapters.js');
-  expect(chapters.status()).toBe(200);
-  const chaptersSource = await chapters.text();
-  expect(chaptersSource).toContain('/api/intents/check-continuity/');
-  expect(chaptersSource).toContain('/api/intents/resolve-continuity-incident/');
-  expect(chaptersSource).not.toContain('/api/lindymode/analyze/');
-  expect(chaptersSource).not.toContain('/api/lindymode/recover/');
+test('browser clients request continuity outcomes rather than Lindymode execution', async ({ page }) => {
+  await establishBrowserSession(page);
+  await page.goto('/front_door.html?workspace_id=proof-workspace');
 
-  const dashboard = await request.get('/lindymode_dashboard.js');
-  expect(dashboard.status()).toBe(200);
-  const dashboardSource = await dashboard.text();
-  expect(dashboardSource).toContain('/api/intents/check-continuity/');
-  expect(dashboardSource).toContain('/api/intents/update-continuity-state/');
-  expect(dashboardSource).toContain('/api/intents/resolve-continuity-incident/');
-  expect(dashboardSource).not.toContain('/api/lindymode/analyze/');
-  expect(dashboardSource).not.toContain('/api/lindymode/recover/');
-  expect(dashboardSource).not.toContain("method: 'PUT'");
+  const sources = await page.evaluate(async () => {
+    const readProtectedAsset = async (path) => {
+      const response = await fetch(path);
+      return { status: response.status, source: await response.text() };
+    };
+
+    return {
+      chapters: await readProtectedAsset('/chapters.js'),
+      dashboard: await readProtectedAsset('/lindymode_dashboard.js'),
+    };
+  });
+
+  expect(sources.chapters.status).toBe(200);
+  expect(sources.chapters.source).toContain('/api/intents/check-continuity/');
+  expect(sources.chapters.source).toContain('/api/intents/resolve-continuity-incident/');
+  expect(sources.chapters.source).not.toContain('/api/lindymode/analyze/');
+  expect(sources.chapters.source).not.toContain('/api/lindymode/recover/');
+
+  expect(sources.dashboard.status).toBe(200);
+  expect(sources.dashboard.source).toContain('/api/intents/check-continuity/');
+  expect(sources.dashboard.source).toContain('/api/intents/update-continuity-state/');
+  expect(sources.dashboard.source).toContain('/api/intents/resolve-continuity-incident/');
+  expect(sources.dashboard.source).not.toContain('/api/lindymode/analyze/');
+  expect(sources.dashboard.source).not.toContain('/api/lindymode/recover/');
+  expect(sources.dashboard.source).not.toContain("method: 'PUT'");
 });
