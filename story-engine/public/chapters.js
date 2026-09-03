@@ -83,7 +83,7 @@ function resetLindyPanel() {
   currentIncidentId = null;
   lindyBadgeEl.textContent = 'Ready';
   lindyBadgeEl.className = 'health-pill health-good';
-  lindySummaryEl.textContent = 'Run Lindymode when you want a continuity check.';
+  lindySummaryEl.textContent = 'Run a continuity check when you want the system to review this chapter.';
   lindyFindingsEl.innerHTML = '';
   lindyRecoveryEl.classList.add('hidden');
 }
@@ -156,7 +156,7 @@ function renderLindyResult(result) {
   const severityClass = incident.severity === 'sev3' ? 'health-critical' : 'health-watch';
   lindyBadgeEl.textContent = incident.severity === 'sev3' ? 'Critical drift' : 'Review drift';
   lindyBadgeEl.className = `health-pill ${severityClass}`;
-  lindySummaryEl.textContent = incident.reason || 'Lindymode detected story drift.';
+  lindySummaryEl.textContent = incident.reason || 'The continuity engine detected story drift.';
   const findings = Array.isArray(incident.details?.findings) ? incident.details.findings : [];
   lindyFindingsEl.innerHTML = findings.length
     ? `<ul class="finding-list">${findings.map(item => `<li><strong>${escapeHtml(item.type.replaceAll('_', ' '))}</strong><span>${escapeHtml(item.message)}</span></li>`).join('')}</ul>`
@@ -195,9 +195,9 @@ async function analyzeCurrentChapter() {
   if (!currentId) return;
   lindyBadgeEl.textContent = 'Analyzing';
   lindyBadgeEl.className = 'health-pill health-watch';
-  lindySummaryEl.textContent = 'Lindymode is checking continuity, POV, and context budget.';
+  lindySummaryEl.textContent = 'The system is checking continuity, POV, and context budget.';
   try {
-    const result = await api(`/api/lindymode/analyze/${currentId}`, { method: 'POST', body: '{}' });
+    const result = await api(`/api/intents/check-continuity/${currentId}`, { method: 'POST', body: '{}' });
     renderLindyResult(result);
     await loadHealth();
   } catch (error) {
@@ -210,14 +210,14 @@ async function analyzeCurrentChapter() {
 async function markRecovered() {
   if (!currentIncidentId) return;
   try {
-    await api(`/api/lindymode/recover/${encodeURIComponent(currentIncidentId)}`, {
+    await api(`/api/intents/resolve-continuity-incident/${encodeURIComponent(currentIncidentId)}`, {
       method: 'POST',
       body: JSON.stringify({ recovery_action: 'resolved_in_writing_room' })
     });
     currentIncidentId = null;
     lindyBadgeEl.textContent = 'Recovered';
     lindyBadgeEl.className = 'health-pill health-good';
-    lindySummaryEl.textContent = 'Recovery recorded. Run Lindymode again after editing to confirm continuity.';
+    lindySummaryEl.textContent = 'Recovery recorded. Run another continuity check after editing to confirm continuity.';
     lindyFindingsEl.innerHTML = '';
     lindyRecoveryEl.classList.add('hidden');
     await loadHealth();
