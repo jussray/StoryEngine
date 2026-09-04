@@ -11,6 +11,8 @@ import {
 } from '../lib/productBuildControl.js';
 
 const expectedHeadSha = 'b'.repeat(40);
+const CROSS_REPO_FOUNDER_DECISION_HASH = '45a2b662e3d015dcf8482304198b1df804766ed583627992b9d1be2ee76d394d';
+const CROSS_REPO_DIRECTIVE_HASH = '125d224d7aa29b657f0732d0bc209df9d94848708764a5a8e5d74d4e85100247';
 
 function validDirective() {
   const value = {
@@ -24,7 +26,7 @@ function validDirective() {
       expectedHeadSha,
       capabilityPlanHash: 'c'.repeat(64),
     },
-    founderDecisionHash: 'd'.repeat(64),
+    founderDecisionHash: CROSS_REPO_FOUNDER_DECISION_HASH,
     productControlRoomId: 'storyengine-control-room',
     repository: 'jussray/StoryEngine',
     objective: 'Prove one bounded FCR to StoryEngine Control Room execution and receipt loop.',
@@ -47,7 +49,8 @@ function validDirective() {
 test('StoryEngine accepts the exact bounded FCR product build directive', () => {
   const directive = validDirective();
   assert.deepEqual(validateProductBuildDirective(directive, { expectedHeadSha }), []);
-  assert.match(directive.directiveHash, /^[0-9a-f]{64}$/);
+  assert.equal(directive.founderDecisionHash, CROSS_REPO_FOUNDER_DECISION_HASH);
+  assert.equal(directive.directiveHash, CROSS_REPO_DIRECTIVE_HASH);
 });
 
 test('StoryEngine rejects wrong repo, stale head, and widened mutation scope', () => {
