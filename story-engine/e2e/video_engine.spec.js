@@ -47,7 +47,7 @@ async function createAndValidateJob(request, workspaceId, look) {
   return validated;
 }
 
-test('free Story Video Engine validates multiple non-anime styles and reports them in Control Room', async ({ page, request }) => {
+test('free Story Video Engine validates multiple styles and exports an idempotent zero-provider MP4', async ({ page, request }) => {
   const optionsResponse = await request.get('/api/video-engine/options', { headers });
   expect(optionsResponse.ok()).toBe(true);
   const options = await optionsResponse.json();
@@ -84,7 +84,7 @@ test('free Story Video Engine validates multiple non-anime styles and reports th
     dispatch: null
   });
 
-  await createAndValidateJob(request, workspaceId, {
+  const cinematicJob = await createAndValidateJob(request, workspaceId, {
     mode: 'cinematic_3d',
     visual_style: 'cinematic_realism',
     aspect_ratio: '16:9'
@@ -94,6 +94,41 @@ test('free Story Video Engine validates multiple non-anime styles and reports th
     visual_style: 'watercolor_storybook',
     aspect_ratio: '9:16'
   });
+
+  const renderResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(cinematicJob.job_id)}/render`, {
+    headers,
+    data: { scene_count: 6, duration_seconds: 30, fps: 24, width: 320, height: 180 }
+  });
+  expect(renderResponse.status()).toBe(201);
+  const rendered = await renderResponse.json();
+  expect(rendered.status).toBe('complete');
+  expect(rendered.scene_count).toBe(6);
+  expect(rendered.duration_seconds).toBe(30);
+  expect(rendered.actual_cost_usd).toBe(0);
+  expect(rendered.receipt.provider_generation).toBe(false);
+  expect(rendered.receipt.provider_cost_usd).toBe(0);
+  expect(rendered.receipt.motion).toBe('ken_burns_zoompan');
+  expect(rendered.receipt.captions.embedded).toBe(true);
+  expect(rendered.receipt.voiceover.status).toBe('provider_not_configured');
+  expect(rendered.reused).toBe(false);
+  expect(rendered.byte_size).toBeGreaterThan(1000);
+
+  const downloadResponse = await request.get(rendered.download_url, { headers });
+  expect(downloadResponse.status()).toBe(200);
+  expect(downloadResponse.headers()['content-type']).toContain('video/mp4');
+  const mp4 = await downloadResponse.body();
+  expect(mp4.length).toBe(rendered.byte_size);
+  expect(mp4.subarray(4, 12).toString('ascii')).toContain('ftyp');
+
+  const duplicateResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(cinematicJob.job_id)}/render`, {
+    headers,
+    data: { scene_count: 6, duration_seconds: 30, fps: 24, width: 320, height: 180 }
+  });
+  expect(duplicateResponse.status()).toBe(200);
+  const duplicate = await duplicateResponse.json();
+  expect(duplicate.export_id).toBe(rendered.export_id);
+  expect(duplicate.content_hash).toBe(rendered.content_hash);
+  expect(duplicate.reused).toBe(true);
 
   const listResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, { headers });
   expect(listResponse.status()).toBe(200);

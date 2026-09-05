@@ -1,5 +1,6 @@
 // routes/videoEngine.js
 
+import { createReadStream } from 'node:fs';
 import { json } from '../lib/miniRouter.js';
 import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
@@ -10,6 +11,11 @@ import {
   storyVideoEngineOverview,
   validateStoryVideoJob
 } from '../lib/videoEngine.js';
+import {
+  getStoryVideoExport,
+  getStoryVideoExportFile,
+  renderStoryVideoExport
+} from '../lib/videoExport.js';
 
 export default function videoEngineRoutes(router, db) {
   router.get('/api/video-engine/options', (req, res) => {
@@ -70,6 +76,55 @@ export default function videoEngineRoutes(router, db) {
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
+    }
+  });
+
+  router.post('/api/video-engine/jobs/:job_id/render', async (req, res) => {
+    try {
+      const job = getStoryVideoJob(db, req.params.job_id);
+      if (!job) return json(res, 404, { error: 'Video job not found.' });
+      if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
+      const rendered = await renderStoryVideoExport(db, req.params.job_id, req.body || {});
+      json(res, rendered.reused ? 200 : 201, rendered);
+    } catch (error) {
+      const status = error.code === 'FFMPEG_UNAVAILABLE'
+        ? 503
+        : /not found/i.test(error.message)
+          ? 404
+          : /must pass Playwright validation/i.test(error.message)
+            ? 409
+            : 400;
+      json(res, status, { error: error.message, code: error.code || null });
+    }
+  });
+
+  router.get('/api/video-engine/exports/:export_id', (req, res) => {
+    try {
+      const item = getStoryVideoExport(db, req.params.export_id);
+      if (!item) return json(res, 404, { error: 'Video export not found.' });
+      if (!requireWorkspaceAccess(req, res, item.workspace_id)) return;
+      json(res, 200, item);
+    } catch (error) {
+      json(res, 500, { error: error.message });
+    }
+  });
+
+  router.get('/api/video-engine/exports/:export_id/mp4', (req, res) => {
+    try {
+      const item = getStoryVideoExport(db, req.params.export_id);
+      if (!item) return json(res, 404, { error: 'Video export not found.' });
+      if (!requireWorkspaceAccess(req, res, item.workspace_id)) return;
+      const file = getStoryVideoExportFile(db, req.params.export_id);
+      if (!file) return json(res, 404, { error: 'Video export file not found.' });
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': String(file.export.byte_size),
+        'Content-Disposition': `attachment; filename="${file.filename}"`,
+        'Cache-Control': 'private, no-store'
+      });
+      createReadStream(file.path).pipe(res);
+    } catch (error) {
+      json(res, 500, { error: error.message });
     }
   });
 

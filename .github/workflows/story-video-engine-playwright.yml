@@ -1,9 +1,12 @@
 name: Story Video Engine Playwright
 
 on:
-  pull_request:
+  push:
+    branches:
+      - agent/story-video-engine-mvp
     paths:
       - 'story-engine/lib/videoEngine.js'
+      - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/visualStyleCatalog.js'
       - 'story-engine/routes/videoEngine.js'
       - 'story-engine/routes/movie.js'
@@ -11,6 +14,24 @@ on:
       - 'story-engine/public/control_room.html'
       - 'story-engine/e2e/video_engine.spec.js'
       - 'story-engine/test/videoEngine.test.js'
+      - 'story-engine/test/videoExport.test.js'
+      - 'story-engine/Dockerfile'
+      - 'story-engine/lib/lindymodeProcessor.js'
+      - 'story-engine/lib/ipStudio.js'
+      - '.github/workflows/story-video-engine-playwright.yml'
+  pull_request:
+    paths:
+      - 'story-engine/lib/videoEngine.js'
+      - 'story-engine/lib/videoExport.js'
+      - 'story-engine/lib/visualStyleCatalog.js'
+      - 'story-engine/routes/videoEngine.js'
+      - 'story-engine/routes/movie.js'
+      - 'story-engine/public/video_*'
+      - 'story-engine/public/control_room.html'
+      - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/test/videoEngine.test.js'
+      - 'story-engine/test/videoExport.test.js'
+      - 'story-engine/Dockerfile'
       - 'story-engine/lib/lindymodeProcessor.js'
       - 'story-engine/lib/ipStudio.js'
       - '.github/workflows/story-video-engine-playwright.yml'
@@ -25,7 +46,7 @@ env:
 jobs:
   verify-story-video-engine:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: story-engine
@@ -37,11 +58,21 @@ jobs:
           cache: 'npm'
           cache-dependency-path: story-engine/package-lock.json
       - run: npm ci
-      - name: Verify deterministic blueprint and artifact unit contracts
-        run: node --test test/videoEngine.test.js
+      - name: Ensure deterministic MP4 renderer is available
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+      - name: Verify deterministic blueprint, export, and receipt contracts
+        run: node --test test/videoEngine.test.js test/videoExport.test.js
       - run: npx playwright install --with-deps chromium
-      - name: Verify Story Video Engine and Control Room end to end
+      - name: Verify Story Video Engine, MP4 export, and Control Room end to end
         run: npx playwright test e2e/video_engine.spec.js
+      - name: Run exact-head founder truth gate
+        working-directory: .
+        run: python runtime/founder_truth_gate.py
       - name: Upload Story Video Engine proof
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,4 +81,5 @@ jobs:
           path: |
             story-engine/playwright-report/
             story-engine/test-results/
+            artifacts/founder-truth/${{ github.sha }}.json
           if-no-files-found: ignore
