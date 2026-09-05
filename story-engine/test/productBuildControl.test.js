@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 
 import {
   PRODUCT_BUILD_DIRECTIVE_CONTRACT,
   PRODUCT_BUILD_RECEIPT_CONTRACT,
   createProductBuildReceipt,
+  executeProductBuildDirective,
   productBuildDirectiveHash,
   productBuildReceiptHash,
   validateProductBuildDirective,
@@ -46,6 +48,23 @@ function validDirective() {
   return { ...value, directiveHash: productBuildDirectiveHash(value) };
 }
 
+function createEventDb() {
+  const db = new DatabaseSync(':memory:');
+  db.exec(`
+    CREATE TABLE events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id TEXT NOT NULL,
+      mode TEXT,
+      event_type TEXT NOT NULL,
+      payload TEXT,
+      duration_ms INTEGER,
+      rollback INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+  `);
+  return db;
+}
+
 test('StoryEngine accepts the exact bounded FCR product build directive', () => {
   const directive = validDirective();
   assert.deepEqual(validateProductBuildDirective(directive, { expectedHeadSha }), []);
@@ -78,4 +97,26 @@ test('product receipt remains exact-directive-bound and non-authorizing for merg
   assert.equal(receipt.deployPerformed, false);
   assert.equal(receipt.providerMutationPerformed, false);
   assert.equal(receipt.receiptHash, productBuildReceiptHash({ ...receipt, receiptHash: undefined }));
+});
+
+test('replaying the same directive returns the original receipt without a second mutation', () => {
+  const db = createEventDb();
+  try {
+    const directive = validDirective();
+    const first = executeProductBuildDirective(db, directive, { expectedHeadSha });
+    const replay = executeProductBuildDirective(db, directive, { expectedHeadSha });
+
+    assert.deepEqual(replay, first);
+    assert.equal(replay.executionReceiptId, first.executionReceiptId);
+    assert.equal(replay.receiptHash, first.receiptHash);
+
+    const row = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM events
+      WHERE event_type = 'control_room.product_build_directive_executed'
+    `).get();
+    assert.equal(Number(row.count), 1);
+  } finally {
+    db.close();
+  }
 });
