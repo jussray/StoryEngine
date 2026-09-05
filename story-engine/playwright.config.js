@@ -29,9 +29,17 @@ export default defineConfig({
           tenant_id: 'playwright',
           role: 'creator',
           workspace_ids: ['playwright-allowed-workspace']
+        },
+        {
+          key: 'playwright-admin-key',
+          actor_id: 'playwright-fcr-actor',
+          tenant_id: 'founder-control-room',
+          role: 'administrator',
+          workspace_ids: ['*']
         }
       ]),
       SOURCE_CANON_PROVIDER: process.env.SOURCE_CANON_PROVIDER || 'local',
+      OODA_INTERVAL_MS: '250',
       RUNTIME_SCAN_INTERVAL_MS: '3600000',
       RUNTIME_DRAIN_INTERVAL_MS: '3600000'
     }

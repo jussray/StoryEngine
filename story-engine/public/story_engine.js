@@ -51,6 +51,35 @@ function ensureUniverseLink(workspaceId) {
   link.href = `/story_universe.html?workspace_id=${encodeURIComponent(workspaceId)}`;
 }
 
+function syncWritingRoomLink(run) {
+  const links = document.querySelector('.links');
+  if (!links) return;
+
+  let link = document.getElementById('writingRoomLink');
+  const humanLed = Boolean(
+    run?.workspace_id && run?.run_id && ['writer_active', 'co_writer_ready'].includes(run.status)
+  );
+
+  if (!humanLed) {
+    link?.remove();
+    return;
+  }
+
+  if (!link) {
+    link = document.createElement('a');
+    link.id = 'writingRoomLink';
+    link.textContent = 'Writing Room';
+    link.dataset.testid = 'writing-room-link';
+    links.prepend(link);
+  }
+
+  const params = new URLSearchParams({
+    workspace_id: run.workspace_id,
+    run_id: run.run_id
+  });
+  link.href = `/chapters.html?${params.toString()}`;
+}
+
 document.querySelectorAll('.type').forEach(button => {
   button.addEventListener('click', () => {
     document.querySelectorAll('.type').forEach(item => item.classList.remove('active'));
@@ -75,6 +104,7 @@ function shouldPoll(run) {
 function renderRun(run) {
   currentRunId = run.run_id;
   ensureUniverseLink(run.workspace_id);
+  syncWritingRoomLink(run);
   $('runPanel').classList.remove('hidden');
   $('runTitle').textContent = run.intent?.title || 'L99 Pipeline Run';
   const role = run.assist_profile?.assist_mode;

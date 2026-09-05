@@ -51,7 +51,7 @@ function workspacePath(path) {
 }
 
 function wireWorkspaceLinks() {
-  for (const id of ['writerLink', 'bookFormat']) document.getElementById(id).href = workspacePath('/story_engine.html');
+  for (const id of ['writerLink', 'bookFormat']) document.getElementById(id).href = workspacePath('/chapters.html');
   for (const id of ['movieLink', 'movieFormat']) document.getElementById(id).href = workspacePath('/movie.html');
 }
 

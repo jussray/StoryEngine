@@ -10,8 +10,7 @@ L99 is an AI runtime and operations layer focused on state integrity, provenance
 
 A repository-wide code audit is in progress. The runtime and promotion-gate foundations are substantial, but the system is not yet verified as production-safe.
 
-Known release blockers include cryptographic Stripe webhook verification, replacing browser-readable API-key persistence with a hardened authentication/session design, tightening the browser Content Security Policy, proving workspace authorization on every read and mutation path, and rebuilding stale feature branches on current `main` before merge. A present header is not proof of a valid Stripe signature, and passing isolated tests is not a production-readiness claim.
-
+Known release blockers include cryptographic Stripe webhook verification, replacing browser-readable API-key persistence with a hardened authentication/session design, tightening the browser Content Security Policy, proving workspace authorization on every read and mutation path, and keeping existing feature PRs current with `main` through the repository PR Continuity Law before merge. A present header is not proof of a valid Stripe signature, and passing isolated tests is not a production-readiness claim.
 
 ## AI operating contracts
 
@@ -19,6 +18,7 @@ Known release blockers include cryptographic Stripe webhook verification, replac
 - [`CLAUDE.md`](CLAUDE.md) — Claude / Claude Code repository instructions
 - [`AGENTS.md`](AGENTS.md) — Codex, ChatGPT, and repository-agent instructions
 - [`docs/PROVIDERS.md`](docs/PROVIDERS.md) — Claude, Codex, OpenAI, Anthropic, Perplexity, and GitHub boundaries
+- [`docs/PR_CONTINUITY.md`](docs/PR_CONTINUITY.md) — history-preserving same-branch rollover, exact-head proof expiry, stacked-PR ordering, and non-authorizing continuity receipts
 
 Shared founder stack:
 
@@ -62,6 +62,7 @@ The first redteam attacks the premise. The second attacks the selected implement
 - `dashboards/l99_events_dashboard.html` — tenant-first, severity-second, correlation-chain-third live events dashboard.
 - `runtime/promotion_gates.py` — CI promotion gates for provenance, revocation, partition-boundary, event-schema, Lindymode drift, shell-command, and L99 latency failures.
 - `.github/workflows/l99-promotion-gates.yml` — runs the promotion gates in CI.
+- `.github/workflows/pr-continuity.yml` — ATTACK-20-gated continuity audit and trusted-current-main rollover for existing PR branches; head movement always requires fresh exact-head proof.
 - `story-engine/BOOK_TO_SOCIAL_GATE_NOTES.md` — book-to-social creation gate for turning approved source material into TikTok, Instagram, and Facebook-ready draft artifacts without direct publishing.
 - `story-engine/schemas/book_to_social_artifact.schema.json` — reduced metadata contract for book-to-social artifacts.
 
@@ -82,6 +83,8 @@ The first redteam attacks the premise. The second attacks the selected implement
 > Tail latency is where chain failure hides.
 
 > Draft generation is not publishing.
+
+> A current PR ancestry relationship is not current proof. Any changed head must earn CI, review, runtime, provider, artifact, and Playwright evidence again where applicable.
 
 ## Request path
 

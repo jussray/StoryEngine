@@ -23,6 +23,14 @@ test('Story Universe persists creator-locked canon through the real runtime', as
   await expect(page.getByTestId('story-universe')).toBeVisible();
   await expect(page.locator('#pageStatus')).toContainText('Runtime connected');
   await expect(page.locator('#anchorCount')).toHaveText('0');
+  await expect(page.locator('#writerLink')).toHaveAttribute(
+    'href',
+    `/chapters.html?workspace_id=${encodeURIComponent(workspaceId)}`
+  );
+  await expect(page.locator('#bookFormat')).toHaveAttribute(
+    'href',
+    `/chapters.html?workspace_id=${encodeURIComponent(workspaceId)}`
+  );
 
   await page.locator('#kind').selectOption('character');
   await page.locator('#key').fill('protagonist.name');
@@ -61,4 +69,5 @@ test('Story Universe persists creator-locked canon through the real runtime', as
     'href',
     `/story_universe.html?workspace_id=${encodeURIComponent(workspaceId)}`
   );
+  await expect(page.getByTestId('writing-room-link')).toHaveCount(0);
 });

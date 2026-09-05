@@ -7,11 +7,12 @@ import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
-import db from './config/db.js';
+import db, { dbPath } from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
 import { requestContext, requireAuth, enforceWorkspaceAccess, enforceOperatorApiBoundary, securitySnapshot } from './lib/securityContext.js';
 import { enforcePageAccess } from './lib/pageGuard.js';
-import { startOODALoop } from './lib/oodaProcessor.js';
+import { filterOodaRecordsForIdentity } from './lib/oodaProcessor.js';
+import { startOodaWorkerLoop } from './lib/oodaWorkerLoop.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
 import { publicL99GuardrailSnapshot, renderL99GuardrailPage } from './lib/guardrails.js';
@@ -35,6 +36,7 @@ import eventRetentionRoutes from './routes/eventRetention.js';
 import releaseGateRoutes from './routes/releaseGate.js';
 import releaseAttemptRoutes from './routes/releaseAttempts.js';
 import controlRoomRoutes from './routes/controlRoom.js';
+import productBuildControlRoutes from './routes/productBuildControl.js';
 import memoryRoutes from './routes/memory.js';
 import performanceRoutes from './routes/performance.js';
 import studioRoutes from './routes/studio.js';
@@ -87,6 +89,7 @@ eventRetentionRoutes(router, db);
 releaseGateRoutes(router, db);
 releaseAttemptRoutes(router, db);
 controlRoomRoutes(router, db);
+productBuildControlRoutes(router, db);
 memoryRoutes(router, db);
 performanceRoutes(router, db);
 studioRoutes(router, db);
@@ -103,7 +106,7 @@ campaignStudioRoutes(router, db);
 bootstrapEngineRoutes(router, db);
 ipSeedRoutes(router, db);
 
-const oodaClients = new Set();
+const oodaClients = new Map();
 let latestIncidents = [];
 
 function sendSse(res, name, data) {
@@ -111,12 +114,23 @@ function sendSse(res, name, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
+function workspaceIdentitySnapshot(identity = {}) {
+  return {
+    workspace_ids: Array.isArray(identity?.workspace_ids)
+      ? identity.workspace_ids.map(String)
+      : []
+  };
+}
+
 function broadcastIncidents(incidents) {
   latestIncidents = incidents;
-  for (const res of oodaClients) sendSse(res, 'incidents', incidents);
+  for (const [res, identity] of oodaClients) {
+    sendSse(res, 'incidents', filterOodaRecordsForIdentity(incidents, identity));
+  }
 }
 
 function openOodaStream(req, res) {
+  const identity = workspaceIdentitySnapshot(req.auth);
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-store',
@@ -124,8 +138,8 @@ function openOodaStream(req, res) {
     'X-Accel-Buffering': 'no'
   });
   sendSse(res, 'heartbeat', { t: Date.now(), request_id: req.request_id });
-  sendSse(res, 'incidents', latestIncidents);
-  oodaClients.add(res);
+  sendSse(res, 'incidents', filterOodaRecordsForIdentity(latestIncidents, identity));
+  oodaClients.set(res, identity);
   req.on('close', () => oodaClients.delete(res));
 }
 
@@ -234,10 +248,15 @@ server.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 120_000);
 server.headersTimeout = Number(process.env.HTTP_HEADERS_TIMEOUT_MS || 15_000);
 server.keepAliveTimeout = Number(process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS || 5_000);
 
-startOODALoop(db, 30_000, incidents => {
-  console.log(`[OODA] Active incidents: ${incidents.length}`);
-  broadcastIncidents(incidents);
-});
+startOodaWorkerLoop(
+  dbPath,
+  Number(process.env.OODA_INTERVAL_MS || 30_000),
+  incidents => {
+    console.log(`[OODA] Active incidents: ${incidents.length}`);
+    broadcastIncidents(incidents);
+  },
+  error => console.error('[OODA] Periodic worker failed:', error)
+);
 
 startRuntimeScheduler(db, {
   scanIntervalMs: Number(process.env.RUNTIME_SCAN_INTERVAL_MS || 300000),
