@@ -2,6 +2,7 @@
 
 import { json } from '../lib/miniRouter.js';
 import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
+import { validateVisualWonder } from '../lib/visualWonder.js';
 import {
   VIDEO_ENGINE_OPTIONS,
   createStoryVideoJob,
@@ -28,7 +29,9 @@ export default function videoEngineRoutes(router, db) {
     if (!workspaceId) return json(res, 400, { error: 'workspace_id is required.' });
     if (!requireWorkspaceAccess(req, res, workspaceId)) return;
     try {
-      json(res, 201, createStoryVideoJob(db, req.body || {}));
+      const visualWonder = validateVisualWonder(req.body || {});
+      const job = createStoryVideoJob(db, req.body || {});
+      json(res, 201, { ...job, visual_wonder: visualWonder });
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
