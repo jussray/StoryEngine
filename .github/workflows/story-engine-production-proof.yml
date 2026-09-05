@@ -30,6 +30,7 @@ jobs:
       EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
       PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}
       PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}
+      STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
     defaults:
       run:
         working-directory: story-engine
@@ -56,6 +57,8 @@ jobs:
           cache: 'npm'
           cache-dependency-path: story-engine/package-lock.json
       - run: npm ci
+      - name: Enforce deployment provider authority
+        run: node deployment/providerAuthority.js
       - run: npx playwright install --with-deps chromium
       - name: Verify deployed health and exact runtime identity
         run: |
