@@ -24,6 +24,7 @@ async function createAndValidateJob(request, workspaceId, look) {
   expect(job.blueprint.preview_renderer).toBe('motion_book_html');
   expect(job.blueprint.cost_plan.estimated_cost_usd).toBe(0);
   expect(job.blueprint.shot_count).toBeGreaterThan(0);
+  expect(job.visual_wonder.state).toBe('NOT_REQUIRED_FOR_INTERNAL_DRAFT');
 
   const artifactResponse = await request.get(`/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/html`, { headers });
   expect(artifactResponse.ok()).toBe(true);
@@ -47,7 +48,7 @@ async function createAndValidateJob(request, workspaceId, look) {
   return validated;
 }
 
-test('free Story Video Engine validates multiple non-anime styles and reports them in Control Room', async ({ page, request }) => {
+test('free Story Video Engine validates multiple non-anime styles and gates public hero output through Visual Wonder', async ({ page, request }) => {
   const optionsResponse = await request.get('/api/video-engine/options', { headers });
   expect(optionsResponse.ok()).toBe(true);
   const options = await optionsResponse.json();
@@ -84,6 +85,57 @@ test('free Story Video Engine validates multiple non-anime styles and reports th
     dispatch: null
   });
 
+  const blockedHero = await request.post('/api/video-engine/jobs', {
+    headers,
+    data: {
+      workspace_id: workspaceId,
+      mode: 'cinematic_3d',
+      visual_style: 'cinematic_realism',
+      quality: 'hero',
+      aspect_ratio: '9:16'
+    }
+  });
+  expect(blockedHero.status()).toBe(400);
+  await expect(blockedHero.json()).resolves.toMatchObject({
+    error: expect.stringContaining('VISUAL_WONDER_REJECTED')
+  });
+
+  const heroResponse = await request.post('/api/video-engine/jobs', {
+    headers,
+    data: {
+      workspace_id: workspaceId,
+      mode: 'cinematic_3d',
+      visual_style: 'cinematic_realism',
+      quality: 'hero',
+      aspect_ratio: '9:16',
+      public_facing: true,
+      visual_wonder: {
+        thesis: 'A girl chooses whether to follow a mysterious signal through a storm.',
+        creative_mode: 'character-story',
+        emotional_intent: ['wonder', 'tension'],
+        visual_hook: 'A violet paper bird glows once in a rain-black street, then the whole storm seems to lean toward it.',
+        scene_concept: 'Turn the invitation into a tiny impossible beacon inside a huge moving storm so the choice feels larger than the literal paper bird.',
+        motion_language: 'Rain sweeps sideways, the camera pushes slowly toward the still bird, then motion briefly suspends before Nia moves.',
+        human_outcome: 'Let the viewer feel the weight and possibility of choosing curiosity in uncertainty.',
+        proof_truth_boundary: 'The render expresses the story source only and must not invent canon-changing events.',
+        memory_line: 'Sometimes wonder asks you to move first.',
+        preserves_human_agency: true,
+        uses_manipulative_dark_patterns: false
+      }
+    }
+  });
+  expect(heroResponse.status()).toBe(201);
+  const hero = await heroResponse.json();
+  expect(hero.visual_wonder.state).toBe('CONCEPT_GATE_PASSED');
+  expect(hero.visual_wonder.attack_2000.reasoning_pressure_budget).toBe(2000);
+  expect(hero.visual_wonder.attack_2000.external_test_count_claimed).toBe(false);
+  const heroArtifact = await request.get(`/api/video-engine/jobs/${encodeURIComponent(hero.job_id)}/html`, { headers });
+  expect(heroArtifact.ok()).toBe(true);
+  expect(await heroArtifact.text()).toContain('data-testid="l99-video-artifact"');
+  const heroValidation = await request.post(`/api/video-engine/jobs/${encodeURIComponent(hero.job_id)}/validate`, { headers, data: {} });
+  expect(heroValidation.status()).toBe(200);
+  expect((await heroValidation.json()).validation.playwright.passed).toBe(true);
+
   await createAndValidateJob(request, workspaceId, {
     mode: 'cinematic_3d',
     visual_style: 'cinematic_realism',
@@ -99,7 +151,7 @@ test('free Story Video Engine validates multiple non-anime styles and reports th
   expect(listResponse.status()).toBe(200);
   const listedJobs = await listResponse.json();
   expect(Array.isArray(listedJobs)).toBe(true);
-  expect(listedJobs.length).toBeGreaterThanOrEqual(2);
+  expect(listedJobs.length).toBeGreaterThanOrEqual(3);
 
   const forbiddenListResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, {
     headers: scopedHeaders
