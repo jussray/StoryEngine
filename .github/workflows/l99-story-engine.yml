@@ -69,6 +69,10 @@ jobs:
         working-directory: story-engine
         run: node bench/oodaSqlCandidate.mjs --output ../artifacts/ooda-sql-candidate.json
 
+      - name: Measure OODA worker isolation candidate
+        working-directory: story-engine
+        run: node bench/oodaWorkerCandidate.mjs --output ../artifacts/ooda-worker-candidate.json
+
       - name: Retain performance gate evidence
         uses: actions/upload-artifact@v4
         with:
