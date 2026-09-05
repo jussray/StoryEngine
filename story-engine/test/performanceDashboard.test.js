@@ -10,6 +10,10 @@ import { buildPerformanceDashboard } from '../lib/performanceDashboard.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
 
+function isMetricWindowQuery(sql) {
+  return /SELECT\s+workspace_id,\s*mode,\s*event_type,\s*duration_ms,\s*rollback\s+FROM events\s+WHERE created_at >= \?/s.test(sql);
+}
+
 function createDb() {
   const db = new DatabaseSync(':memory:');
   db.exec(schema);
@@ -132,4 +136,39 @@ test('performance dashboard includes Release Gate pressure', () => {
   assert.equal(dashboard.gate_pressure.gates[0].status, 'BLOCKED');
   assert.ok(dashboard.incidents.some(item => item.event_type === 'GENOME_DRIFT'));
   db.close();
+});
+
+test('default performance dashboard reuses its OODA metric window for incidents', () => {
+  const raw = createDb();
+  let metricScans = 0;
+  const db = {
+    prepare(sql) {
+      if (isMetricWindowQuery(sql)) metricScans += 1;
+      return raw.prepare(sql);
+    }
+  };
+  const workspaceId = seedWorkspace(db);
+  insertEvent(db, workspaceId, 120);
+
+  const dashboard = buildPerformanceDashboard(db);
+  assert.equal(metricScans, 1);
+  assert.equal(dashboard.endpoint_metrics.length, 1);
+  raw.close();
+});
+
+test('custom performance window preserves the independent default OODA incident window', () => {
+  const raw = createDb();
+  let metricScans = 0;
+  const db = {
+    prepare(sql) {
+      if (isMetricWindowQuery(sql)) metricScans += 1;
+      return raw.prepare(sql);
+    }
+  };
+  const workspaceId = seedWorkspace(db);
+  insertEvent(db, workspaceId, 120);
+
+  buildPerformanceDashboard(db, { windowMs: 5 * 60 * 1000 });
+  assert.equal(metricScans, 2);
+  raw.close();
 });
