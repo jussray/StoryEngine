@@ -120,3 +120,25 @@ test('replaying the same directive returns the original receipt without a second
     db.close();
   }
 });
+
+test('product-build execution fails closed when an outer deferred transaction could weaken the mutation lock', () => {
+  const db = createEventDb();
+  try {
+    db.exec('BEGIN');
+    assert.throws(
+      () => executeProductBuildDirective(db, validDirective(), { expectedHeadSha }),
+      /top-level immediate transaction/,
+    );
+    db.exec('ROLLBACK');
+
+    const row = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM events
+      WHERE event_type = 'control_room.product_build_directive_executed'
+    `).get();
+    assert.equal(Number(row.count), 0);
+  } finally {
+    if (db.isTransaction) db.exec('ROLLBACK');
+    db.close();
+  }
+});
