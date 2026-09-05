@@ -17,6 +17,9 @@ on:
       - 'story-engine/playwright.production.config.js'
       - 'story-engine/test/videoEngine.test.js'
       - 'story-engine/test/videoExport.test.js'
+      - 'story-engine/test/providerAuthority.test.js'
+      - 'story-engine/deployment/providerAuthority.js'
+      - 'story-engine/deployment/runtime-contract.json'
       - 'story-engine/Dockerfile'
       - 'story-engine/lib/lindymodeProcessor.js'
       - 'story-engine/lib/ipStudio.js'
@@ -36,6 +39,9 @@ on:
       - 'story-engine/playwright.production.config.js'
       - 'story-engine/test/videoEngine.test.js'
       - 'story-engine/test/videoExport.test.js'
+      - 'story-engine/test/providerAuthority.test.js'
+      - 'story-engine/deployment/providerAuthority.js'
+      - 'story-engine/deployment/runtime-contract.json'
       - 'story-engine/Dockerfile'
       - 'story-engine/lib/lindymodeProcessor.js'
       - 'story-engine/lib/ipStudio.js'
@@ -71,8 +77,12 @@ jobs:
             sudo apt-get install -y ffmpeg
           fi
           ffmpeg -version | head -n 1
-      - name: Verify deterministic blueprint, export, and receipt contracts
-        run: node --test test/videoEngine.test.js test/videoExport.test.js
+      - name: Verify deterministic blueprint, export, receipt, and provider-authority contracts
+        run: node --test test/videoEngine.test.js test/videoExport.test.js test/providerAuthority.test.js
+      - name: Verify canonical deployment target class
+        env:
+          STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
+        run: node deployment/providerAuthority.js
       - run: npx playwright install --with-deps chromium
       - name: Verify Story Video Engine, MP4 export, and Control Room end to end
         run: npx playwright test e2e/video_engine.spec.js
