@@ -142,6 +142,9 @@ test('default performance dashboard reuses its OODA metric window for incidents'
   const raw = createDb();
   let metricScans = 0;
   const db = {
+    exec(sql) {
+      return raw.exec(sql);
+    },
     prepare(sql) {
       if (isMetricWindowQuery(sql)) metricScans += 1;
       return raw.prepare(sql);
@@ -160,6 +163,9 @@ test('custom performance window preserves the independent default OODA incident 
   const raw = createDb();
   let metricScans = 0;
   const db = {
+    exec(sql) {
+      return raw.exec(sql);
+    },
     prepare(sql) {
       if (isMetricWindowQuery(sql)) metricScans += 1;
       return raw.prepare(sql);
