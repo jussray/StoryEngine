@@ -11,6 +11,7 @@ const SHA256 = /^[0-9a-f]{64}$/i;
 const FULL_SHA = /^[0-9a-f]{40}$/i;
 const FIRST_ACTUATOR_SCOPE = 'control-room:event-log';
 const FEDERATION_CAPABILITY = 'founder-control-room-federation';
+const PRODUCT_BUILD_EVENT = 'control_room.product_build_directive_executed';
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -160,25 +161,43 @@ export function createProductBuildReceipt(directive, eventRecord) {
   return { ...withoutHash, receiptHash: productBuildReceiptHash(withoutHash) };
 }
 
+function findExecutedDirectiveEvent(db, directiveHash) {
+  return db.prepare(`
+    SELECT id, created_at
+    FROM events
+    WHERE workspace_id = ?
+      AND event_type = ?
+      AND json_extract(payload, '$.directive_hash') = ?
+    ORDER BY id ASC
+    LIMIT 1
+  `).get('control-room', PRODUCT_BUILD_EVENT, directiveHash) || null;
+}
+
 export function executeProductBuildDirective(db, directive, options = {}) {
   const errors = validateProductBuildDirective(directive, options);
   if (errors.length > 0) throw new Error(errors.join('; '));
 
-  const event = log(db, {
-    workspace_id: 'control-room',
-    mode: 'control_room',
-    event_type: 'control_room.product_build_directive_executed',
-    payload: {
-      directive_hash: directive.directiveHash,
-      proposal_id: directive.proposal.proposalId,
-      capability_plan_hash: directive.proposal.capabilityPlanHash,
-      expected_head_sha: directive.proposal.expectedHeadSha,
-      product_control_room_id: STORYENGINE_PRODUCT_CONTROL_ROOM_ID,
-      repository: STORYENGINE_REPOSITORY,
-      changed_resource: FIRST_ACTUATOR_SCOPE,
-    },
-    rollback: true,
+  const directiveHash = text(directive.directiveHash).toLowerCase();
+  const executeOnce = db.transaction(() => {
+    const existing = findExecutedDirectiveEvent(db, directiveHash);
+    if (existing) return existing;
+
+    return log(db, {
+      workspace_id: 'control-room',
+      mode: 'control_room',
+      event_type: PRODUCT_BUILD_EVENT,
+      payload: {
+        directive_hash: directiveHash,
+        proposal_id: directive.proposal.proposalId,
+        capability_plan_hash: directive.proposal.capabilityPlanHash,
+        expected_head_sha: directive.proposal.expectedHeadSha,
+        product_control_room_id: STORYENGINE_PRODUCT_CONTROL_ROOM_ID,
+        repository: STORYENGINE_REPOSITORY,
+        changed_resource: FIRST_ACTUATOR_SCOPE,
+      },
+      rollback: true,
+    });
   });
 
-  return createProductBuildReceipt(directive, event);
+  return createProductBuildReceipt(directive, executeOnce());
 }
