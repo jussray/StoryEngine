@@ -173,12 +173,28 @@ function findExecutedDirectiveEvent(db, directiveHash) {
   `).get('control-room', PRODUCT_BUILD_EVENT, directiveHash) || null;
 }
 
+function withProductBuildMutationLock(db, work) {
+  if (db.isTransaction) {
+    throw new Error('product build execution requires a top-level immediate transaction');
+  }
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = work();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* best-effort rollback */ }
+    throw error;
+  }
+}
+
 export function executeProductBuildDirective(db, directive, options = {}) {
   const errors = validateProductBuildDirective(directive, options);
   if (errors.length > 0) throw new Error(errors.join('; '));
 
   const directiveHash = text(directive.directiveHash).toLowerCase();
-  const executeOnce = db.transaction(() => {
+  const event = withProductBuildMutationLock(db, () => {
     const existing = findExecutedDirectiveEvent(db, directiveHash);
     if (existing) return existing;
 
@@ -199,5 +215,5 @@ export function executeProductBuildDirective(db, directive, options = {}) {
     });
   });
 
-  return createProductBuildReceipt(directive, executeOnce());
+  return createProductBuildReceipt(directive, event);
 }
