@@ -1,9 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { establishBrowserSession } from './session.js';
+import {
+  establishBrowserSession,
+  ADMIN_BOOTSTRAP_KEY,
+  CREATOR_BOOTSTRAP_KEY
+} from './session.js';
 
-const apiKey = 'playwright-test-key';
-const headers = { 'x-api-key': apiKey, 'Content-Type': 'application/json' };
-const scopedHeaders = { 'x-api-key': 'playwright-scoped-key', 'Content-Type': 'application/json' };
+const headers = { 'x-api-key': ADMIN_BOOTSTRAP_KEY, 'Content-Type': 'application/json' };
+const scopedHeaders = { 'x-api-key': CREATOR_BOOTSTRAP_KEY, 'Content-Type': 'application/json' };
 
 async function createAndValidateJob(request, workspaceId, look) {
   const jobResponse = await request.post('/api/video-engine/jobs', {

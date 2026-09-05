@@ -1,0 +1,101 @@
+name: StoryEngine Production Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      production_origin:
+        description: Canonical HTTPS StoryEngine production origin
+        required: true
+        type: string
+      release_sha:
+        description: Exact 40-character Git SHA deployed at the production origin
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storyengine-production-proof
+  cancel-in-progress: false
+
+jobs:
+  verify-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      PRODUCTION_ORIGIN: ${{ inputs.production_origin }}
+      EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
+      PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}
+      PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}
+    defaults:
+      run:
+        working-directory: story-engine
+    steps:
+      - name: Validate proof inputs
+        working-directory: .
+        run: |
+          set -euo pipefail
+          [[ "$PRODUCTION_ORIGIN" =~ ^https:// ]] || { echo 'production_origin must be HTTPS' >&2; exit 1; }
+          [[ "$EXPECTED_RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'release_sha must be an exact 40-character Git SHA' >&2; exit 1; }
+          test -n "$PLAYWRIGHT_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY' >&2; exit 1; }
+          test -n "$PLAYWRIGHT_SCOPED_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_SCOPED_API_KEY' >&2; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+      - name: Prove immutable checkout
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: story-engine/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify deployed health and exact runtime identity
+        run: |
+          node --input-type=module <<'NODE'
+          const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
+          const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
+          const readJson = async path => {
+            const response = await fetch(`${origin}${path}`, { redirect: 'error' });
+            if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`);
+            return response.json();
+          };
+          const health = await readJson('/healthz');
+          const identity = await readJson('/runtime-identity');
+          if (health.status !== 'ok') throw new Error(`healthz status=${health.status}`);
+          if (String(health.release_sha).toLowerCase() !== expected) throw new Error('healthz release SHA mismatch');
+          if (String(identity.release_sha).toLowerCase() !== expected) throw new Error('runtime-identity release SHA mismatch');
+          if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
+          if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
+          if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
+          console.log(JSON.stringify({ health, identity }, null, 2));
+          NODE
+      - name: Verify production Story to MP4 path in real Chromium
+        run: npx playwright test e2e/video_engine.spec.js --config=playwright.production.config.js
+      - name: Reverify exact runtime identity after browser mutation path
+        run: |
+          node --input-type=module <<'NODE'
+          const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
+          const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
+          const response = await fetch(`${origin}/runtime-identity`, { redirect: 'error' });
+          if (!response.ok) throw new Error(`runtime-identity returned HTTP ${response.status}`);
+          const identity = await response.json();
+          if (String(identity.release_sha).toLowerCase() !== expected) throw new Error('runtime identity changed during proof');
+          console.log(JSON.stringify(identity, null, 2));
+          NODE
+      - name: Upload production Playwright proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storyengine-production-proof-${{ inputs.release_sha }}
+          path: |
+            story-engine/playwright-report/
+            story-engine/test-results/
+          if-no-files-found: ignore
