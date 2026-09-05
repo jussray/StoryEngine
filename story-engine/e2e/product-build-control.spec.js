@@ -4,13 +4,13 @@ import {
   productBuildDirectiveHash,
 } from '../lib/productBuildControl.js';
 
-function buildDirective() {
+function buildDirective(suffix = '001') {
   const expectedHeadSha = String(process.env.EXPECTED_HEAD_SHA || 'b'.repeat(40)).toLowerCase();
   const value = {
     contract: PRODUCT_BUILD_DIRECTIVE_CONTRACT,
-    directiveId: 'build-storyengine-playwright-001',
+    directiveId: `build-storyengine-playwright-${suffix}`,
     proposal: {
-      proposalId: 'chief-storyengine-playwright-001',
+      proposalId: `chief-storyengine-playwright-${suffix}`,
       proposalHash: 'a'.repeat(64),
       projectSlug: 'l99',
       actionType: 'build-product-control-room-loop',
@@ -71,6 +71,31 @@ test('FCR-bound scoped administrator executes one bounded StoryEngine Control Ro
   expect(body.receipt.receiptHash).toMatch(/^[0-9a-f]{64}$/);
   expect(body.authority).toMatchObject({
     execution_authorized_by_directive: true,
+    merge_authorized: false,
+    deploy_authorized: false,
+    provider_mutation_authorized: false,
+    external_proof_still_required: true,
+  });
+});
+
+test('replaying the exact directive returns the original receipt instead of mutating twice', async ({ request }) => {
+  const directive = buildDirective('replay-001');
+  const post = () => request.post('/api/control-room/product-build/execute', {
+    headers: { 'x-api-key': 'playwright-admin-key' },
+    data: directive,
+  });
+
+  const firstResponse = await post();
+  const replayResponse = await post();
+  expect(firstResponse.status()).toBe(200);
+  expect(replayResponse.status()).toBe(200);
+
+  const first = await firstResponse.json();
+  const replay = await replayResponse.json();
+  expect(replay.receipt).toEqual(first.receipt);
+  expect(replay.receipt.executionReceiptId).toBe(first.receipt.executionReceiptId);
+  expect(replay.receipt.receiptHash).toBe(first.receipt.receiptHash);
+  expect(replay.authority).toMatchObject({
     merge_authorized: false,
     deploy_authorized: false,
     provider_mutation_authorized: false,
