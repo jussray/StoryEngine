@@ -9,7 +9,8 @@
     "test": "node --test test/*.test.js",
     "test:playwright": "playwright test",
     "test:guardrails": "playwright test e2e/guardrails.spec.js e2e/creator_flow.spec.js e2e/intent-routing.spec.js e2e/ooda_workspace_isolation.spec.js e2e/control-mode-boundary.spec.js e2e/product-build-control.spec.js",
-    "test:domain": "playwright test e2e/domain-authority.spec.js"
+    "test:domain": "playwright test e2e/domain-authority.spec.js",
+    "benchmark:performance": "node bench/performanceGate.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"
