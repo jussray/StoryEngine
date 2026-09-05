@@ -7,11 +7,12 @@ import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
-import db from './config/db.js';
+import db, { dbPath } from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
 import { requestContext, requireAuth, enforceWorkspaceAccess, enforceOperatorApiBoundary, securitySnapshot } from './lib/securityContext.js';
 import { enforcePageAccess } from './lib/pageGuard.js';
-import { filterOodaRecordsForIdentity, startOODALoop } from './lib/oodaProcessor.js';
+import { filterOodaRecordsForIdentity } from './lib/oodaProcessor.js';
+import { startOodaWorkerLoop } from './lib/oodaWorkerLoop.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
 import { publicL99GuardrailSnapshot, renderL99GuardrailPage } from './lib/guardrails.js';
@@ -247,10 +248,15 @@ server.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 120_000);
 server.headersTimeout = Number(process.env.HTTP_HEADERS_TIMEOUT_MS || 15_000);
 server.keepAliveTimeout = Number(process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS || 5_000);
 
-startOODALoop(db, Number(process.env.OODA_INTERVAL_MS || 30_000), incidents => {
-  console.log(`[OODA] Active incidents: ${incidents.length}`);
-  broadcastIncidents(incidents);
-});
+startOodaWorkerLoop(
+  dbPath,
+  Number(process.env.OODA_INTERVAL_MS || 30_000),
+  incidents => {
+    console.log(`[OODA] Active incidents: ${incidents.length}`);
+    broadcastIncidents(incidents);
+  },
+  error => console.error('[OODA] Periodic worker failed:', error)
+);
 
 startRuntimeScheduler(db, {
   scanIntervalMs: Number(process.env.RUNTIME_SCAN_INTERVAL_MS || 300000),
