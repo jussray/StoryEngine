@@ -50,7 +50,9 @@ export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
   }
 
   return Object.values(groups).map(group => {
-    const sorted = [...group.durations].sort((a, b) => a - b);
+    // SQL already orders each workspace/mode group by duration_ms ASC. Re-sorting a
+    // copied duration array here only burns CPU on the same synchronous event loop.
+    const sorted = group.durations;
     return {
       workspace_id: group.workspace_id,
       mode: group.mode,
@@ -148,8 +150,9 @@ export function getGenomeDriftIncidents(db, limit = 200) {
   }));
 }
 
-export function collectActiveIncidents(db, thresholds) {
-  const metricIncidents = detectMetricIncidents(computeMetrics(db), thresholds);
+export function collectActiveIncidents(db, thresholds, precomputedMetrics = null) {
+  const metrics = Array.isArray(precomputedMetrics) ? precomputedMetrics : computeMetrics(db);
+  const metricIncidents = detectMetricIncidents(metrics, thresholds);
   const lindymodeIncidents = getLindymodeIncidents(db);
   const genomeIncidents = getGenomeDriftIncidents(db);
   return [...genomeIncidents, ...lindymodeIncidents, ...metricIncidents].sort((a, b) => {

@@ -79,7 +79,9 @@ export function getMissionControlSnapshot(db) {
   `).get();
 
   const metrics = computeMetrics(db);
-  const incidents = collectActiveIncidents(db);
+  // Reuse the exact metric snapshot for incident classification. Previously this
+  // immediately rescanned and regrouped the same 15-minute event window.
+  const incidents = collectActiveIncidents(db, undefined, metrics);
   const queue = listDispatchQueue(db, 100);
   const retention = getRetentionStatus(db);
 
