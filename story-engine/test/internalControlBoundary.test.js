@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  FOUNDER_CONTROL_ROOM_ACTOR_ID,
   hasCallerSelectedControlMode,
   isFounderControlRoomController,
   isInternalController,
@@ -49,21 +50,31 @@ test('lower-privilege scoped keys cannot activate system-owned modes', () => {
   }), false);
 });
 
-test('Founder Control Room product controller requires the authenticated FCR tenant', () => {
+test('Founder Control Room product controller requires the dedicated authenticated service principal', () => {
   assert.equal(isFounderControlRoomController({
     type: 'scoped_api_key',
+    actor_id: FOUNDER_CONTROL_ROOM_ACTOR_ID,
     tenant_id: 'founder-control-room',
     role: 'administrator',
   }), true);
 
   assert.equal(isFounderControlRoomController({
     type: 'scoped_api_key',
+    actor_id: 'other-fcr-admin',
+    tenant_id: 'founder-control-room',
+    role: 'administrator',
+  }), false);
+
+  assert.equal(isFounderControlRoomController({
+    type: 'scoped_api_key',
+    actor_id: FOUNDER_CONTROL_ROOM_ACTOR_ID,
     tenant_id: 'other-internal-service',
     role: 'administrator',
   }), false);
 
   assert.equal(isFounderControlRoomController({
     type: 'session',
+    actor_id: FOUNDER_CONTROL_ROOM_ACTOR_ID,
     tenant_id: 'founder-control-room',
     role: 'administrator',
   }), false);
