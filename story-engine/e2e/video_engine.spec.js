@@ -143,6 +143,26 @@ test('free Story Video Engine validates multiple non-anime styles and gates publ
     }
   };
 
+  const booleanLevelHero = await request.post('/api/video-engine/jobs', {
+    headers,
+    data: {
+      workspace_id: workspaceId,
+      mode: 'cinematic_3d',
+      visual_style: 'cinematic_realism',
+      quality: 'hero',
+      aspect_ratio: '9:16',
+      public_facing: true,
+      visual_wonder: {
+        ...visualWonder,
+        motion_brief: { ...visualWonder.motion_brief, level: false, renderer: 'static' }
+      }
+    }
+  });
+  expect(booleanLevelHero.status()).toBe(400);
+  await expect(booleanLevelHero.json()).resolves.toMatchObject({
+    error: expect.stringContaining('motion_brief.level must be an integer from 0 through 5')
+  });
+
   const mismatchedAspectHero = await request.post('/api/video-engine/jobs', {
     headers,
     data: {
