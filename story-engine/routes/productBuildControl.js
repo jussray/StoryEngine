@@ -1,10 +1,10 @@
 import { json } from '../lib/miniRouter.js';
-import { requireInternalController } from '../lib/internalControl.js';
+import { requireFounderControlRoomController } from '../lib/internalControl.js';
 import { executeProductBuildDirective } from '../lib/productBuildControl.js';
 
 export default function productBuildControlRoutes(router, db) {
   router.post('/api/control-room/product-build/execute', (req, res) => {
-    if (!requireInternalController(req, res)) return;
+    if (!requireFounderControlRoomController(req, res)) return;
 
     try {
       const receipt = executeProductBuildDirective(db, req.body || {});
@@ -12,6 +12,7 @@ export default function productBuildControlRoutes(router, db) {
         receipt,
         authority: {
           product_control_room: 'storyengine-control-room',
+          caller_tenant: 'founder-control-room',
           execution_authorized_by_directive: true,
           merge_authorized: false,
           deploy_authorized: false,
