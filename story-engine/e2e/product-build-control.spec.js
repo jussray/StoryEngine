@@ -43,7 +43,16 @@ test('lower-privilege scoped caller cannot drive the product Control Room actuat
     data: buildDirective(),
   });
   expect(response.status()).toBe(403);
-  expect(await response.json()).toMatchObject({ error: 'internal_controller_required' });
+  expect(await response.json()).toMatchObject({ error: 'founder_control_room_controller_required' });
+});
+
+test('administrator from a non-FCR tenant cannot impersonate the product Control Room', async ({ request }) => {
+  const response = await request.post('/api/control-room/product-build/execute', {
+    headers: { 'x-api-key': 'playwright-other-admin-key' },
+    data: buildDirective('other-admin'),
+  });
+  expect(response.status()).toBe(403);
+  expect(await response.json()).toMatchObject({ error: 'founder_control_room_controller_required' });
 });
 
 test('FCR-bound scoped administrator executes one bounded StoryEngine Control Room actuator and gets a receipt', async ({ request }) => {
@@ -70,6 +79,7 @@ test('FCR-bound scoped administrator executes one bounded StoryEngine Control Ro
   expect(body.receipt.proofRefs[0]).toMatch(/^storyengine:event-log:\d+$/);
   expect(body.receipt.receiptHash).toMatch(/^[0-9a-f]{64}$/);
   expect(body.authority).toMatchObject({
+    caller_tenant: 'founder-control-room',
     execution_authorized_by_directive: true,
     merge_authorized: false,
     deploy_authorized: false,
@@ -96,6 +106,7 @@ test('replaying the exact directive returns the original receipt instead of muta
   expect(replay.receipt.executionReceiptId).toBe(first.receipt.executionReceiptId);
   expect(replay.receipt.receiptHash).toBe(first.receipt.receiptHash);
   expect(replay.authority).toMatchObject({
+    caller_tenant: 'founder-control-room',
     merge_authorized: false,
     deploy_authorized: false,
     provider_mutation_authorized: false,
@@ -103,7 +114,7 @@ test('replaying the exact directive returns the original receipt instead of muta
   });
 });
 
-test('exact-head drift fails closed even for the scoped administrator', async ({ request }) => {
+test('exact-head drift fails closed even for the FCR-scoped administrator', async ({ request }) => {
   const directive = buildDirective();
   const stale = {
     ...directive,
