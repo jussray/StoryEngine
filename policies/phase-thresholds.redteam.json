@@ -1,0 +1,133 @@
+{
+  "modes": {
+    "lindymode_default": {
+      "setup": {
+        "max_aiish_score": 28,
+        "min_voice_grip": 62,
+        "max_melodrama_score": 30,
+        "max_pattern_score": 28,
+        "require_concrete_detail": true,
+        "require_contradiction": false,
+        "notes": "Grounded, observant, lightly guarded.",
+        "max_em_dash_overuse": 2,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 1
+      },
+      "falling_in_love": {
+        "max_aiish_score": 26,
+        "min_voice_grip": 64,
+        "max_melodrama_score": 28,
+        "max_pattern_score": 26,
+        "require_concrete_detail": true,
+        "require_contradiction": false,
+        "notes": "Warm and magnetic without getting glossy.",
+        "max_em_dash_overuse": 2,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 1
+      },
+      "retreat": {
+        "max_aiish_score": 24,
+        "min_voice_grip": 68,
+        "max_melodrama_score": 35,
+        "max_pattern_score": 24,
+        "require_concrete_detail": true,
+        "require_contradiction": true,
+        "notes": "Trust cracking through evidence, not speeches.",
+        "max_em_dash_overuse": 1,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 1
+      },
+      "fight_for_love": {
+        "max_aiish_score": 30,
+        "min_voice_grip": 66,
+        "max_melodrama_score": 42,
+        "max_pattern_score": 30,
+        "require_concrete_detail": true,
+        "require_contradiction": true,
+        "notes": "High pressure, raw action, no fake profundity.",
+        "max_em_dash_overuse": 2,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 1
+      },
+      "aftermath": {
+        "max_aiish_score": 20,
+        "min_voice_grip": 65,
+        "max_melodrama_score": 20,
+        "max_pattern_score": 20,
+        "require_concrete_detail": true,
+        "require_contradiction": false,
+        "notes": "Quiet, reflective, stripped down.",
+        "max_em_dash_overuse": 1,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 0
+      }
+    },
+    "redteam_strict": {
+      "setup": {
+        "max_aiish_score": 22,
+        "min_voice_grip": 65,
+        "max_melodrama_score": 24,
+        "max_pattern_score": 22,
+        "require_concrete_detail": true,
+        "require_contradiction": false,
+        "max_em_dash_overuse": 2,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 1
+      },
+      "falling_in_love": {
+        "max_aiish_score": 22,
+        "min_voice_grip": 66,
+        "max_melodrama_score": 24,
+        "max_pattern_score": 22,
+        "require_concrete_detail": true,
+        "require_contradiction": false,
+        "max_em_dash_overuse": 2,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 1
+      },
+      "retreat": {
+        "max_aiish_score": 18,
+        "min_voice_grip": 72,
+        "max_melodrama_score": 30,
+        "max_pattern_score": 18,
+        "require_concrete_detail": true,
+        "require_contradiction": true,
+        "max_em_dash_overuse": 1,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 1
+      },
+      "fight_for_love": {
+        "max_aiish_score": 24,
+        "min_voice_grip": 70,
+        "max_melodrama_score": 36,
+        "max_pattern_score": 22,
+        "require_concrete_detail": true,
+        "require_contradiction": true,
+        "max_em_dash_overuse": 2,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 1
+      },
+      "aftermath": {
+        "max_aiish_score": 16,
+        "min_voice_grip": 68,
+        "max_melodrama_score": 16,
+        "max_pattern_score": 16,
+        "require_concrete_detail": true,
+        "require_contradiction": false,
+        "max_em_dash_overuse": 1,
+        "max_formal_filler": 0,
+        "max_hype_words": 0,
+        "max_rule_of_three": 0
+      }
+    }
+  }
+}
