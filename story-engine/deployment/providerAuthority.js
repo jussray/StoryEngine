@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Provider authority is SHA-bound: any carrier-head movement requires fresh exact-head proof,
+// even when the effective source tree is unchanged by an ancestry-only reconciliation.
 export const TARGET_CLASSES = Object.freeze({
   'stateful-container-durable-volume': Object.freeze({
     capabilities: Object.freeze([
