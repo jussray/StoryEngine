@@ -101,7 +101,10 @@ jobs:
           python-version: '3.11'
       - name: Verify immutable head
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
-      - run: python runtime/promotion_gates_all.py
+      - name: Prose quality Attack 2000 contract
+        run: python runtime/test_prose_quality_gate.py
+      - name: Run canonical promotion gates
+        run: python runtime/promotion_gates_all.py
 
   auth-contract:
     name: Header auth and cookie rejection

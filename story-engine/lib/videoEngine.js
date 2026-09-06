@@ -19,7 +19,7 @@ export const VIDEO_ENGINE_OPTIONS = Object.freeze({
   visual_styles: VIDEO_VISUAL_STYLES,
   legacy_mode_aliases: LEGACY_VIDEO_MODE_ALIASES,
   qualities: ['draft', 'standard', 'hero'],
-  aspect_ratios: ['16:9', '9:16', '1:1'],
+  aspect_ratios: ['16:9', '9:16', '1:1', '4:5'],
   broke_founder_defaults: {
     max_shots: MAX_SHOTS,
     max_duration_seconds: MAX_SECONDS,
@@ -184,7 +184,7 @@ export function buildStoryVideoBlueprint(db, input = {}) {
   };
 }
 
-function ratio(value) { return value === '9:16' ? '9/16' : value === '1:1' ? '1/1' : '16/9'; }
+function ratio(value) { return value === '9:16' ? '9/16' : value === '1:1' ? '1/1' : value === '4:5' ? '4/5' : '16/9'; }
 
 function renderArtifact(blueprint, jobId) {
   const theme = blueprint.preview_theme || { bg: '#09080d', panel: '#15121d', accent: '#a77cff' };

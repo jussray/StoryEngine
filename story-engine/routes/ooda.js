@@ -1,7 +1,7 @@
 // routes/ooda.js
 
 import { json } from '../lib/miniRouter.js';
-import { collectActiveIncidents } from '../lib/oodaProcessor.js';
+import { collectActiveIncidents, filterOodaRecordsForIdentity } from '../lib/oodaProcessor.js';
 
 function parsePayload(value) {
   try {
@@ -15,7 +15,7 @@ export default function oodaRoutes(router, db) {
   router.get('/api/ooda/snapshot', (req, res) => {
     json(res, 200, {
       generated_at: Date.now(),
-      incidents: collectActiveIncidents(db)
+      incidents: filterOodaRecordsForIdentity(collectActiveIncidents(db), req.auth)
     });
   });
 
@@ -59,7 +59,8 @@ export default function oodaRoutes(router, db) {
       payload: parsePayload(row.payload)
     }));
 
-    const timeline = [...incidents, ...events].sort((a, b) => a.created_at - b.created_at);
+    const timeline = filterOodaRecordsForIdentity([...incidents, ...events], req.auth)
+      .sort((a, b) => a.created_at - b.created_at);
     json(res, 200, { correlation_id: correlationId, timeline });
   });
 }

@@ -7,6 +7,19 @@ function percentile(sorted, p) {
   return sorted[Math.max(0, idx)];
 }
 
+export function filterOodaRecordsForIdentity(records = [], identity = {}) {
+  const allowed = new Set(
+    Array.isArray(identity?.workspace_ids)
+      ? identity.workspace_ids.map(value => String(value).trim()).filter(Boolean)
+      : []
+  );
+  if (allowed.has('*')) return [...records];
+  return records.filter(record => {
+    const workspaceId = String(record?.workspace_id || '').trim();
+    return workspaceId && allowed.has(workspaceId);
+  });
+}
+
 export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
   const since = Date.now() - windowMs;
   const rows = db.prepare(`
@@ -37,7 +50,9 @@ export function computeMetrics(db, windowMs = 15 * 60 * 1000) {
   }
 
   return Object.values(groups).map(group => {
-    const sorted = [...group.durations].sort((a, b) => a - b);
+    // SQL already orders each workspace/mode group by duration_ms ASC. Re-sorting a
+    // copied duration array here only burns CPU on the same synchronous event loop.
+    const sorted = group.durations;
     return {
       workspace_id: group.workspace_id,
       mode: group.mode,
@@ -135,8 +150,9 @@ export function getGenomeDriftIncidents(db, limit = 200) {
   }));
 }
 
-export function collectActiveIncidents(db, thresholds) {
-  const metricIncidents = detectMetricIncidents(computeMetrics(db), thresholds);
+export function collectActiveIncidents(db, thresholds, precomputedMetrics = null) {
+  const metrics = Array.isArray(precomputedMetrics) ? precomputedMetrics : computeMetrics(db);
+  const metricIncidents = detectMetricIncidents(metrics, thresholds);
   const lindymodeIncidents = getLindymodeIncidents(db);
   const genomeIncidents = getGenomeDriftIncidents(db);
   return [...genomeIncidents, ...lindymodeIncidents, ...metricIncidents].sort((a, b) => {

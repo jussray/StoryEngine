@@ -3,6 +3,8 @@
 import { computeMetrics, collectActiveIncidents } from './oodaProcessor.js';
 import { evaluateReleaseGate } from './releaseGate.js';
 
+const DEFAULT_OODA_WINDOW_MS = 15 * 60 * 1000;
+
 function percentile(sorted, p) {
   if (!sorted.length) return 0;
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
@@ -10,8 +12,8 @@ function percentile(sorted, p) {
 }
 
 function boundedWindowMs(value) {
-  const number = Number(value || 15 * 60 * 1000);
-  if (!Number.isFinite(number)) return 15 * 60 * 1000;
+  const number = Number(value || DEFAULT_OODA_WINDOW_MS);
+  if (!Number.isFinite(number)) return DEFAULT_OODA_WINDOW_MS;
   return Math.max(60 * 1000, Math.min(Math.floor(number), 24 * 60 * 60 * 1000));
 }
 
@@ -116,7 +118,14 @@ export function buildPerformanceDashboard(db, options = {}) {
   const limit = boundedLimit(options.limit);
   const metrics = computeMetrics(db, windowMs);
   const workspaces = computeWorkspaceSummary(db, windowMs);
-  const incidents = collectActiveIncidents(db);
+  // Incident classification historically uses the default 15-minute OODA window.
+  // Reuse the metric snapshot only when this dashboard is on that same window so
+  // custom dashboard windows retain their existing incident semantics.
+  const incidents = collectActiveIncidents(
+    db,
+    undefined,
+    windowMs === DEFAULT_OODA_WINDOW_MS ? metrics : null
+  );
   const gates = gatePressure(db);
 
   const totals = workspaces.reduce((acc, item) => {

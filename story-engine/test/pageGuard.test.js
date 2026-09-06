@@ -36,6 +36,7 @@ test('creator pages include the core story flow and shared browser clients', () 
   assert.ok(CREATOR_PAGES.has('/ip_studio.html'));
   assert.ok(CREATOR_PAGES.has('/video_studio.html'));
   assert.ok(CREATOR_PAGES.has('/l99_auth.js'));
+  assert.ok(CREATOR_PAGES.has('/intent_router.js'));
   assert.ok(CREATOR_PAGES.has('/video_control_room.js'));
 });
 
@@ -49,8 +50,11 @@ test('operator pages include all backstage dashboards', () => {
   assert.ok(OPERATOR_PAGES.has('/release_gate.html'));
 });
 
-test('only the first-run entry and auth client are public bootstrap assets', () => {
-  assert.deepEqual([...PUBLIC_BOOTSTRAP_PAGES].sort(), ['/front_door.html', '/l99_auth.js']);
+test('only the first-run entry and bootstrap clients are public assets', () => {
+  assert.deepEqual(
+    [...PUBLIC_BOOTSTRAP_PAGES].sort(),
+    ['/front_door.html', '/intent_router.js', '/l99_auth.js']
+  );
 });
 
 test('no page appears in both creator and operator sets', () => {
@@ -60,7 +64,7 @@ test('no page appears in both creator and operator sets', () => {
 });
 
 test('public bootstrap pages remain reachable without auth deadlock', () => {
-  for (const pathname of ['/front_door.html', '/l99_auth.js']) {
+  for (const pathname of ['/front_door.html', '/l99_auth.js', '/intent_router.js']) {
     const req = { method: 'GET', headers: {} };
     const res = mockRes();
     let called = false;

@@ -2,6 +2,7 @@
 
 import { json } from '../lib/miniRouter.js';
 import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
+import { MOTION_LADDER, MOTION_RENDERER_OPTIONS, validateVisualWonder } from '../lib/visualWonder.js';
 import {
   VIDEO_ENGINE_OPTIONS,
   createStoryVideoJob,
@@ -13,7 +14,15 @@ import {
 
 export default function videoEngineRoutes(router, db) {
   router.get('/api/video-engine/options', (req, res) => {
-    json(res, 200, VIDEO_ENGINE_OPTIONS);
+    json(res, 200, {
+      ...VIDEO_ENGINE_OPTIONS,
+      motion: {
+        policy: 'lowest_sufficient_motion',
+        ladder: MOTION_LADDER,
+        renderer_classes: MOTION_RENDERER_OPTIONS,
+        vendor_binding_allowed: false
+      }
+    });
   });
 
   router.get('/api/video-engine/control-room', (req, res) => {
@@ -28,7 +37,27 @@ export default function videoEngineRoutes(router, db) {
     if (!workspaceId) return json(res, 400, { error: 'workspace_id is required.' });
     if (!requireWorkspaceAccess(req, res, workspaceId)) return;
     try {
-      json(res, 201, createStoryVideoJob(db, req.body || {}));
+      const visualWonder = validateVisualWonder(req.body || {});
+      const requestedAspectRatio = String(req.body?.aspect_ratio || '16:9').trim();
+      const motionAspectRatio = visualWonder?.motion_brief?.aspect_ratio;
+      if (motionAspectRatio && motionAspectRatio !== requestedAspectRatio) {
+        return json(res, 400, {
+          error: 'MOTION_BRIEF_ASPECT_RATIO_MISMATCH',
+          requested_aspect_ratio: requestedAspectRatio,
+          motion_brief_aspect_ratio: motionAspectRatio
+        });
+      }
+      if (visualWonder?.motion_brief?.requires_generative_provider === true) {
+        return json(res, 409, {
+          error: 'GENERATIVE_RENDERER_UNAVAILABLE',
+          state: 'provider_required',
+          motion_level: visualWonder.motion_brief.level,
+          required_renderer: visualWonder.motion_brief.renderer,
+          provider_generation_enabled: false
+        });
+      }
+      const job = createStoryVideoJob(db, req.body || {});
+      json(res, 201, { ...job, visual_wonder: visualWonder });
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });

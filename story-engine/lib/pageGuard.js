@@ -3,7 +3,7 @@
 //
 // Presentation clients are never product authority. Unknown HTML/JS paths fail
 // closed. Creator/operator pages require an authenticated server-issued session;
-// the first-run entry point and auth bootstrap client remain reachable so a
+// the first-run entry point and auth bootstrap clients remain reachable so a
 // session can be established without an authentication deadlock.
 
 import { resolveRequestIdentity, roleAtLeast } from './securityContext.js';
@@ -22,6 +22,7 @@ const CREATOR_PAGES = new Set([
   '/ip_studio.html',
   '/video_studio.html',
   '/l99_auth.js',
+  '/intent_router.js',
   '/video_control_room.js'
 ]);
 
@@ -42,7 +43,8 @@ const OPERATOR_PAGES = new Set([
 
 const PUBLIC_BOOTSTRAP_PAGES = new Set([
   '/front_door.html',
-  '/l99_auth.js'
+  '/l99_auth.js',
+  '/intent_router.js'
 ]);
 
 function canonicalPage(pathname) {
