@@ -22,6 +22,9 @@ export function isInternalController(identity) {
   return identity?.type === 'scoped_api_key' && roleAtLeast(identity, 'administrator');
 }
 
+// This is a route-admission identity check only. It proves the caller resolved
+// from the scoped-key registry as the FCR service tenant; it does not turn a
+// product-build receipt into founder authority or independent outcome proof.
 export function isFounderControlRoomController(identity) {
   return isInternalController(identity)
     && identity?.tenant_id === FOUNDER_CONTROL_ROOM_TENANT_ID;
