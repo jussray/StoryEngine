@@ -2,7 +2,7 @@
 
 import { json } from '../lib/miniRouter.js';
 import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
-import { validateVisualWonder } from '../lib/visualWonder.js';
+import { MOTION_LADDER, MOTION_RENDERER_OPTIONS, validateVisualWonder } from '../lib/visualWonder.js';
 import {
   VIDEO_ENGINE_OPTIONS,
   createStoryVideoJob,
@@ -14,7 +14,15 @@ import {
 
 export default function videoEngineRoutes(router, db) {
   router.get('/api/video-engine/options', (req, res) => {
-    json(res, 200, VIDEO_ENGINE_OPTIONS);
+    json(res, 200, {
+      ...VIDEO_ENGINE_OPTIONS,
+      motion: {
+        policy: 'lowest_sufficient_motion',
+        ladder: MOTION_LADDER,
+        renderer_classes: MOTION_RENDERER_OPTIONS,
+        vendor_binding_allowed: false
+      }
+    });
   });
 
   router.get('/api/video-engine/control-room', (req, res) => {
