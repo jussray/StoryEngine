@@ -3,7 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>L99 — Start Your Story</title>
+  <title>L99 StoryEngine — Start Your Story</title>
+  <meta name="description" content="L99 StoryEngine turns a creator's story vision into structured narrative work across books, film, television, podcasts, games, comics, plays, and short-form video." />
+  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="L99 StoryEngine — Start Your Story" />
+  <meta property="og:description" content="Start with a story vision, choose a format and audience, then develop it through structured creative workspaces with explicit provenance and release boundaries." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "L99 StoryEngine",
+    "applicationCategory": "MultimediaApplication",
+    "description": "A story-creation operating system that turns a creator's story vision into structured narrative work while preserving provenance, workspace boundaries, and explicit promotion or release gates."
+  }
+  </script>
   <script src="/l99_auth.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,6 +41,7 @@
     }
     .wordmark { font-size: 1rem; letter-spacing: 0.3em; text-transform: uppercase; color: #888; text-align: center; }
     h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 400; line-height: 1.2; text-align: center; color: #f0ede8; }
+    .lede { color: #aaa; text-align: center; line-height: 1.6; font-size: 0.98rem; }
     .prompt-area { display: flex; flex-direction: column; gap: 1rem; }
     label { font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: #888; }
     textarea {
@@ -52,12 +67,16 @@
     .status { font-size: 0.85rem; color: #888; text-align: center; min-height: 1.2em; }
     .status.error { color: #e05555; }
     .status.ok { color: #5aab6e; }
+    .truth-note { border-top: 1px solid #242424; padding-top: 1rem; color: #777; font-size: 0.78rem; line-height: 1.55; text-align: center; }
+    .truth-note a { color: #aaa; }
+    @media (max-width: 560px) { .selectors { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <div class="stage">
-    <p class="wordmark">L99</p>
+    <p class="wordmark">L99 StoryEngine</p>
     <h1>What story do you want to tell?</h1>
+    <p class="lede">Start with the vision. StoryEngine turns it into a structured creative run with format and audience context while keeping promotion, publication, and release as separate decisions.</p>
 
     <div class="prompt-area">
       <label for="vision">Your story in a sentence or two</label>
@@ -84,6 +103,7 @@
 
     <button class="cta" id="startBtn" disabled>Begin</button>
     <p class="status" id="status"></p>
+    <p class="truth-note">Source behavior is not a production-deployment claim. Generated work is not automatically canonical, promoted, published, or released. <a href="https://github.com/jussray/StoryEngine">View canonical source</a>.</p>
   </div>
 
   <script>
