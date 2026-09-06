@@ -21,6 +21,7 @@ async function createAndValidateJob(request, workspaceId, look) {
   expect(job.status).toBe('ready_for_validation');
   expect(job.blueprint.target_mode).toBe(look.mode);
   expect(job.blueprint.visual_style).toBe(look.visual_style);
+  expect(job.blueprint.aspect_ratio).toBe(look.aspect_ratio);
   expect(job.blueprint.preview_renderer).toBe('motion_book_html');
   expect(job.blueprint.cost_plan.estimated_cost_usd).toBe(0);
   expect(job.blueprint.shot_count).toBeGreaterThan(0);
@@ -29,9 +30,16 @@ async function createAndValidateJob(request, workspaceId, look) {
   const artifactResponse = await request.get(`/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/html`, { headers });
   expect(artifactResponse.ok()).toBe(true);
   const artifactHtml = await artifactResponse.text();
+  const expectedCssRatio = {
+    '16:9': '16/9',
+    '9:16': '9/16',
+    '1:1': '1/1',
+    '4:5': '4/5'
+  }[look.aspect_ratio];
   expect(artifactHtml).toContain('data-testid="l99-video-artifact"');
   expect(artifactHtml).toContain(`data-target-mode="${look.mode}"`);
   expect(artifactHtml).toContain(`data-visual-style="${look.visual_style}"`);
+  expect(artifactHtml).toContain(`aspect-ratio:${expectedCssRatio}`);
   expect(artifactHtml).toContain('Provider cost: $0.00');
 
   const validationResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/validate`, {
@@ -57,6 +65,7 @@ test('free Story Video Engine validates multiple non-anime styles and gates publ
   expect(options.visual_styles.hand_drawn_cartoon.label).toBe('Hand-Drawn Cartoon');
   expect(options.visual_styles.watercolor_storybook.label).toBe('Watercolor Storybook');
   expect(options.visual_styles.anime.label).toBe('Anime');
+  expect(options.aspect_ratios).toContain('4:5');
   expect(options.motion.policy).toBe('lowest_sufficient_motion');
   expect(options.motion.vendor_binding_allowed).toBe(false);
   expect(options.motion.ladder['1'].name).toBe('camera_motion');
@@ -220,12 +229,17 @@ test('free Story Video Engine validates multiple non-anime styles and gates publ
     visual_style: 'watercolor_storybook',
     aspect_ratio: '9:16'
   });
+  await createAndValidateJob(request, workspaceId, {
+    mode: 'cinematic_3d',
+    visual_style: 'cinematic_realism',
+    aspect_ratio: '4:5'
+  });
 
   const listResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, { headers });
   expect(listResponse.status()).toBe(200);
   const listedJobs = await listResponse.json();
   expect(Array.isArray(listedJobs)).toBe(true);
-  expect(listedJobs.length).toBeGreaterThanOrEqual(3);
+  expect(listedJobs.length).toBeGreaterThanOrEqual(4);
 
   const forbiddenListResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, {
     headers: scopedHeaders
