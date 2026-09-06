@@ -68,7 +68,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
