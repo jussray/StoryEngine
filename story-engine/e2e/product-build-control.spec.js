@@ -37,25 +37,28 @@ function buildDirective(suffix = '001') {
   return { ...value, directiveHash: productBuildDirectiveHash(value) };
 }
 
-test('lower-privilege scoped caller cannot drive the product Control Room actuator', async ({ request }) => {
+async function expectFcrControllerDenied(request, key, suffix) {
   const response = await request.post('/api/control-room/product-build/execute', {
-    headers: { 'x-api-key': 'playwright-scoped-key' },
-    data: buildDirective(),
+    headers: { 'x-api-key': key },
+    data: buildDirective(suffix),
   });
   expect(response.status()).toBe(403);
   expect(await response.json()).toMatchObject({ error: 'founder_control_room_controller_required' });
+}
+
+test('lower-privilege scoped caller cannot drive the product Control Room actuator', async ({ request }) => {
+  await expectFcrControllerDenied(request, 'playwright-scoped-key', 'creator');
 });
 
 test('administrator from a non-FCR tenant cannot impersonate the product Control Room', async ({ request }) => {
-  const response = await request.post('/api/control-room/product-build/execute', {
-    headers: { 'x-api-key': 'playwright-other-admin-key' },
-    data: buildDirective('other-admin'),
-  });
-  expect(response.status()).toBe(403);
-  expect(await response.json()).toMatchObject({ error: 'founder_control_room_controller_required' });
+  await expectFcrControllerDenied(request, 'playwright-other-admin-key', 'other-tenant-admin');
 });
 
-test('FCR-bound scoped administrator executes one bounded StoryEngine Control Room actuator and gets a receipt', async ({ request }) => {
+test('different administrator inside the FCR tenant cannot impersonate the dedicated actuator principal', async ({ request }) => {
+  await expectFcrControllerDenied(request, 'playwright-other-fcr-admin-key', 'other-fcr-admin');
+});
+
+test('dedicated FCR service principal executes one bounded StoryEngine Control Room actuator and gets a receipt', async ({ request }) => {
   const directive = buildDirective();
   const response = await request.post('/api/control-room/product-build/execute', {
     headers: { 'x-api-key': 'playwright-admin-key' },
@@ -80,6 +83,7 @@ test('FCR-bound scoped administrator executes one bounded StoryEngine Control Ro
   expect(body.receipt.receiptHash).toMatch(/^[0-9a-f]{64}$/);
   expect(body.authority).toMatchObject({
     caller_tenant: 'founder-control-room',
+    caller_actor: 'fcr-storyengine-control-room',
     execution_authorized_by_directive: true,
     merge_authorized: false,
     deploy_authorized: false,
@@ -107,6 +111,7 @@ test('replaying the exact directive returns the original receipt instead of muta
   expect(replay.receipt.receiptHash).toBe(first.receipt.receiptHash);
   expect(replay.authority).toMatchObject({
     caller_tenant: 'founder-control-room',
+    caller_actor: 'fcr-storyengine-control-room',
     merge_authorized: false,
     deploy_authorized: false,
     provider_mutation_authorized: false,
@@ -114,7 +119,7 @@ test('replaying the exact directive returns the original receipt instead of muta
   });
 });
 
-test('exact-head drift fails closed even for the FCR-scoped administrator', async ({ request }) => {
+test('exact-head drift fails closed even for the dedicated FCR service principal', async ({ request }) => {
   const directive = buildDirective();
   const stale = {
     ...directive,
