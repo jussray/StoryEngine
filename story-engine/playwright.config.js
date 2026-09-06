@@ -38,8 +38,15 @@ export default defineConfig({
           workspace_ids: ['*']
         },
         {
+          key: 'playwright-other-fcr-admin-key',
+          actor_id: 'other-fcr-admin',
+          tenant_id: 'founder-control-room',
+          role: 'administrator',
+          workspace_ids: ['*']
+        },
+        {
           key: 'playwright-admin-key',
-          actor_id: 'playwright-fcr-actor',
+          actor_id: 'fcr-storyengine-control-room',
           tenant_id: 'founder-control-room',
           role: 'administrator',
           workspace_ids: ['*']
