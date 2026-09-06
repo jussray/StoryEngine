@@ -47,6 +47,15 @@ export default function videoEngineRoutes(router, db) {
           motion_brief_aspect_ratio: motionAspectRatio
         });
       }
+      if (visualWonder?.motion_brief?.requires_generative_provider === true) {
+        return json(res, 409, {
+          error: 'GENERATIVE_RENDERER_UNAVAILABLE',
+          state: 'provider_required',
+          motion_level: visualWonder.motion_brief.level,
+          required_renderer: visualWonder.motion_brief.renderer,
+          provider_generation_enabled: false
+        });
+      }
       const job = createStoryVideoJob(db, req.body || {});
       json(res, 201, { ...job, visual_wonder: visualWonder });
     } catch (error) {
