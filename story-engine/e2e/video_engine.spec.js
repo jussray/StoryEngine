@@ -229,6 +229,35 @@ test('free Story Video Engine validates multiple non-anime styles and gates publ
     error: expect.stringContaining('cannot satisfy motion level 4')
   });
 
+  const unavailableGenerativeHero = await request.post('/api/video-engine/jobs', {
+    headers,
+    data: {
+      workspace_id: workspaceId,
+      mode: 'cinematic_3d',
+      visual_style: 'cinematic_realism',
+      quality: 'hero',
+      aspect_ratio: '9:16',
+      public_facing: true,
+      visual_wonder: {
+        ...visualWonder,
+        motion_brief: {
+          ...visualWonder.motion_brief,
+          level: 4,
+          renderer: 'generative',
+          preserve: { ...visualWonder.motion_brief.preserve, identity: true }
+        }
+      }
+    }
+  });
+  expect(unavailableGenerativeHero.status()).toBe(409);
+  await expect(unavailableGenerativeHero.json()).resolves.toMatchObject({
+    error: 'GENERATIVE_RENDERER_UNAVAILABLE',
+    state: 'provider_required',
+    motion_level: 4,
+    required_renderer: 'generative',
+    provider_generation_enabled: false
+  });
+
   const heroResponse = await request.post('/api/video-engine/jobs', {
     headers,
     data: {
