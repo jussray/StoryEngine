@@ -24,10 +24,19 @@ export default defineConfig({
       API_KEY: process.env.API_KEY || 'playwright-test-key',
       L99_API_KEYS_JSON: process.env.L99_API_KEYS_JSON || JSON.stringify([
         {
+          key: 'playwright-test-key',
+          actor_id: 'playwright-admin-human',
+          tenant_id: 'playwright',
+          role: 'administrator',
+          principal_type: 'human',
+          workspace_ids: ['*']
+        },
+        {
           key: 'playwright-scoped-key',
           actor_id: 'playwright-scoped-actor',
           tenant_id: 'playwright',
           role: 'creator',
+          principal_type: 'human',
           workspace_ids: ['playwright-allowed-workspace']
         }
       ]),
