@@ -31,6 +31,13 @@ export default defineConfig({
           workspace_ids: ['playwright-allowed-workspace']
         },
         {
+          key: 'playwright-other-admin-key',
+          actor_id: 'playwright-other-admin-actor',
+          tenant_id: 'other-internal-service',
+          role: 'administrator',
+          workspace_ids: ['*']
+        },
+        {
           key: 'playwright-admin-key',
           actor_id: 'playwright-fcr-actor',
           tenant_id: 'founder-control-room',
