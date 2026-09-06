@@ -71,7 +71,7 @@ export function resolveMotionBrief(input = {}) {
     };
   }
 
-  const level = Number.isInteger(Number(raw.level)) ? Number(raw.level) : -1;
+  const level = typeof raw.level === 'number' && Number.isInteger(raw.level) ? raw.level : -1;
   const renderer = text(raw.renderer, 40).toLowerCase();
   const intent = normalizeMotionIntent(raw.intent, emotions);
   const ladder = MOTION_LADDER[level];
