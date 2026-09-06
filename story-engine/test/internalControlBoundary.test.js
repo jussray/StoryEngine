@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   hasCallerSelectedControlMode,
+  isFounderControlRoomController,
   isInternalController,
 } from '../lib/internalControl.js';
 
@@ -34,7 +35,7 @@ test('browser sessions are never internal controllers even when administrator', 
   }), false);
 });
 
-test('scoped administrator service identity is an eligible internal controller', () => {
+test('scoped administrator service identity is an eligible generic internal controller', () => {
   assert.equal(isInternalController({
     type: 'scoped_api_key',
     role: 'administrator',
@@ -45,5 +46,25 @@ test('lower-privilege scoped keys cannot activate system-owned modes', () => {
   assert.equal(isInternalController({
     type: 'scoped_api_key',
     role: 'creator',
+  }), false);
+});
+
+test('Founder Control Room product controller requires the authenticated FCR tenant', () => {
+  assert.equal(isFounderControlRoomController({
+    type: 'scoped_api_key',
+    tenant_id: 'founder-control-room',
+    role: 'administrator',
+  }), true);
+
+  assert.equal(isFounderControlRoomController({
+    type: 'scoped_api_key',
+    tenant_id: 'other-internal-service',
+    role: 'administrator',
+  }), false);
+
+  assert.equal(isFounderControlRoomController({
+    type: 'session',
+    tenant_id: 'founder-control-room',
+    role: 'administrator',
   }), false);
 });
