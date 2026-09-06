@@ -143,6 +143,28 @@ test('free Story Video Engine validates multiple non-anime styles and gates publ
     }
   };
 
+  const mismatchedAspectHero = await request.post('/api/video-engine/jobs', {
+    headers,
+    data: {
+      workspace_id: workspaceId,
+      mode: 'cinematic_3d',
+      visual_style: 'cinematic_realism',
+      quality: 'hero',
+      aspect_ratio: '16:9',
+      public_facing: true,
+      visual_wonder: {
+        ...visualWonder,
+        motion_brief: { ...visualWonder.motion_brief, aspect_ratio: '4:5' }
+      }
+    }
+  });
+  expect(mismatchedAspectHero.status()).toBe(400);
+  await expect(mismatchedAspectHero.json()).resolves.toMatchObject({
+    error: 'MOTION_BRIEF_ASPECT_RATIO_MISMATCH',
+    requested_aspect_ratio: '16:9',
+    motion_brief_aspect_ratio: '4:5'
+  });
+
   const vendorBoundHero = await request.post('/api/video-engine/jobs', {
     headers,
     data: {
