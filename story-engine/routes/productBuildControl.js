@@ -12,7 +12,8 @@ export default function productBuildControlRoutes(router, db) {
         receipt,
         authority: {
           product_control_room: 'storyengine-control-room',
-          caller_tenant: 'founder-control-room',
+          caller_tenant: req.auth?.tenant_id ?? null,
+          caller_actor: req.auth?.actor_id ?? null,
           execution_authorized_by_directive: true,
           merge_authorized: false,
           deploy_authorized: false,
