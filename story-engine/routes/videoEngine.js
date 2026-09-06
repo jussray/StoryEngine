@@ -38,6 +38,15 @@ export default function videoEngineRoutes(router, db) {
     if (!requireWorkspaceAccess(req, res, workspaceId)) return;
     try {
       const visualWonder = validateVisualWonder(req.body || {});
+      const requestedAspectRatio = String(req.body?.aspect_ratio || '16:9').trim();
+      const motionAspectRatio = visualWonder?.motion_brief?.aspect_ratio;
+      if (motionAspectRatio && motionAspectRatio !== requestedAspectRatio) {
+        return json(res, 400, {
+          error: 'MOTION_BRIEF_ASPECT_RATIO_MISMATCH',
+          requested_aspect_ratio: requestedAspectRatio,
+          motion_brief_aspect_ratio: motionAspectRatio
+        });
+      }
       const job = createStoryVideoJob(db, req.body || {});
       json(res, 201, { ...job, visual_wonder: visualWonder });
     } catch (error) {
