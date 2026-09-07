@@ -1,18 +1,51 @@
 name: Story Video Engine Playwright
 
 on:
-  pull_request:
+  push:
+    branches:
+      - agent/story-video-engine-mvp
     paths:
       - 'story-engine/lib/videoEngine.js'
+      - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/visualStyleCatalog.js'
       - 'story-engine/routes/videoEngine.js'
       - 'story-engine/routes/movie.js'
       - 'story-engine/public/video_*'
       - 'story-engine/public/control_room.html'
+      - 'story-engine/e2e/session.js'
       - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/playwright.production.config.js'
       - 'story-engine/test/videoEngine.test.js'
+      - 'story-engine/test/videoExport.test.js'
+      - 'story-engine/test/providerAuthority.test.js'
+      - 'story-engine/deployment/providerAuthority.js'
+      - 'story-engine/deployment/runtime-contract.json'
+      - 'story-engine/Dockerfile'
       - 'story-engine/lib/lindymodeProcessor.js'
       - 'story-engine/lib/ipStudio.js'
+      - '.github/workflows/story-engine-production-proof.yml'
+      - '.github/workflows/story-video-engine-playwright.yml'
+  pull_request:
+    paths:
+      - 'story-engine/lib/videoEngine.js'
+      - 'story-engine/lib/videoExport.js'
+      - 'story-engine/lib/visualStyleCatalog.js'
+      - 'story-engine/routes/videoEngine.js'
+      - 'story-engine/routes/movie.js'
+      - 'story-engine/public/video_*'
+      - 'story-engine/public/control_room.html'
+      - 'story-engine/e2e/session.js'
+      - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/playwright.production.config.js'
+      - 'story-engine/test/videoEngine.test.js'
+      - 'story-engine/test/videoExport.test.js'
+      - 'story-engine/test/providerAuthority.test.js'
+      - 'story-engine/deployment/providerAuthority.js'
+      - 'story-engine/deployment/runtime-contract.json'
+      - 'story-engine/Dockerfile'
+      - 'story-engine/lib/lindymodeProcessor.js'
+      - 'story-engine/lib/ipStudio.js'
+      - '.github/workflows/story-engine-production-proof.yml'
       - '.github/workflows/story-video-engine-playwright.yml'
   workflow_dispatch:
 
@@ -25,23 +58,134 @@ env:
 jobs:
   verify-story-video-engine:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: story-engine
     steps:
       - uses: actions/checkout@v4
+      - name: Verify immutable exact head
+        working-directory: .
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: story-engine/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - run: npm ci
-      - name: Verify deterministic blueprint and artifact unit contracts
-        run: node --test test/videoEngine.test.js
+      - name: Ensure deterministic MP4 renderer is available
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+      - name: Verify portable Juss OS command contract
+        working-directory: .
+        run: node scripts/verify-juss-os-commands.mjs
+      - name: Run full Story Engine Node suite
+        run: npm test
+      - name: Run repository promotion contracts
+        working-directory: .
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          python runtime/test_verify_capability_contract.py
+          python runtime/verify_capability_contract.py
+          python runtime/test_control_room_contract.py
+          python runtime/promotion_gates_all.py
+      - name: Verify Control Room test-ledger contract
+        working-directory: .
+        run: node --test test/control-room-test-ledger.test.mjs
+      - name: Verify deterministic blueprint, export, receipt, and provider-authority contracts
+        run: node --test test/videoEngine.test.js test/videoExport.test.js test/providerAuthority.test.js
+      - name: Verify canonical deployment target class
+        env:
+          STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
+        run: node deployment/providerAuthority.js
       - run: npx playwright install --with-deps chromium
-      - name: Verify Story Video Engine and Control Room end to end
+      - name: Verify browser guardrails
+        run: npm run test:guardrails
+      - name: Verify local domain authority
+        run: npm run test:domain
+      - name: Verify Movie Mode motion contract
+        run: npx playwright test e2e/movie_motion.spec.js
+      - name: Verify Story Universe runtime persistence
+        run: npx playwright test e2e/story_universe.spec.js
+      - name: Verify source understand and canonize contract
+        run: npx playwright test e2e/source_canonize.spec.js
+      - name: Verify Story Video Engine, MP4 export, and Control Room end to end
         run: npx playwright test e2e/video_engine.spec.js
+      - name: Verify exact-head stateful production container contract
+        working-directory: .
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          image="storyengine:${RELEASE_SHA}"
+          container="storyengine-production-smoke"
+          volume="storyengine-production-smoke-data"
+          proof_dir="artifacts/container-runtime/${RELEASE_SHA}"
+          mkdir -p "$proof_dir"
+          cleanup() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          cleanup
+          docker build -t "$image" story-engine
+          docker volume create "$volume" >/dev/null
+          cat > /tmp/storyengine-production-smoke.env <<EOF
+          NODE_ENV=production
+          PORT=3000
+          L99_DB_PATH=/data/l99.db
+          L99_RELEASE_SHA=${RELEASE_SHA}
+          L99_API_KEYS_JSON=[{"key":"container-smoke-admin","actor_id":"ci-container-smoke","tenant_id":"ci","role":"administrator","workspace_ids":["*"]}]
+          RUNTIME_SCAN_INTERVAL_MS=3600000
+          RUNTIME_DRAIN_INTERVAL_MS=3600000
+          EOF
+          docker run -d \
+            --name "$container" \
+            --env-file /tmp/storyengine-production-smoke.env \
+            -v "$volume:/data" \
+            -p 127.0.0.1:3001:3000 \
+            "$image" >/dev/null
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/healthz > "$proof_dir/healthz.json"; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            docker logs "$container"
+            exit 1
+          fi
+          curl -fsS http://127.0.0.1:3001/runtime-identity > "$proof_dir/runtime-identity.json"
+          docker exec "$container" test -s /data/l99.db
+          docker exec "$container" ffmpeg -version | head -n 1
+          mount="$(docker inspect "$container" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Type}}:{{.Name}}{{end}}{{end}}')"
+          test -n "$mount"
+          printf '%s\n' "$mount" > "$proof_dir/persistent-mount.txt"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const expected = process.env.RELEASE_SHA.toLowerCase();
+          const health = JSON.parse(readFileSync(`artifacts/container-runtime/${process.env.RELEASE_SHA}/healthz.json`, 'utf8'));
+          const identity = JSON.parse(readFileSync(`artifacts/container-runtime/${process.env.RELEASE_SHA}/runtime-identity.json`, 'utf8'));
+          if (health.status !== 'ok') throw new Error(`healthz status=${health.status}`);
+          if (String(health.release_sha).toLowerCase() !== expected) throw new Error('healthz release SHA mismatch');
+          if (String(identity.release_sha).toLowerCase() !== expected) throw new Error('runtime identity SHA mismatch');
+          if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
+          if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
+          if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
+          NODE
+      - name: Run exact-head founder truth gate
+        working-directory: .
+        run: python runtime/founder_truth_gate.py
       - name: Upload Story Video Engine proof
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,4 +194,6 @@ jobs:
           path: |
             story-engine/playwright-report/
             story-engine/test-results/
+            artifacts/founder-truth/${{ github.sha }}.json
+            artifacts/container-runtime/${{ github.sha }}/
           if-no-files-found: ignore

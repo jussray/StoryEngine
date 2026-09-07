@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "project": "story-engine",
-  "mode": "local-only",
+  "mode": "production",
   "localOrigin": "http://127.0.0.1:3000",
-  "productionOrigin": null,
+  "productionOrigin": "https://story-engine-production-1e6b.up.railway.app",
   "promotionRequirements": [
     "choose a canonical HTTPS production origin",
     "deploy the stateful container with persistent storage bound to L99_DB_PATH",
