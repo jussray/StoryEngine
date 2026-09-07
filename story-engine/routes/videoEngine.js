@@ -12,6 +12,10 @@ import {
   validateStoryVideoJob
 } from '../lib/videoEngine.js';
 import {
+  storyVideoShotEditorOptions,
+  updateStoryVideoShotPlan
+} from '../lib/videoShotPlanEditor.js';
+import {
   getStoryVideoExport,
   getStoryVideoExportFile,
   renderStoryVideoExport
@@ -19,7 +23,10 @@ import {
 
 export default function videoEngineRoutes(router, db) {
   router.get('/api/video-engine/options', (req, res) => {
-    json(res, 200, VIDEO_ENGINE_OPTIONS);
+    json(res, 200, {
+      ...VIDEO_ENGINE_OPTIONS,
+      shot_editor: storyVideoShotEditorOptions()
+    });
   });
 
   router.get('/api/video-engine/control-room', (req, res) => {
@@ -63,6 +70,22 @@ export default function videoEngineRoutes(router, db) {
       json(res, 200, job);
     } catch (error) {
       json(res, 500, { error: error.message });
+    }
+  });
+
+  router.post('/api/video-engine/jobs/:job_id/shot-plan', (req, res) => {
+    try {
+      const job = getStoryVideoJob(db, req.params.job_id);
+      if (!job) return json(res, 404, { error: 'Video job not found.' });
+      if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
+      json(res, 200, updateStoryVideoShotPlan(db, req.params.job_id, req.body || {}));
+    } catch (error) {
+      const status = /not found/i.test(error.message)
+        ? 404
+        : /immutable/i.test(error.message)
+          ? 409
+          : 400;
+      json(res, status, { error: error.message });
     }
   });
 
