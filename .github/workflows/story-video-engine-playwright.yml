@@ -76,6 +76,13 @@ jobs:
         with:
           python-version: '3.11'
       - run: npm ci
+      - name: Ensure deterministic MP4 renderer is available
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
       - name: Verify portable Juss OS command contract
         working-directory: .
         run: node scripts/verify-juss-os-commands.mjs
@@ -93,13 +100,6 @@ jobs:
       - name: Verify Control Room test-ledger contract
         working-directory: .
         run: node --test test/control-room-test-ledger.test.mjs
-      - name: Ensure deterministic MP4 renderer is available
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
-          ffmpeg -version | head -n 1
       - name: Verify deterministic blueprint, export, receipt, and provider-authority contracts
         run: node --test test/videoEngine.test.js test/videoExport.test.js test/providerAuthority.test.js
       - name: Verify canonical deployment target class
