@@ -34,19 +34,35 @@ test('production proof requires independent GitHub environment origin authority'
   assert.doesNotMatch(workflow, /optionalEnvironmentOrigin|SOURCE_BOUND|source-canonical-live-runtime-required/);
 });
 
-test('main proof supersedes stale main proof without cancelling manual historical proof', () => {
+test('production proof is post-CI and cannot participate in Railway Wait for CI deadlock', () => {
+  assert.match(workflow, /workflow_run:\s*[\s\S]*workflows:\s*[\s\S]*- L99 Story Engine CI/);
+  assert.match(workflow, /types:\s*[\s\S]*- completed/);
+  assert.match(workflow, /branches:\s*[\s\S]*- main/);
+  assert.ok(workflow.includes("github.event.workflow_run.conclusion == 'success'"));
+  assert.doesNotMatch(workflow, /\n  push:\s*\n/);
+});
+
+test('new post-CI proof supersedes stale main proof without cancelling manual historical proof', () => {
   assert.ok(
     workflow.includes('group: "storyengine-production-proof-${{ github.event_name == \'workflow_dispatch\' && inputs.release_sha || \'main\' }}"')
   );
-  assert.ok(workflow.includes("cancel-in-progress: ${{ github.event_name == 'push' }}"));
+  assert.ok(workflow.includes("cancel-in-progress: ${{ github.event_name == 'workflow_run' }}"));
 });
 
-test('production proof keeps release identity and ancestry fail closed', () => {
-  assert.ok(workflow.includes('git log --first-parent -1 --format=%H "$GITHUB_SHA" -- story-engine'));
+test('production proof binds immutable release subject to upstream green CI head or manual SHA', () => {
+  assert.ok(workflow.includes('UPSTREAM_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}'));
+  assert.ok(workflow.includes('release_sha="$UPSTREAM_RELEASE_SHA"'));
   assert.ok(workflow.includes('git checkout --detach "$release_sha"'));
   assert.ok(workflow.includes('test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"'));
   assert.ok(workflow.includes('git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main'));
   assert.ok(workflow.includes("redirect: 'error'"));
+});
+
+test('production proof enforces persistent volume witness continuity across browser mutation', () => {
+  assert.ok(workflow.includes('EXPECTED_PERSISTENCE_WITNESS'));
+  assert.ok(workflow.includes('persistence_witness is missing or invalid'));
+  assert.ok(workflow.includes('persistent storage witness changed before credentialed browser proof'));
+  assert.ok(workflow.includes('persistent storage witness changed during browser proof'));
 });
 
 test('production browser secrets remain step-scoped and are not job-level environment values', () => {
@@ -61,6 +77,7 @@ test('production browser secrets remain step-scoped and are not job-level enviro
 
 test('blocked and verified production proof states retain machine-readable evidence', () => {
   assert.ok(workflow.includes('production-proof-blocked.json'));
+  assert.ok(workflow.includes("reason: 'provider-release-not-converged'"));
   assert.ok(workflow.includes('production-runtime-before.json'));
   assert.ok(workflow.includes('production-proof-summary.json'));
   assert.ok(workflow.includes('actions/upload-artifact@v4'));
