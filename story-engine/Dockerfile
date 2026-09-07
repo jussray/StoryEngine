@@ -15,7 +15,6 @@ COPY --chown=node:node . .
 
 RUN mkdir -p /data /data/video-exports && chown -R node:node /data
 
-VOLUME ["/data"]
 USER node
 EXPOSE 3000
 
