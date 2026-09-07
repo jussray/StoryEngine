@@ -1,0 +1,128 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Provider authority is SHA-bound: any carrier-head movement requires fresh exact-head proof,
+// even when the effective source tree is unchanged by an ancestry-only reconciliation.
+export const TARGET_CLASSES = Object.freeze({
+  'stateful-container-durable-volume': Object.freeze({
+    capabilities: Object.freeze([
+      'container-process',
+      'durable-mounted-filesystem',
+      'sqlite-file-persistence',
+      'exact-release-identity',
+      'https-origin'
+    ])
+  }),
+  'container-ephemeral-disk': Object.freeze({
+    capabilities: Object.freeze([
+      'container-process',
+      'exact-release-identity',
+      'https-origin'
+    ])
+  }),
+  'stateless-worker': Object.freeze({
+    capabilities: Object.freeze([
+      'exact-release-identity',
+      'https-origin'
+    ])
+  })
+});
+
+export function evaluateProviderAuthority(contract, targetClass) {
+  const reasons = [];
+  const target = TARGET_CLASSES[targetClass];
+
+  if (!target) {
+    reasons.push(`unknown deployment target class: ${targetClass}`);
+  }
+
+  if (contract?.runtime?.kind !== 'stateful-container') {
+    reasons.push(`runtime.kind must remain stateful-container, got ${contract?.runtime?.kind ?? 'missing'}`);
+  }
+
+  if (contract?.state?.backend !== 'sqlite') {
+    reasons.push(`state.backend must remain sqlite, got ${contract?.state?.backend ?? 'missing'}`);
+  }
+
+  if (contract?.state?.persistentMountRequired !== true) {
+    reasons.push('state.persistentMountRequired must be true');
+  }
+
+  if (contract?.state?.ephemeralContainerDiskAccepted !== false) {
+    reasons.push('state.ephemeralContainerDiskAccepted must be explicitly false');
+  }
+
+  const requiredCapabilities = contract?.providerCompatibility?.requiredCapabilities;
+  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.length === 0) {
+    reasons.push('providerCompatibility.requiredCapabilities must be a non-empty array');
+  } else if (target) {
+    const available = new Set(target.capabilities);
+    for (const capability of requiredCapabilities) {
+      if (!available.has(capability)) reasons.push(`target ${targetClass} lacks required capability: ${capability}`);
+    }
+  }
+
+  return Object.freeze({
+    authority: reasons.length === 0 ? 'AUTHORIZED' : 'REJECTED',
+    target_class: targetClass,
+    reasons: Object.freeze(reasons)
+  });
+}
+
+export function normalizeHttpsOrigin(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'https:') return null;
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+    if (parsed.pathname && parsed.pathname !== '/') return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+export function evaluateProductionOriginAuthority(domainAuthority, authorizedOrigin) {
+  const reasons = [];
+  const configuredRaw = String(domainAuthority?.productionOrigin ?? '').trim();
+  const authorizedRaw = String(authorizedOrigin ?? '').trim();
+  const configured = normalizeHttpsOrigin(configuredRaw);
+  const authorized = normalizeHttpsOrigin(authorizedRaw);
+
+  if (!configuredRaw) reasons.push('config/domain-authority.json productionOrigin is not bound');
+  else if (!configured) reasons.push('config/domain-authority.json productionOrigin must be a canonical HTTPS origin');
+
+  if (!authorizedRaw) reasons.push('production environment STORYENGINE_PRODUCTION_ORIGIN is not bound');
+  else if (!authorized) reasons.push('production environment STORYENGINE_PRODUCTION_ORIGIN must be a canonical HTTPS origin');
+
+  if (configured && authorized && configured !== authorized) {
+    reasons.push(`production origin mismatch: source=${configured} environment=${authorized}`);
+  }
+
+  return Object.freeze({
+    authority: reasons.length === 0 ? 'AUTHORIZED' : 'REJECTED',
+    production_origin: configured,
+    authorized_origin: authorized,
+    reasons: Object.freeze(reasons)
+  });
+}
+
+export function loadRuntimeContract() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return JSON.parse(readFileSync(join(here, 'runtime-contract.json'), 'utf8'));
+}
+
+export function loadDomainAuthority() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return JSON.parse(readFileSync(join(here, '..', 'config', 'domain-authority.json'), 'utf8'));
+}
+
+const invokedDirectly = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+if (invokedDirectly) {
+  const targetClass = process.env.STORYENGINE_DEPLOYMENT_TARGET_CLASS || process.argv[2] || '';
+  const decision = evaluateProviderAuthority(loadRuntimeContract(), targetClass);
+  console.log(JSON.stringify(decision, null, 2));
+  if (decision.authority !== 'AUTHORIZED') process.exit(1);
+}

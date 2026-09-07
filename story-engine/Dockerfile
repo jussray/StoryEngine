@@ -4,11 +4,16 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     PORT=3000 \
-    L99_DB_PATH=/data/l99.db
+    L99_DB_PATH=/data/l99.db \
+    L99_VIDEO_OUTPUT_DIR=/data/video-exports
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --chown=node:node . .
 
-RUN mkdir -p /data && chown node:node /data
+RUN mkdir -p /data /data/video-exports && chown -R node:node /data
 
 VOLUME ["/data"]
 USER node

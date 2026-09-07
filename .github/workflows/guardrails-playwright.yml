@@ -42,6 +42,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: story-engine/package-lock.json
       - run: npm ci
+      - name: Ensure deterministic MP4 renderer is available
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
       - name: Run Node tests with retained evidence
         shell: bash
         run: |

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "service": "l99-story-engine",
   "runtime": {
     "kind": "stateful-container",
@@ -10,8 +10,10 @@
     "backend": "sqlite",
     "databaseEnvironmentVariable": "L99_DB_PATH",
     "persistentMountRequired": true,
+    "ephemeralContainerDiskAccepted": false,
     "recommendedMountPath": "/data",
-    "recommendedDatabasePath": "/data/l99.db"
+    "recommendedDatabasePath": "/data/l99.db",
+    "durabilityRequirement": "database file survives container restart and reschedule"
   },
   "releaseIdentity": {
     "environmentVariable": "L99_RELEASE_SHA",
@@ -25,10 +27,22 @@
     ],
     "mustNotBeCommitted": true
   },
+  "providerCompatibility": {
+    "requiredCapabilities": [
+      "container-process",
+      "durable-mounted-filesystem",
+      "sqlite-file-persistence",
+      "exact-release-identity",
+      "https-origin"
+    ],
+    "failClosedOnUnknownTarget": true,
+    "providerCheckAuthoritativeOnlyWhenCompatible": true
+  },
   "promotion": {
     "productionOriginSource": "config/domain-authority.json",
     "requiresProductionPlaywright": true,
     "requiresExactReleaseIdentity": true,
-    "requiresPersistentState": true
+    "requiresPersistentState": true,
+    "requiresProviderAuthority": true
   }
 }

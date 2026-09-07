@@ -1,0 +1,127 @@
+name: StoryEngine Production Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character Git SHA deployed at the canonical production origin
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storyengine-production-proof
+  cancel-in-progress: false
+
+jobs:
+  verify-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
+      STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN: ${{ vars.STORYENGINE_PRODUCTION_ORIGIN }}
+      STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
+    defaults:
+      run:
+        working-directory: story-engine
+    steps:
+      - name: Validate immutable release input
+        working-directory: .
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'release_sha must be an exact 40-character Git SHA' >&2; exit 1; }
+          test -n "$STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN" || { echo 'Missing production environment variable STORYENGINE_PRODUCTION_ORIGIN' >&2; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+      - name: Prove immutable checkout and main ancestry
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main || {
+            echo 'release_sha is not part of current main history; production secrets must not be exposed to unmerged code' >&2
+            exit 1
+          }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: story-engine/package-lock.json
+      - run: npm ci
+      - name: Enforce deployment provider authority
+        run: node deployment/providerAuthority.js
+      - name: Bind canonical production origin
+        working-directory: .
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import {
+            evaluateProductionOriginAuthority,
+            loadDomainAuthority
+          } from './story-engine/deployment/providerAuthority.js';
+
+          const decision = evaluateProductionOriginAuthority(
+            loadDomainAuthority(),
+            process.env.STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN
+          );
+          console.log(JSON.stringify(decision, null, 2));
+          if (decision.authority !== 'AUTHORIZED' || !decision.production_origin) process.exit(1);
+          appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_ORIGIN=${decision.production_origin}\n`);
+          NODE
+      - run: npx playwright install --with-deps chromium
+      - name: Verify deployed health and exact runtime identity
+        run: |
+          node --input-type=module <<'NODE'
+          const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
+          const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
+          const readJson = async path => {
+            const response = await fetch(`${origin}${path}`, { redirect: 'error' });
+            if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`);
+            return response.json();
+          };
+          const health = await readJson('/healthz');
+          const identity = await readJson('/runtime-identity');
+          if (health.status !== 'ok') throw new Error(`healthz status=${health.status}`);
+          if (String(health.release_sha).toLowerCase() !== expected) throw new Error('healthz release SHA mismatch');
+          if (String(identity.release_sha).toLowerCase() !== expected) throw new Error('runtime-identity release SHA mismatch');
+          if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
+          if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
+          if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
+          console.log(JSON.stringify({ health, identity }, null, 2));
+          NODE
+      - name: Verify production Story to MP4 path in real Chromium
+        env:
+          PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}
+          PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PLAYWRIGHT_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY' >&2; exit 1; }
+          test -n "$PLAYWRIGHT_SCOPED_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_SCOPED_API_KEY' >&2; exit 1; }
+          npx playwright test e2e/video_engine.spec.js --config=playwright.production.config.js
+      - name: Reverify exact runtime identity after browser mutation path
+        run: |
+          node --input-type=module <<'NODE'
+          const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
+          const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
+          const response = await fetch(`${origin}/runtime-identity`, { redirect: 'error' });
+          if (!response.ok) throw new Error(`runtime-identity returned HTTP ${response.status}`);
+          const identity = await response.json();
+          if (String(identity.release_sha).toLowerCase() !== expected) throw new Error('runtime identity changed during proof');
+          console.log(JSON.stringify(identity, null, 2));
+          NODE
+      - name: Upload production Playwright proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storyengine-production-proof-${{ inputs.release_sha }}
+          path: |
+            story-engine/playwright-report/
+            story-engine/test-results/
+          if-no-files-found: ignore
