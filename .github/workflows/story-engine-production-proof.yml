@@ -180,6 +180,15 @@ jobs:
           process.exit(1);
           NODE
 
+      - name: Validate production browser credentials
+        env:
+          PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}
+          PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PLAYWRIGHT_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY' >&2; exit 1; }
+          test -n "$PLAYWRIGHT_SCOPED_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_SCOPED_API_KEY' >&2; exit 1; }
+
       - run: npx playwright install --with-deps chromium
 
       - name: Verify production Story to MP4 path in real Chromium
