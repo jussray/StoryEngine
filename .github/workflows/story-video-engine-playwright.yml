@@ -58,18 +58,41 @@ env:
 jobs:
   verify-story-video-engine:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: story-engine
     steps:
       - uses: actions/checkout@v4
+      - name: Verify immutable exact head
+        working-directory: .
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: story-engine/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - run: npm ci
+      - name: Verify portable Juss OS command contract
+        working-directory: .
+        run: node scripts/verify-juss-os-commands.mjs
+      - name: Run full Story Engine Node suite
+        run: npm test
+      - name: Run repository promotion contracts
+        working-directory: .
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          python runtime/test_verify_capability_contract.py
+          python runtime/verify_capability_contract.py
+          python runtime/test_control_room_contract.py
+          python runtime/promotion_gates_all.py
+      - name: Verify Control Room test-ledger contract
+        working-directory: .
+        run: node --test test/control-room-test-ledger.test.mjs
       - name: Ensure deterministic MP4 renderer is available
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
@@ -84,6 +107,16 @@ jobs:
           STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
         run: node deployment/providerAuthority.js
       - run: npx playwright install --with-deps chromium
+      - name: Verify browser guardrails
+        run: npm run test:guardrails
+      - name: Verify local domain authority
+        run: npm run test:domain
+      - name: Verify Movie Mode motion contract
+        run: npx playwright test e2e/movie_motion.spec.js
+      - name: Verify Story Universe runtime persistence
+        run: npx playwright test e2e/story_universe.spec.js
+      - name: Verify source understand and canonize contract
+        run: npx playwright test e2e/source_canonize.spec.js
       - name: Verify Story Video Engine, MP4 export, and Control Room end to end
         run: npx playwright test e2e/video_engine.spec.js
       - name: Verify exact-head stateful production container contract
