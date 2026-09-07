@@ -70,9 +70,53 @@ export function evaluateProviderAuthority(contract, targetClass) {
   });
 }
 
+export function normalizeHttpsOrigin(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'https:') return null;
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+    if (parsed.pathname && parsed.pathname !== '/') return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+export function evaluateProductionOriginAuthority(domainAuthority, authorizedOrigin) {
+  const reasons = [];
+  const configuredRaw = String(domainAuthority?.productionOrigin ?? '').trim();
+  const authorizedRaw = String(authorizedOrigin ?? '').trim();
+  const configured = normalizeHttpsOrigin(configuredRaw);
+  const authorized = normalizeHttpsOrigin(authorizedRaw);
+
+  if (!configuredRaw) reasons.push('config/domain-authority.json productionOrigin is not bound');
+  else if (!configured) reasons.push('config/domain-authority.json productionOrigin must be a canonical HTTPS origin');
+
+  if (!authorizedRaw) reasons.push('production environment STORYENGINE_PRODUCTION_ORIGIN is not bound');
+  else if (!authorized) reasons.push('production environment STORYENGINE_PRODUCTION_ORIGIN must be a canonical HTTPS origin');
+
+  if (configured && authorized && configured !== authorized) {
+    reasons.push(`production origin mismatch: source=${configured} environment=${authorized}`);
+  }
+
+  return Object.freeze({
+    authority: reasons.length === 0 ? 'AUTHORIZED' : 'REJECTED',
+    production_origin: configured,
+    authorized_origin: authorized,
+    reasons: Object.freeze(reasons)
+  });
+}
+
 export function loadRuntimeContract() {
   const here = dirname(fileURLToPath(import.meta.url));
   return JSON.parse(readFileSync(join(here, 'runtime-contract.json'), 'utf8'));
+}
+
+export function loadDomainAuthority() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return JSON.parse(readFileSync(join(here, '..', 'config', 'domain-authority.json'), 'utf8'));
 }
 
 const invokedDirectly = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
