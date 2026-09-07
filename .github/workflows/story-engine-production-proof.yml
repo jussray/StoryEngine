@@ -3,12 +3,8 @@ name: StoryEngine Production Proof
 on:
   workflow_dispatch:
     inputs:
-      production_origin:
-        description: Canonical HTTPS StoryEngine production origin
-        required: true
-        type: string
       release_sha:
-        description: Exact 40-character Git SHA deployed at the production origin
+        description: Exact 40-character Git SHA deployed at the canonical production origin
         required: true
         type: string
 
@@ -26,31 +22,33 @@ jobs:
     environment: production
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      PRODUCTION_ORIGIN: ${{ inputs.production_origin }}
       EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
-      PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}
-      PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}
+      STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN: ${{ vars.STORYENGINE_PRODUCTION_ORIGIN }}
       STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
     defaults:
       run:
         working-directory: story-engine
     steps:
-      - name: Validate proof inputs
+      - name: Validate immutable release input
         working-directory: .
         run: |
           set -euo pipefail
-          [[ "$PRODUCTION_ORIGIN" =~ ^https:// ]] || { echo 'production_origin must be HTTPS' >&2; exit 1; }
           [[ "$EXPECTED_RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'release_sha must be an exact 40-character Git SHA' >&2; exit 1; }
-          test -n "$PLAYWRIGHT_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY' >&2; exit 1; }
-          test -n "$PLAYWRIGHT_SCOPED_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_SCOPED_API_KEY' >&2; exit 1; }
+          test -n "$STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN" || { echo 'Missing production environment variable STORYENGINE_PRODUCTION_ORIGIN' >&2; exit 1; }
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_sha }}
-      - name: Prove immutable checkout
+          fetch-depth: 0
+      - name: Prove immutable checkout and main ancestry
         working-directory: .
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main || {
+            echo 'release_sha is not part of current main history; production secrets must not be exposed to unmerged code' >&2
+            exit 1
+          }
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -59,6 +57,24 @@ jobs:
       - run: npm ci
       - name: Enforce deployment provider authority
         run: node deployment/providerAuthority.js
+      - name: Bind canonical production origin
+        working-directory: .
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import {
+            evaluateProductionOriginAuthority,
+            loadDomainAuthority
+          } from './story-engine/deployment/providerAuthority.js';
+
+          const decision = evaluateProductionOriginAuthority(
+            loadDomainAuthority(),
+            process.env.STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN
+          );
+          console.log(JSON.stringify(decision, null, 2));
+          if (decision.authority !== 'AUTHORIZED' || !decision.production_origin) process.exit(1);
+          appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_ORIGIN=${decision.production_origin}\n`);
+          NODE
       - run: npx playwright install --with-deps chromium
       - name: Verify deployed health and exact runtime identity
         run: |
@@ -81,7 +97,14 @@ jobs:
           console.log(JSON.stringify({ health, identity }, null, 2));
           NODE
       - name: Verify production Story to MP4 path in real Chromium
-        run: npx playwright test e2e/video_engine.spec.js --config=playwright.production.config.js
+        env:
+          PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}
+          PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PLAYWRIGHT_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY' >&2; exit 1; }
+          test -n "$PLAYWRIGHT_SCOPED_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_SCOPED_API_KEY' >&2; exit 1; }
+          npx playwright test e2e/video_engine.spec.js --config=playwright.production.config.js
       - name: Reverify exact runtime identity after browser mutation path
         run: |
           node --input-type=module <<'NODE'
