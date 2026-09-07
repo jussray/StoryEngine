@@ -56,12 +56,11 @@ jobs:
           echo "Production proof subject: ${release_sha,,} (trigger: $GITHUB_SHA)"
           git checkout --detach "$release_sha"
 
-      - name: Validate immutable release input and authority binding
+      - name: Validate immutable release input and ancestry
         working-directory: .
         run: |
           set -euo pipefail
           [[ "$EXPECTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be an exact 40-character Git SHA' >&2; exit 1; }
-          test -n "$STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN" || { echo 'Missing production environment variable STORYENGINE_PRODUCTION_ORIGIN' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main || {
@@ -87,16 +86,34 @@ jobs:
           import { appendFileSync } from 'node:fs';
           import {
             evaluateProductionOriginAuthority,
-            loadDomainAuthority
+            loadDomainAuthority,
+            normalizeHttpsOrigin
           } from './story-engine/deployment/providerAuthority.js';
 
-          const decision = evaluateProductionOriginAuthority(
-            loadDomainAuthority(),
-            process.env.STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN
-          );
-          console.log(JSON.stringify(decision, null, 2));
-          if (decision.authority !== 'AUTHORIZED' || !decision.production_origin) process.exit(1);
-          appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_ORIGIN=${decision.production_origin}\n`);
+          const domainAuthority = loadDomainAuthority();
+          const configured = normalizeHttpsOrigin(domainAuthority?.productionOrigin);
+          if (!configured) {
+            console.error('config/domain-authority.json productionOrigin must be a canonical HTTPS origin');
+            process.exit(1);
+          }
+
+          const optionalEnvironmentOrigin = String(process.env.STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN ?? '').trim();
+          let authorityMode = 'source-canonical-live-runtime-required';
+          if (optionalEnvironmentOrigin) {
+            const decision = evaluateProductionOriginAuthority(domainAuthority, optionalEnvironmentOrigin);
+            console.log(JSON.stringify(decision, null, 2));
+            if (decision.authority !== 'AUTHORIZED' || !decision.production_origin) process.exit(1);
+            authorityMode = 'source-plus-environment-cross-check';
+          } else {
+            console.log(JSON.stringify({
+              authority: 'SOURCE_BOUND',
+              production_origin: configured,
+              note: 'No duplicate GitHub environment origin is configured; live exact-SHA runtime identity remains mandatory.'
+            }, null, 2));
+          }
+
+          appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_ORIGIN=${configured}\n`);
+          appendFileSync(process.env.GITHUB_ENV, `ORIGIN_AUTHORITY_MODE=${authorityMode}\n`);
           NODE
 
       - name: Wait for Railway exact release and verify runtime identity
@@ -141,6 +158,7 @@ jobs:
                     release_sha: expected,
                     trigger_sha: process.env.GITHUB_SHA,
                     production_origin: origin,
+                    origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE,
                     observed_at: new Date().toISOString(),
                     github_run_id: process.env.GITHUB_RUN_ID,
                     health,
@@ -208,6 +226,7 @@ jobs:
             release_sha: expected,
             trigger_sha: process.env.GITHUB_SHA,
             production_origin: origin,
+            origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE,
             verified_at: new Date().toISOString(),
             github_run_id: process.env.GITHUB_RUN_ID,
             github_run_attempt: process.env.GITHUB_RUN_ATTEMPT,
