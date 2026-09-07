@@ -18,8 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: storyengine-production-proof
-  cancel-in-progress: true
+  group: "storyengine-production-proof-${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || 'main' }}"
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   verify-production:
@@ -56,11 +56,68 @@ jobs:
           echo "Production proof subject: ${release_sha,,} (trigger: $GITHUB_SHA)"
           git checkout --detach "$release_sha"
 
-      - name: Validate immutable release input and ancestry
+      - name: Validate release ancestry and independent production origin authority
         working-directory: .
         run: |
           set -euo pipefail
-          [[ "$EXPECTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be an exact 40-character Git SHA' >&2; exit 1; }
+          mkdir -p story-engine/test-results
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { mkdir, writeFile } from 'node:fs/promises';
+          import {
+            evaluateProductionOriginAuthority,
+            loadDomainAuthority
+          } from './story-engine/deployment/providerAuthority.js';
+
+          const expected = String(process.env.EXPECTED_RELEASE_SHA ?? '').trim().toLowerCase();
+          const authorizedOrigin = String(process.env.STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN ?? '').trim();
+          let reason = null;
+          let message = null;
+          let decision = null;
+
+          if (!/^[0-9a-f]{40}$/.test(expected)) {
+            reason = 'invalid-release-sha';
+            message = 'release_sha must be an exact 40-character Git SHA';
+          } else if (!authorizedOrigin) {
+            reason = 'missing-independent-origin-authority';
+            message = 'GitHub production environment variable STORYENGINE_PRODUCTION_ORIGIN is missing';
+          } else {
+            decision = evaluateProductionOriginAuthority(loadDomainAuthority(), authorizedOrigin);
+            if (decision.authority !== 'AUTHORIZED' || !decision.production_origin) {
+              reason = 'production-origin-authority-rejected';
+              message = decision.reasons.join('; ') || 'production origin authority rejected';
+            }
+          }
+
+          if (reason) {
+            await mkdir('story-engine/test-results', { recursive: true });
+            const receipt = {
+              schema: 'juss/storyengine-production-proof-blocked@v1',
+              status: 'blocked',
+              reason,
+              message,
+              release_sha: expected || null,
+              trigger_sha: process.env.GITHUB_SHA || null,
+              authorized_origin_present: Boolean(authorizedOrigin),
+              github_run_id: process.env.GITHUB_RUN_ID || null,
+              github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
+              event_name: process.env.GITHUB_EVENT_NAME || null,
+              observed_at: new Date().toISOString()
+            };
+            await writeFile(
+              'story-engine/test-results/production-proof-blocked.json',
+              JSON.stringify(receipt, null, 2) + '\n'
+            );
+            console.log(`::error title=StoryEngine production proof blocked::${message}`);
+            console.error(JSON.stringify(receipt, null, 2));
+            process.exit(1);
+          }
+
+          console.log(JSON.stringify(decision, null, 2));
+          appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_ORIGIN=${decision.production_origin}\n`);
+          appendFileSync(process.env.GITHUB_ENV, 'ORIGIN_AUTHORITY_MODE=source-plus-environment-cross-check\n');
+          NODE
+
           test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main || {
@@ -78,43 +135,6 @@ jobs:
 
       - name: Enforce deployment provider authority
         run: node deployment/providerAuthority.js
-
-      - name: Bind canonical production origin
-        working-directory: .
-        run: |
-          node --input-type=module <<'NODE'
-          import { appendFileSync } from 'node:fs';
-          import {
-            evaluateProductionOriginAuthority,
-            loadDomainAuthority,
-            normalizeHttpsOrigin
-          } from './story-engine/deployment/providerAuthority.js';
-
-          const domainAuthority = loadDomainAuthority();
-          const configured = normalizeHttpsOrigin(domainAuthority?.productionOrigin);
-          if (!configured) {
-            console.error('config/domain-authority.json productionOrigin must be a canonical HTTPS origin');
-            process.exit(1);
-          }
-
-          const optionalEnvironmentOrigin = String(process.env.STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN ?? '').trim();
-          let authorityMode = 'source-canonical-live-runtime-required';
-          if (optionalEnvironmentOrigin) {
-            const decision = evaluateProductionOriginAuthority(domainAuthority, optionalEnvironmentOrigin);
-            console.log(JSON.stringify(decision, null, 2));
-            if (decision.authority !== 'AUTHORIZED' || !decision.production_origin) process.exit(1);
-            authorityMode = 'source-plus-environment-cross-check';
-          } else {
-            console.log(JSON.stringify({
-              authority: 'SOURCE_BOUND',
-              production_origin: configured,
-              note: 'No duplicate GitHub environment origin is configured; live exact-SHA runtime identity remains mandatory.'
-            }, null, 2));
-          }
-
-          appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_ORIGIN=${configured}\n`);
-          appendFileSync(process.env.GITHUB_ENV, `ORIGIN_AUTHORITY_MODE=${authorityMode}\n`);
-          NODE
 
       - name: Wait for Railway exact release and verify runtime identity
         run: |
@@ -191,14 +211,32 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
+      - name: Revalidate authorized runtime immediately before credentialed browser proof
+        run: |
+          node --input-type=module <<'NODE'
+          const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
+          const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
+          const response = await fetch(`${origin}/runtime-identity`, {
+            redirect: 'error',
+            signal: AbortSignal.timeout(8000)
+          });
+          if (!response.ok) throw new Error(`runtime-identity returned HTTP ${response.status}`);
+          const identity = await response.json();
+          if (String(identity.release_sha ?? '').toLowerCase() !== expected) {
+            throw new Error('runtime identity changed before credentialed browser proof');
+          }
+          if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
+          if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
+          if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
+          console.log(JSON.stringify(identity, null, 2));
+          NODE
+
       - name: Verify production Story to MP4 path in real Chromium
         env:
           PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}
           PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}
         run: |
           set -euo pipefail
-          test -n "$PLAYWRIGHT_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY' >&2; exit 1; }
-          test -n "$PLAYWRIGHT_SCOPED_API_KEY" || { echo 'Missing STORYENGINE_PRODUCTION_SCOPED_API_KEY' >&2; exit 1; }
           npx playwright test e2e/video_engine.spec.js --config=playwright.production.config.js
 
       - name: Reverify exact runtime identity after browser mutation path
@@ -253,8 +291,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: storyengine-production-proof
+          name: storyengine-production-proof-${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}-${{ github.run_attempt }}
           path: |
             story-engine/playwright-report/
             story-engine/test-results/
           if-no-files-found: ignore
+          retention-days: 90
