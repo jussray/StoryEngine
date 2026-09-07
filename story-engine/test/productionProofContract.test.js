@@ -20,8 +20,8 @@ function beforeSteps(source) {
 test('production proof requires independent GitHub environment origin authority', () => {
   assert.match(workflow, /environment:\s+production/);
   assert.ok(
-    workflow.includes('STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN: ${{ vars.STORYENGINE_PRODUCTION_ORIGIN }}'),
-    'production origin authority must come from the GitHub production environment'
+    workflow.includes("STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN: ${{ vars.STORYENGINE_PRODUCTION_ORIGIN || secrets.STORYENGINE_PRODUCTION_ORIGIN }}"),
+    'production origin authority must come from GitHub configuration outside application source'
   );
   assert.ok(
     workflow.includes('evaluateProductionOriginAuthority('),

@@ -28,7 +28,7 @@ jobs:
     environment: production
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN: ${{ vars.STORYENGINE_PRODUCTION_ORIGIN }}
+      STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN: ${{ vars.STORYENGINE_PRODUCTION_ORIGIN || secrets.STORYENGINE_PRODUCTION_ORIGIN }}
       STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
     defaults:
       run:
@@ -80,7 +80,7 @@ jobs:
             message = 'release_sha must be an exact 40-character Git SHA';
           } else if (!authorizedOrigin) {
             reason = 'missing-independent-origin-authority';
-            message = 'GitHub production environment variable STORYENGINE_PRODUCTION_ORIGIN is missing';
+            message = 'GitHub production environment variable or secret STORYENGINE_PRODUCTION_ORIGIN is missing';
           } else {
             decision = evaluateProductionOriginAuthority(loadDomainAuthority(), authorizedOrigin);
             if (decision.authority !== 'AUTHORIZED' || !decision.production_origin) {
