@@ -281,7 +281,7 @@ export async function validateStoryVideoJob(db, jobId) {
     has_video_shot: artifact.html.includes('data-testid="video-shot"'),
     has_video_timeline: artifact.html.includes('data-testid="video-timeline"'),
     has_visual_style_marker: artifact.html.includes(`data-visual-style="${job.blueprint.visual_style}"`),
-    has_shot_command_marker: artifact.html.includes('data-shot-command="/establish"'),
+    has_shot_command_marker: (job.blueprint.shots || []).every(shot => artifact.html.includes(`data-shot-command="${html(shot.shot_command || '')}"`)),
     shot_count_matches: (artifact.html.match(/<article[^>]+data-testid="video-shot"/g) || []).length === job.blueprint.shot_count,
     zero_provider_cost: Number(job.estimated_cost_usd || 0) === 0 && Number(job.actual_cost_usd || 0) === 0
   };
