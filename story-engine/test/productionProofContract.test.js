@@ -55,12 +55,17 @@ test('new production deployment proof supersedes stale live proof without cancel
   );
 });
 
-test('production proof binds immutable release subject to provider deployment SHA or manual SHA', () => {
+test('production proof binds immutable release subject to trusted main before executing release code', () => {
   assert.ok(workflow.includes('DEPLOYED_RELEASE_SHA: ${{ github.event.deployment.sha }}'));
   assert.ok(workflow.includes('release_sha="$DEPLOYED_RELEASE_SHA"'));
-  assert.ok(workflow.includes('git checkout --detach "$release_sha"'));
+  assert.ok(workflow.includes('ref: main'));
+  assert.ok(workflow.includes('git fetch --no-tags origin "$release_sha"'));
+  assert.ok(workflow.includes('git merge-base --is-ancestor "${release_sha,,}" origin/main'));
+  assert.ok(workflow.includes('git checkout --detach "${release_sha,,}"'));
   assert.ok(workflow.includes('test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"'));
-  assert.ok(workflow.includes('git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main'));
+  const ancestryIndex = workflow.indexOf('git merge-base --is-ancestor "${release_sha,,}" origin/main');
+  const checkoutIndex = workflow.indexOf('git checkout --detach "${release_sha,,}"');
+  assert.ok(ancestryIndex >= 0 && checkoutIndex > ancestryIndex, 'release ancestry must be proven before candidate code is checked out');
   assert.ok(workflow.includes("redirect: 'error'"));
 });
 
@@ -73,11 +78,13 @@ test('production proof validates provider-native Railway identity and fails clos
   assert.doesNotMatch(workflow, /delay\(10_000\)/);
 });
 
-test('production proof distinguishes full outage, partial endpoint reachability, and later validation failure', () => {
+test('production proof distinguishes full outage by settlement status from reachable falsy payloads and later validation failure', () => {
   assert.ok(workflow.includes('Promise.allSettled(['));
   assert.ok(workflow.includes("healthResult.status === 'fulfilled'"));
   assert.ok(workflow.includes("identityResult.status === 'fulfilled'"));
-  assert.ok(workflow.includes('if (!health && !identity) {'));
+  assert.ok(workflow.includes("healthResult.status === 'rejected' && identityResult.status === 'rejected'"));
+  assert.ok(workflow.includes('if (noEndpointsReachable) {'));
+  assert.doesNotMatch(workflow, /if \(!health && !identity\) \{/);
   assert.ok(workflow.includes('last = { health, identity };'));
   assert.ok(workflow.includes("throw new Error(`runtime contract partial: ${endpointErrors.join('; ')}`);"));
 });
