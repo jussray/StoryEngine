@@ -3,86 +3,259 @@ name: StoryEngine Production Proof
 on:
   workflow_run:
     workflows:
-      - L99 Story Engine CI
+      - StoryEngine Production Signal
     types:
       - completed
-    branches:
-      - main
-  workflow_dispatch:
-    inputs:
-      release_sha:
-        description: Exact 40-character Git SHA deployed at the canonical production origin
-        required: true
-        type: string
 
 permissions:
   contents: read
+  actions: read
+  deployments: read
 
 concurrency:
-  group: "storyengine-production-proof-${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || 'main' }}"
-  cancel-in-progress: ${{ github.event_name == 'workflow_run' }}
+  group: "storyengine-production-proof-${{ github.event.workflow_run.id }}"
+  cancel-in-progress: false
 
 jobs:
-  verify-production:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+  authorize-signal:
+    name: Authorize production signal on trusted main
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    environment: production
+    timeout-minutes: 10
+    outputs:
+      authorized: ${{ steps.authorize.outputs.authorized }}
+      release_sha: ${{ steps.authorize.outputs.release_sha }}
+      github_deployment_id: ${{ steps.authorize.outputs.github_deployment_id }}
+      signal_mode: ${{ steps.authorize.outputs.signal_mode }}
+    steps:
+      - name: Check out trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download untrusted signal artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: storyengine-production-signal
+          path: production-signal
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Validate signal against GitHub authority and current main
+        id: authorize
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNAL_PATH: production-signal/signal.json
+          TRIGGERING_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRIGGERING_EVENT: ${{ github.event.workflow_run.event }}
+          TRIGGERING_ACTOR: ${{ github.event.workflow_run.actor.login }}
+          TRIGGERING_CURRENT_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
+          TRIGGERING_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          TRIGGERING_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGERING_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+
+          const signal = JSON.parse(await readFile(process.env.SIGNAL_PATH, 'utf8'));
+          const repository = String(process.env.REPOSITORY || '');
+          const triggeringRunId = String(process.env.TRIGGERING_RUN_ID || '');
+          const triggeringEvent = String(process.env.TRIGGERING_EVENT || '');
+          const triggeringActor = String(process.env.TRIGGERING_ACTOR || '');
+          const triggeringCurrentActor = String(process.env.TRIGGERING_CURRENT_ACTOR || '').trim();
+          const triggeringRunAttempt = String(process.env.TRIGGERING_RUN_ATTEMPT || '').trim();
+          const triggeringHeadSha = String(process.env.TRIGGERING_HEAD_SHA || '').trim().toLowerCase();
+          const triggeringHeadBranch = String(process.env.TRIGGERING_HEAD_BRANCH || '').trim();
+          const owner = String(process.env.REPOSITORY_OWNER || '');
+          const token = String(process.env.GH_TOKEN || '');
+          const authorizationTime = Date.now();
+          const maxSignalAgeMs = 15 * 60 * 1000;
+
+          if (signal.schema !== 'juss/storyengine-production-signal@v1') throw new Error('unsupported production signal schema');
+          if (signal.trust !== 'untrusted-input') throw new Error('signal must remain explicitly untrusted');
+          if (String(signal.repository || '') !== repository) throw new Error('signal repository mismatch');
+          if (String(signal.source_run_id || '') !== triggeringRunId) throw new Error('signal run identity mismatch');
+          if (String(signal.source_event || '') !== triggeringEvent) throw new Error('signal event mismatch');
+          if (String(signal.source_actor || '') !== triggeringActor) throw new Error('signal actor mismatch');
+          if (!/^\d+$/.test(triggeringRunAttempt) || String(signal.source_run_attempt || '') !== triggeringRunAttempt) {
+            throw new Error('signal run attempt mismatch');
+          }
+          if (!triggeringCurrentActor) throw new Error('current triggering actor is missing');
+          if (Number(triggeringRunAttempt) > 1 && triggeringCurrentActor !== owner) {
+            throw new Error('production signal reruns are repository-owner only');
+          }
+
+          const signalObservedAt = Date.parse(String(signal.observed_at || '').trim());
+          if (!Number.isFinite(signalObservedAt)) throw new Error('production signal observed_at is missing or invalid');
+          const signalAgeMs = authorizationTime - signalObservedAt;
+          if (signalAgeMs < 0 || signalAgeMs > maxSignalAgeMs) {
+            throw new Error('production signal is stale at authorization time');
+          }
+
+          const releaseSha = String(signal.release_sha || '').trim().toLowerCase();
+          if (!/^[0-9a-f]{40}$/.test(releaseSha)) throw new Error('release_sha must be an exact 40-character Git SHA');
+
+          let deploymentId = 'manual';
+          let signalMode = null;
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${token}`,
+            'X-GitHub-Api-Version': '2022-11-28'
+          };
+
+          if (triggeringEvent === 'deployment_status') {
+            signalMode = 'deployment_status';
+            deploymentId = String(signal.github_deployment_id || '');
+            const deploymentStatusId = String(signal.github_deployment_status_id || '');
+            if (!/^\d+$/.test(deploymentId) || !/^\d+$/.test(deploymentStatusId)) {
+              throw new Error('deployment signal must carry numeric deployment and status ids');
+            }
+            if (triggeringHeadBranch !== 'main') {
+              throw new Error(`deployment signal branch is ${triggeringHeadBranch || 'missing'}, expected main`);
+            }
+            if (!/^[0-9a-f]{40}$/.test(triggeringHeadSha) || triggeringHeadSha !== releaseSha) {
+              throw new Error('deployment signal SHA does not match triggering workflow head SHA');
+            }
+
+            const deploymentResponse = await fetch(
+              `https://api.github.com/repos/${repository}/deployments/${deploymentId}`,
+              { headers, redirect: 'error', signal: AbortSignal.timeout(8000) }
+            );
+            if (!deploymentResponse.ok) throw new Error(`deployment lookup returned HTTP ${deploymentResponse.status}`);
+            const deployment = await deploymentResponse.json();
+
+            const statusResponse = await fetch(
+              `https://api.github.com/repos/${repository}/deployments/${deploymentId}/statuses/${deploymentStatusId}`,
+              { headers, redirect: 'error', signal: AbortSignal.timeout(8000) }
+            );
+            if (!statusResponse.ok) throw new Error(`deployment status lookup returned HTTP ${statusResponse.status}`);
+            const status = await statusResponse.json();
+
+            if (status.state !== 'success') throw new Error(`deployment status is ${status.state}`);
+            if (String(deployment.environment || '').toLowerCase() !== 'production') {
+              throw new Error(`deployment environment is ${deployment.environment}`);
+            }
+            if (String(deployment.sha || '').toLowerCase() !== releaseSha) {
+              throw new Error('deployment SHA does not match signal release SHA');
+            }
+
+            const statusCreatedAt = Date.parse(String(status.created_at || ''));
+            if (!Number.isFinite(statusCreatedAt)) {
+              throw new Error('deployment status freshness timestamp is missing or invalid');
+            }
+            const statusAgeMs = authorizationTime - statusCreatedAt;
+            if (statusAgeMs < 0 || statusAgeMs > maxSignalAgeMs) {
+              throw new Error('deployment status is stale at authorization time');
+            }
+          } else if (triggeringEvent === 'workflow_dispatch') {
+            signalMode = 'manual';
+            if (triggeringCurrentActor !== owner) {
+              throw new Error('manual production proof is repository-owner only');
+            }
+          } else {
+            throw new Error(`unsupported signal event ${triggeringEvent}`);
+          }
+
+          await writeFile(
+            'production-signal/authorized.json',
+            JSON.stringify({
+              schema: 'juss/storyengine-production-signal-authorized@v1',
+              release_sha: releaseSha,
+              github_deployment_id: deploymentId,
+              signal_mode: signalMode,
+              triggering_run_id: triggeringRunId,
+              triggering_run_attempt: triggeringRunAttempt,
+              triggering_actor: triggeringCurrentActor,
+              authorized_by: 'trusted-main-workflow',
+              observed_at: new Date().toISOString()
+            }, null, 2) + '\n'
+          );
+          NODE
+
+          release_sha="$(node -p "JSON.parse(require('fs').readFileSync('production-signal/authorized.json','utf8')).release_sha")"
+          deployment_id="$(node -p "JSON.parse(require('fs').readFileSync('production-signal/authorized.json','utf8')).github_deployment_id")"
+          signal_mode="$(node -p "JSON.parse(require('fs').readFileSync('production-signal/authorized.json','utf8')).signal_mode")"
+
+          git fetch --no-tags origin main
+          git fetch --no-tags origin "$release_sha"
+          git cat-file -e "${release_sha}^{commit}"
+          git merge-base --is-ancestor "$release_sha" origin/main || {
+            echo 'release_sha is not part of current main history' >&2
+            exit 1
+          }
+
+          printf 'authorized=true\nrelease_sha=%s\ngithub_deployment_id=%s\nsignal_mode=%s\n' \
+            "$release_sha" "$deployment_id" "$signal_mode" >> "$GITHUB_OUTPUT"
+
+  verify-production:
+    name: Verify exact StoryEngine production runtime
+    needs: authorize-signal
+    if: ${{ needs.authorize-signal.outputs.authorized == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      deployment: false
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      EXPECTED_RELEASE_SHA: ${{ needs.authorize-signal.outputs.release_sha }}
+      PROOF_TRIGGER_SHA: ${{ needs.authorize-signal.outputs.release_sha }}
+      GITHUB_DEPLOYMENT_ID: ${{ needs.authorize-signal.outputs.github_deployment_id }}
+      SIGNAL_MODE: ${{ needs.authorize-signal.outputs.signal_mode }}
       STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN: ${{ vars.STORYENGINE_PRODUCTION_ORIGIN || secrets.STORYENGINE_PRODUCTION_ORIGIN }}
       STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
     defaults:
       run:
         working-directory: story-engine
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out trusted main before release code
+        uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.event.workflow_run.head_sha }}
+          ref: main
           fetch-depth: 0
 
-      - name: Resolve immutable production release subject
+      - name: Revalidate ancestry and check out exact release
         working-directory: .
-        env:
-          MANUAL_RELEASE_SHA: ${{ inputs.release_sha }}
-          UPSTREAM_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
         run: |
           set -euo pipefail
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            release_sha="$MANUAL_RELEASE_SHA"
-          else
-            release_sha="$UPSTREAM_RELEASE_SHA"
-          fi
-          [[ "$release_sha" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'Unable to resolve an exact 40-character production release SHA' >&2; exit 1; }
-          git cat-file -e "${release_sha}^{commit}"
-          echo "EXPECTED_RELEASE_SHA=${release_sha,,}" >> "$GITHUB_ENV"
-          echo "PROOF_TRIGGER_SHA=${release_sha,,}" >> "$GITHUB_ENV"
-          echo "Production proof subject: ${release_sha,,}"
-          git checkout --detach "$release_sha"
+          [[ "$EXPECTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin main
+          git fetch --no-tags origin "$EXPECTED_RELEASE_SHA"
+          git cat-file -e "${EXPECTED_RELEASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main || {
+            echo 'release_sha left current main history before production proof' >&2
+            exit 1
+          }
+          git checkout --detach "$EXPECTED_RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
 
-      - name: Validate release ancestry and independent production origin authority
+      - name: Validate independent production origin authority
         working-directory: .
         run: |
           set -euo pipefail
           mkdir -p story-engine/test-results
           node --input-type=module <<'NODE'
           import { appendFileSync } from 'node:fs';
-          import { mkdir, writeFile } from 'node:fs/promises';
+          import { writeFile } from 'node:fs/promises';
           import {
             evaluateProductionOriginAuthority,
             loadDomainAuthority
           } from './story-engine/deployment/providerAuthority.js';
 
-          const expected = String(process.env.EXPECTED_RELEASE_SHA ?? '').trim().toLowerCase();
-          const authorizedOrigin = String(process.env.STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN ?? '').trim();
+          const expected = String(process.env.EXPECTED_RELEASE_SHA || '').trim().toLowerCase();
+          const authorizedOrigin = String(process.env.STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN || '').trim();
+          let decision = null;
           let reason = null;
           let message = null;
-          let decision = null;
 
-          if (!/^[0-9a-f]{40}$/.test(expected)) {
-            reason = 'invalid-release-sha';
-            message = 'release_sha must be an exact 40-character Git SHA';
-          } else if (!authorizedOrigin) {
+          if (!authorizedOrigin) {
             reason = 'missing-independent-origin-authority';
             message = 'GitHub production environment variable or secret STORYENGINE_PRODUCTION_ORIGIN is missing';
           } else {
@@ -94,45 +267,31 @@ jobs:
           }
 
           if (reason) {
-            await mkdir('story-engine/test-results', { recursive: true });
-            const receipt = {
+            await writeFile('story-engine/test-results/production-proof-blocked.json', JSON.stringify({
               schema: 'juss/storyengine-production-proof-blocked@v1',
               status: 'blocked',
               reason,
               message,
-              release_sha: expected || null,
+              release_sha: expected,
               trigger_sha: process.env.PROOF_TRIGGER_SHA || null,
-              authorized_origin_present: Boolean(authorizedOrigin),
+              github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
+              signal_mode: process.env.SIGNAL_MODE || null,
               github_run_id: process.env.GITHUB_RUN_ID || null,
               github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
               event_name: process.env.GITHUB_EVENT_NAME || null,
               observed_at: new Date().toISOString()
-            };
-            await writeFile(
-              'story-engine/test-results/production-proof-blocked.json',
-              JSON.stringify(receipt, null, 2) + '\n'
-            );
-            console.log(`::error title=StoryEngine production proof blocked::${message}`);
-            console.error(JSON.stringify(receipt, null, 2));
-            process.exit(1);
+            }, null, 2) + '\n');
+            throw new Error(message);
           }
 
-          console.log(JSON.stringify(decision, null, 2));
           appendFileSync(process.env.GITHUB_ENV, `PRODUCTION_ORIGIN=${decision.production_origin}\n`);
           appendFileSync(process.env.GITHUB_ENV, 'ORIGIN_AUTHORITY_MODE=source-plus-environment-cross-check\n');
           NODE
 
-          test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main || {
-            echo 'release_sha is not part of current main history; production secrets must not be exposed to unmerged code' >&2
-            exit 1
-          }
-
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: story-engine/package-lock.json
 
       - run: npm ci
@@ -140,7 +299,7 @@ jobs:
       - name: Enforce deployment provider authority
         run: node deployment/providerAuthority.js
 
-      - name: Wait for Railway exact release and verify runtime identity
+      - name: Verify deployed Railway release and persistence witness
         run: |
           node --input-type=module <<'NODE'
           import { appendFileSync } from 'node:fs';
@@ -148,7 +307,6 @@ jobs:
 
           const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
           const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
-          const triggerSha = process.env.PROOF_TRIGGER_SHA || expected;
           const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
           const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
           const readJson = async path => {
@@ -160,71 +318,86 @@ jobs:
             return response.json();
           };
 
-          let last = null;
-          for (let attempt = 1; attempt <= 60; attempt += 1) {
-            try {
-              const [health, identity] = await Promise.all([
-                readJson('/healthz'),
-                readJson('/runtime-identity')
-              ]);
-              last = { health, identity };
-              const healthSha = String(health.release_sha ?? '').toLowerCase();
-              const identitySha = String(identity.release_sha ?? '').toLowerCase();
-              console.log(`attempt ${attempt}/60: health=${health.status} health_sha=${healthSha || 'missing'} identity_sha=${identitySha || 'missing'}`);
+          let lastObservation = null;
+          let lastError = null;
+          let lastReachable = false;
 
-              if (health.status === 'ok' && healthSha === expected && identitySha === expected) {
-                if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
-                if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
-                if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
-                const witness = String(identity.persistence_witness ?? '').trim();
-                if (!uuidPattern.test(witness)) throw new Error('persistence_witness is missing or invalid');
-                appendFileSync(process.env.GITHUB_ENV, `EXPECTED_PERSISTENCE_WITNESS=${witness}\n`);
-                await mkdir('test-results', { recursive: true });
-                await writeFile(
-                  'test-results/production-runtime-before.json',
-                  JSON.stringify({
-                    schema: 'juss/storyengine-production-runtime@v1',
-                    phase: 'before-playwright',
-                    release_sha: expected,
-                    trigger_sha: triggerSha,
-                    production_origin: origin,
-                    origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE,
-                    persistence_witness: witness,
-                    observed_at: new Date().toISOString(),
-                    github_run_id: process.env.GITHUB_RUN_ID,
-                    health,
-                    identity
-                  }, null, 2) + '\n'
-                );
-                console.log(JSON.stringify({ health, identity }, null, 2));
-                process.exit(0);
-              }
-            } catch (error) {
-              console.log(`attempt ${attempt}/60: ${error instanceof Error ? error.message : String(error)}`);
+          for (let attempt = 1; attempt <= 12; attempt += 1) {
+            const [healthResult, identityResult] = await Promise.allSettled([
+              readJson('/healthz'),
+              readJson('/runtime-identity')
+            ]);
+            const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
+            const identity = identityResult.status === 'fulfilled' ? identityResult.value : null;
+            const endpointErrors = [];
+            if (healthResult.status === 'rejected') {
+              endpointErrors.push(`/healthz: ${healthResult.reason instanceof Error ? healthResult.reason.message : String(healthResult.reason)}`);
+            }
+            if (identityResult.status === 'rejected') {
+              endpointErrors.push(`/runtime-identity: ${identityResult.reason instanceof Error ? identityResult.reason.message : String(identityResult.reason)}`);
             }
 
-            if (attempt < 60) await delay(10_000);
+            lastReachable = healthResult.status === 'fulfilled' || identityResult.status === 'fulfilled';
+            lastObservation = lastReachable ? { health, identity, endpoint_errors: endpointErrors } : null;
+            lastError = endpointErrors.length > 0 ? endpointErrors.join('; ') : null;
+
+            try {
+              if (!health || !identity) {
+                throw new Error(`runtime contract partial: ${endpointErrors.join('; ') || 'missing endpoint payload'}`);
+              }
+              if (health.status !== 'ok') throw new Error(`healthz status=${health.status}`);
+              if (String(health.release_sha || '').toLowerCase() !== expected) throw new Error('health release SHA mismatch');
+              if (String(identity.release_sha || '').toLowerCase() !== expected) throw new Error('runtime identity release SHA mismatch');
+              if (identity.release_sha_source !== 'railway-git') throw new Error(`release_sha_source=${identity.release_sha_source}`);
+              if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
+              if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
+              if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
+              const witness = String(identity.persistence_witness || '').trim();
+              if (!uuidPattern.test(witness)) throw new Error('persistence_witness is missing or invalid');
+              appendFileSync(process.env.GITHUB_ENV, `EXPECTED_PERSISTENCE_WITNESS=${witness}\n`);
+              await mkdir('test-results', { recursive: true });
+              await writeFile('test-results/production-runtime-before.json', JSON.stringify({
+                schema: 'juss/storyengine-production-runtime@v1',
+                phase: 'before-playwright',
+                release_sha: expected,
+                github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
+                signal_mode: process.env.SIGNAL_MODE || null,
+                production_origin: origin,
+                persistence_witness: witness,
+                health,
+                identity,
+                observed_at: new Date().toISOString()
+              }, null, 2) + '\n');
+              console.log(`production runtime converged on attempt ${attempt}/12`);
+              process.exit(0);
+            } catch (error) {
+              lastError = error instanceof Error ? error.message : String(error);
+              console.log(`attempt ${attempt}/12: ${lastError}`);
+            }
+
+            if (attempt < 12) await delay(5_000);
           }
 
           await mkdir('test-results', { recursive: true });
-          const blocked = {
+          const reason = lastReachable ? 'provider-runtime-identity-mismatch' : 'provider-runtime-unreachable';
+          const message = lastReachable
+            ? 'Provider reported a successful production deployment, but the canonical runtime did not converge to the exact deployed release contract within the bounded verification window.'
+            : 'Provider reported a successful production deployment, but the canonical runtime remained unreachable through the bounded verification window.';
+          await writeFile('test-results/production-proof-blocked.json', JSON.stringify({
             schema: 'juss/storyengine-production-proof-blocked@v1',
             status: 'blocked',
-            reason: 'provider-release-not-converged',
-            message: 'Railway did not converge to the exact release within 10 minutes.',
+            reason,
+            message,
             release_sha: expected,
-            trigger_sha: triggerSha,
-            production_origin: origin,
+            github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
+            signal_mode: process.env.SIGNAL_MODE || null,
+            last_observation: lastObservation,
+            last_error: lastError,
             github_run_id: process.env.GITHUB_RUN_ID || null,
             github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
-            event_name: process.env.GITHUB_EVENT_NAME || null,
-            last_observation: last,
             observed_at: new Date().toISOString()
-          };
-          await writeFile('test-results/production-proof-blocked.json', JSON.stringify(blocked, null, 2) + '\n');
-          console.error(blocked.message);
-          if (last) console.error(JSON.stringify(last, null, 2));
-          process.exit(1);
+          }, null, 2) + '\n');
+          throw new Error(lastError ? `${message} Last error: ${lastError}` : message);
           NODE
 
       - name: Validate production browser credentials
@@ -243,32 +416,26 @@ jobs:
           node --input-type=module <<'NODE'
           const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
           const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
-          const expectedWitness = String(process.env.EXPECTED_PERSISTENCE_WITNESS ?? '').trim();
+          const expectedWitness = String(process.env.EXPECTED_PERSISTENCE_WITNESS || '').trim();
           const response = await fetch(`${origin}/runtime-identity`, {
             redirect: 'error',
             signal: AbortSignal.timeout(8000)
           });
           if (!response.ok) throw new Error(`runtime-identity returned HTTP ${response.status}`);
           const identity = await response.json();
-          if (String(identity.release_sha ?? '').toLowerCase() !== expected) {
-            throw new Error('runtime identity changed before credentialed browser proof');
-          }
+          if (String(identity.release_sha || '').toLowerCase() !== expected) throw new Error('runtime identity changed before credentialed browser proof');
+          if (identity.release_sha_source !== 'railway-git') throw new Error(`release_sha_source=${identity.release_sha_source}`);
           if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
           if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
           if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
-          if (!expectedWitness || identity.persistence_witness !== expectedWitness) {
-            throw new Error('persistent storage witness changed before credentialed browser proof');
-          }
-          console.log(JSON.stringify(identity, null, 2));
+          if (!expectedWitness || identity.persistence_witness !== expectedWitness) throw new Error('persistent storage witness changed before credentialed browser proof');
           NODE
 
       - name: Verify production Story to MP4 path in real Chromium
         env:
           PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}
           PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}
-        run: |
-          set -euo pipefail
-          npx playwright test e2e/video_engine.spec.js --config=playwright.production.config.js
+        run: npx playwright test e2e/video_engine.spec.js --config=playwright.production.config.js
 
       - name: Reverify exact runtime identity after browser mutation path
         run: |
@@ -277,7 +444,7 @@ jobs:
 
           const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
           const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
-          const expectedWitness = String(process.env.EXPECTED_PERSISTENCE_WITNESS ?? '').trim();
+          const expectedWitness = String(process.env.EXPECTED_PERSISTENCE_WITNESS || '').trim();
           const readJson = async path => {
             const response = await fetch(`${origin}${path}`, {
               redirect: 'error',
@@ -287,49 +454,38 @@ jobs:
             return response.json();
           };
 
-          const [health, identity] = await Promise.all([
-            readJson('/healthz'),
-            readJson('/runtime-identity')
-          ]);
+          const [health, identity] = await Promise.all([readJson('/healthz'), readJson('/runtime-identity')]);
           if (health.status !== 'ok') throw new Error(`healthz status=${health.status}`);
-          if (String(health.release_sha).toLowerCase() !== expected) throw new Error('health release identity changed during proof');
-          if (String(identity.release_sha).toLowerCase() !== expected) throw new Error('runtime identity changed during proof');
+          if (String(health.release_sha || '').toLowerCase() !== expected) throw new Error('health release identity changed during proof');
+          if (String(identity.release_sha || '').toLowerCase() !== expected) throw new Error('runtime identity changed during proof');
+          if (identity.release_sha_source !== 'railway-git') throw new Error(`release_sha_source=${identity.release_sha_source}`);
           if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
           if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
           if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
-          if (!expectedWitness || identity.persistence_witness !== expectedWitness) {
-            throw new Error('persistent storage witness changed during browser proof');
-          }
+          if (!expectedWitness || identity.persistence_witness !== expectedWitness) throw new Error('persistent storage witness changed during browser proof');
 
           await mkdir('test-results', { recursive: true });
-          const proof = {
+          await writeFile('test-results/production-proof-summary.json', JSON.stringify({
             schema: 'juss/storyengine-production-proof@v1',
             status: 'verified',
             release_sha: expected,
-            trigger_sha: process.env.PROOF_TRIGGER_SHA || expected,
+            github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
+            signal_mode: process.env.SIGNAL_MODE || null,
             production_origin: origin,
-            origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE,
             persistence_witness: expectedWitness,
-            verified_at: new Date().toISOString(),
-            github_run_id: process.env.GITHUB_RUN_ID,
-            github_run_attempt: process.env.GITHUB_RUN_ATTEMPT,
-            evidence: {
-              health,
-              runtime_identity: identity,
-              playwright: 'passed'
-            }
-          };
-          await writeFile('test-results/production-proof-summary.json', JSON.stringify(proof, null, 2) + '\n');
-          console.log(JSON.stringify(proof, null, 2));
+            health,
+            identity,
+            github_run_id: process.env.GITHUB_RUN_ID || null,
+            github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
+            observed_at: new Date().toISOString()
+          }, null, 2) + '\n');
           NODE
 
-      - name: Upload production proof
+      - name: Upload production proof receipts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: storyengine-production-proof-${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.event.workflow_run.head_sha }}-${{ github.run_attempt }}
-          path: |
-            story-engine/playwright-report/
-            story-engine/test-results/
-          if-no-files-found: ignore
+          name: storyengine-production-proof-${{ env.EXPECTED_RELEASE_SHA }}-${{ github.run_attempt }}
+          path: story-engine/test-results/
+          if-no-files-found: warn
           retention-days: 90

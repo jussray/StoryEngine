@@ -123,9 +123,9 @@ Production promotion remains blocked until all service-level runtime conditions 
 
 1. `config/domain-authority.json` names the real canonical HTTPS production origin.
 2. The Node service runs on a stateful container host with durable storage mounted at `L99_DB_PATH`.
-3. `L99_RELEASE_SHA` equals the exact 40-character Git commit promoted to production.
-4. `GET /runtime-identity` reports that same release SHA from the deployed runtime.
-5. `GET /healthz` succeeds on the deployed origin.
+3. Canonical Railway GitHub deployments expose the exact promoted commit through provider-native `RAILWAY_GIT_COMMIT_SHA`; `L99_RELEASE_SHA` is fallback-only when provider-native Git metadata is absent.
+4. `GET /runtime-identity` reports that exact release SHA and identifies `railway-git` as the release source on canonical Railway production.
+5. `GET /healthz` succeeds on the deployed origin and reports the same release SHA.
 6. Production Playwright executes against the canonical HTTPS origin and passes the required creator/operator paths.
 7. Deployment/runtime evidence is retained for the promoted SHA.
 
