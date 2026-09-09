@@ -308,6 +308,7 @@ jobs:
           const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
           const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
           const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
           const readJson = async path => {
             const response = await fetch(`${origin}${path}`, {
               redirect: 'error',
@@ -317,52 +318,86 @@ jobs:
             return response.json();
           };
 
-          let health = null;
-          let identity = null;
-          try {
-            [health, identity] = await Promise.all([readJson('/healthz'), readJson('/runtime-identity')]);
-            if (health.status !== 'ok') throw new Error(`healthz status=${health.status}`);
-            if (String(health.release_sha || '').toLowerCase() !== expected) throw new Error('health release SHA mismatch');
-            if (String(identity.release_sha || '').toLowerCase() !== expected) throw new Error('runtime identity release SHA mismatch');
-            if (identity.release_sha_source !== 'railway-git') throw new Error(`release_sha_source=${identity.release_sha_source}`);
-            if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
-            if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
-            if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
-            const witness = String(identity.persistence_witness || '').trim();
-            if (!uuidPattern.test(witness)) throw new Error('persistence_witness is missing or invalid');
-            appendFileSync(process.env.GITHUB_ENV, `EXPECTED_PERSISTENCE_WITNESS=${witness}\n`);
-            await mkdir('test-results', { recursive: true });
-            await writeFile('test-results/production-runtime-before.json', JSON.stringify({
-              schema: 'juss/storyengine-production-runtime@v1',
-              phase: 'before-playwright',
-              release_sha: expected,
-              github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
-              signal_mode: process.env.SIGNAL_MODE || null,
-              production_origin: origin,
-              persistence_witness: witness,
-              health,
-              identity,
-              observed_at: new Date().toISOString()
-            }, null, 2) + '\n');
-          } catch (error) {
-            await mkdir('test-results', { recursive: true });
-            const message = error instanceof Error ? error.message : String(error);
-            const reason = health || identity ? 'provider-runtime-identity-mismatch' : 'provider-runtime-unreachable';
-            await writeFile('test-results/production-proof-blocked.json', JSON.stringify({
-              schema: 'juss/storyengine-production-proof-blocked@v1',
-              status: 'blocked',
-              reason,
-              message,
-              release_sha: expected,
-              github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
-              signal_mode: process.env.SIGNAL_MODE || null,
-              last_observation: { health, identity },
-              github_run_id: process.env.GITHUB_RUN_ID || null,
-              github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
-              observed_at: new Date().toISOString()
-            }, null, 2) + '\n');
-            throw error;
+          let lastObservation = null;
+          let lastError = null;
+          let lastReachable = false;
+
+          for (let attempt = 1; attempt <= 12; attempt += 1) {
+            const [healthResult, identityResult] = await Promise.allSettled([
+              readJson('/healthz'),
+              readJson('/runtime-identity')
+            ]);
+            const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
+            const identity = identityResult.status === 'fulfilled' ? identityResult.value : null;
+            const endpointErrors = [];
+            if (healthResult.status === 'rejected') {
+              endpointErrors.push(`/healthz: ${healthResult.reason instanceof Error ? healthResult.reason.message : String(healthResult.reason)}`);
+            }
+            if (identityResult.status === 'rejected') {
+              endpointErrors.push(`/runtime-identity: ${identityResult.reason instanceof Error ? identityResult.reason.message : String(identityResult.reason)}`);
+            }
+
+            lastReachable = healthResult.status === 'fulfilled' || identityResult.status === 'fulfilled';
+            lastObservation = lastReachable ? { health, identity, endpoint_errors: endpointErrors } : null;
+            lastError = endpointErrors.length > 0 ? endpointErrors.join('; ') : null;
+
+            try {
+              if (!health || !identity) {
+                throw new Error(`runtime contract partial: ${endpointErrors.join('; ') || 'missing endpoint payload'}`);
+              }
+              if (health.status !== 'ok') throw new Error(`healthz status=${health.status}`);
+              if (String(health.release_sha || '').toLowerCase() !== expected) throw new Error('health release SHA mismatch');
+              if (String(identity.release_sha || '').toLowerCase() !== expected) throw new Error('runtime identity release SHA mismatch');
+              if (identity.release_sha_source !== 'railway-git') throw new Error(`release_sha_source=${identity.release_sha_source}`);
+              if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
+              if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
+              if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
+              const witness = String(identity.persistence_witness || '').trim();
+              if (!uuidPattern.test(witness)) throw new Error('persistence_witness is missing or invalid');
+              appendFileSync(process.env.GITHUB_ENV, `EXPECTED_PERSISTENCE_WITNESS=${witness}\n`);
+              await mkdir('test-results', { recursive: true });
+              await writeFile('test-results/production-runtime-before.json', JSON.stringify({
+                schema: 'juss/storyengine-production-runtime@v1',
+                phase: 'before-playwright',
+                release_sha: expected,
+                github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
+                signal_mode: process.env.SIGNAL_MODE || null,
+                production_origin: origin,
+                persistence_witness: witness,
+                health,
+                identity,
+                observed_at: new Date().toISOString()
+              }, null, 2) + '\n');
+              console.log(`production runtime converged on attempt ${attempt}/12`);
+              process.exit(0);
+            } catch (error) {
+              lastError = error instanceof Error ? error.message : String(error);
+              console.log(`attempt ${attempt}/12: ${lastError}`);
+            }
+
+            if (attempt < 12) await delay(5_000);
           }
+
+          await mkdir('test-results', { recursive: true });
+          const reason = lastReachable ? 'provider-runtime-identity-mismatch' : 'provider-runtime-unreachable';
+          const message = lastReachable
+            ? 'Provider reported a successful production deployment, but the canonical runtime did not converge to the exact deployed release contract within the bounded verification window.'
+            : 'Provider reported a successful production deployment, but the canonical runtime remained unreachable through the bounded verification window.';
+          await writeFile('test-results/production-proof-blocked.json', JSON.stringify({
+            schema: 'juss/storyengine-production-proof-blocked@v1',
+            status: 'blocked',
+            reason,
+            message,
+            release_sha: expected,
+            github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
+            signal_mode: process.env.SIGNAL_MODE || null,
+            last_observation: lastObservation,
+            last_error: lastError,
+            github_run_id: process.env.GITHUB_RUN_ID || null,
+            github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
+            observed_at: new Date().toISOString()
+          }, null, 2) + '\n');
+          throw new Error(lastError ? `${message} Last error: ${lastError}` : message);
           NODE
 
       - name: Validate production browser credentials
