@@ -66,6 +66,19 @@ test('trusted authorize job validates untrusted signal before production environ
   assert.doesNotMatch(authorize, /STORYENGINE_PRODUCTION_SCOPED_API_KEY/);
 });
 
+test('deployment authorization rejects replayed or cross-branch success receipts', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes('TRIGGERING_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}'));
+  assert.ok(authorize.includes('TRIGGERING_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}'));
+  assert.ok(authorize.includes('TRIGGERING_RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}'));
+  assert.ok(authorize.includes("triggeringHeadBranch !== 'main'"));
+  assert.ok(authorize.includes('triggeringHeadSha !== releaseSha'));
+  assert.ok(authorize.includes('deployment signal SHA does not match triggering workflow head SHA'));
+  assert.ok(authorize.includes('statusCreatedAt'));
+  assert.ok(authorize.includes('15 * 60 * 1000'));
+  assert.ok(authorize.includes('deployment status is not contemporaneous with triggering signal run'));
+});
+
 test('production environment is attached only after authorized signal output', () => {
   assert.ok(proofWorkflow.includes('needs: authorize-signal'));
   assert.ok(proofWorkflow.includes("if: ${{ needs.authorize-signal.outputs.authorized == 'true' }}"));
