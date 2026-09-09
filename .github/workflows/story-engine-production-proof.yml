@@ -52,6 +52,9 @@ jobs:
           TRIGGERING_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGERING_EVENT: ${{ github.event.workflow_run.event }}
           TRIGGERING_ACTOR: ${{ github.event.workflow_run.actor.login }}
+          TRIGGERING_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGERING_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TRIGGERING_RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}
           REPOSITORY: ${{ github.repository }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
@@ -64,6 +67,9 @@ jobs:
           const triggeringRunId = String(process.env.TRIGGERING_RUN_ID || '');
           const triggeringEvent = String(process.env.TRIGGERING_EVENT || '');
           const triggeringActor = String(process.env.TRIGGERING_ACTOR || '');
+          const triggeringHeadSha = String(process.env.TRIGGERING_HEAD_SHA || '').trim().toLowerCase();
+          const triggeringHeadBranch = String(process.env.TRIGGERING_HEAD_BRANCH || '').trim();
+          const triggeringRunCreatedAt = Date.parse(String(process.env.TRIGGERING_RUN_CREATED_AT || '').trim());
           const owner = String(process.env.REPOSITORY_OWNER || '');
           const token = String(process.env.GH_TOKEN || '');
 
@@ -92,6 +98,12 @@ jobs:
             if (!/^\d+$/.test(deploymentId) || !/^\d+$/.test(deploymentStatusId)) {
               throw new Error('deployment signal must carry numeric deployment and status ids');
             }
+            if (triggeringHeadBranch !== 'main') {
+              throw new Error(`deployment signal branch is ${triggeringHeadBranch || 'missing'}, expected main`);
+            }
+            if (!/^[0-9a-f]{40}$/.test(triggeringHeadSha) || triggeringHeadSha !== releaseSha) {
+              throw new Error('deployment signal SHA does not match triggering workflow head SHA');
+            }
 
             const deploymentResponse = await fetch(
               `https://api.github.com/repos/${repository}/deployments/${deploymentId}`,
@@ -113,6 +125,14 @@ jobs:
             }
             if (String(deployment.sha || '').toLowerCase() !== releaseSha) {
               throw new Error('deployment SHA does not match signal release SHA');
+            }
+
+            const statusCreatedAt = Date.parse(String(status.created_at || ''));
+            if (!Number.isFinite(triggeringRunCreatedAt) || !Number.isFinite(statusCreatedAt)) {
+              throw new Error('deployment signal freshness timestamp is missing or invalid');
+            }
+            if (Math.abs(triggeringRunCreatedAt - statusCreatedAt) > 15 * 60 * 1000) {
+              throw new Error('deployment status is not contemporaneous with triggering signal run');
             }
           } else if (triggeringEvent === 'workflow_dispatch') {
             signalMode = 'manual';
