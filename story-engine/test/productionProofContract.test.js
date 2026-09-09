@@ -49,12 +49,16 @@ test('secret-bearing proof is sourced only through workflow_run from the named s
   assert.doesNotMatch(proofWorkflow, /\n\s+workflow_dispatch:/);
 });
 
-test('all production proofs serialize across signal runs without cancellation', () => {
+test('only authorized production verification jobs enter the shared queued concurrency membrane', () => {
+  const workflowHeader = proofWorkflow.slice(0, proofWorkflow.indexOf('\njobs:'));
+  assert.doesNotMatch(workflowHeader, /\nconcurrency:/);
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  const verify = jobPrefix(proofWorkflow, 'verify-production');
+  assert.doesNotMatch(authorize, /concurrency:/);
   assert.match(
-    proofWorkflow,
-    /concurrency:\s*\n\s+group:\s+storyengine-production-proof-production\s*\n\s+cancel-in-progress:\s+false/
+    verify,
+    /concurrency:\s*\n\s+group:\s+storyengine-production-proof-production\s*\n\s+cancel-in-progress:\s+false\s*\n\s+queue:\s+max/
   );
-  assert.doesNotMatch(proofWorkflow, /group:\s*["']?storyengine-production-proof-\$\{\{\s*github\.event\.workflow_run\.id/);
 });
 
 test('trusted authorize job validates untrusted signal before production environment exists', () => {
@@ -106,6 +110,20 @@ test('deployment authorization rejects stale, rerun, and cross-branch receipts',
   assert.doesNotMatch(authorize, /TRIGGERING_RUN_CREATED_AT/);
 });
 
+test('downstream production proof reruns are bound to the current repository-owner initiator', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes('PROOF_TRIGGERING_ACTOR: ${{ github.triggering_actor }}'));
+  assert.ok(authorize.includes('PROOF_RUN_ATTEMPT: ${{ github.run_attempt }}'));
+  assert.ok(authorize.includes("const proofTriggeringActor = String(process.env.PROOF_TRIGGERING_ACTOR || '').trim()"));
+  assert.ok(authorize.includes("const proofRunAttempt = String(process.env.PROOF_RUN_ATTEMPT || '').trim()"));
+  assert.ok(authorize.includes('current production proof run attempt is missing'));
+  assert.ok(authorize.includes('current production proof triggering actor is missing'));
+  assert.ok(authorize.includes("Number(proofRunAttempt) > 1 && proofTriggeringActor.toLowerCase() !== owner.toLowerCase()"));
+  assert.ok(authorize.includes('production proof reruns are repository-owner only'));
+  assert.ok(authorize.includes('proof_run_attempt: proofRunAttempt'));
+  assert.ok(authorize.includes('proof_triggering_actor: proofTriggeringActor'));
+});
+
 test('manual recovery authorizes only the current repository-owner initiator', () => {
   const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
   assert.ok(authorize.includes("if (triggeringCurrentActor !== owner)"));
@@ -141,6 +159,7 @@ test('production origin remains independently authorized before runtime proof', 
   assert.ok(proofWorkflow.includes('evaluateProductionOriginAuthority('));
   assert.ok(proofWorkflow.includes('missing-independent-origin-authority'));
   assert.ok(proofWorkflow.includes('production-origin-authority-rejected'));
+  assert.ok(proofWorkflow.includes('authorized_origin_present: Boolean(authorizedOrigin)'));
 });
 
 test('production proof validates Railway-native release and persistent-volume continuity', () => {
@@ -209,6 +228,7 @@ test('blocked v1 receipt preserves historical correlation fields and reason cont
   assert.ok(proofWorkflow.includes('reason_detail: reasonDetail'));
   assert.ok(proofWorkflow.includes('trigger_sha: triggerSha'));
   assert.ok(proofWorkflow.includes('production_origin: origin'));
+  assert.ok(proofWorkflow.includes('authorized_origin_present: Boolean(authorizedOrigin)'));
   assert.ok(proofWorkflow.includes('event_name: process.env.GITHUB_EVENT_NAME || null'));
   assert.ok(proofWorkflow.includes('last_observation: lastObservation'));
 });
