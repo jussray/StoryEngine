@@ -49,6 +49,21 @@ test('secret-bearing proof is sourced only through workflow_run from the named s
   assert.doesNotMatch(proofWorkflow, /\n\s+workflow_dispatch:/);
 });
 
+test('nonqualifying skipped signal runs become a clean no-op before artifact download or production access', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes('Classify upstream signal execution'));
+  assert.ok(authorize.includes('/actions/runs/${runId}/jobs?per_page=100'));
+  assert.ok(authorize.includes("job.name || '').trim() === 'emit-signal'"));
+  assert.ok(authorize.includes("if (conclusion === 'skipped')"));
+  assert.ok(authorize.includes("appendFileSync(process.env.GITHUB_OUTPUT, 'signal_available=false\\n')"));
+  assert.ok(authorize.includes("if (conclusion !== 'success')"));
+  assert.ok(authorize.includes("appendFileSync(process.env.GITHUB_OUTPUT, 'signal_available=true\\n')"));
+  assert.ok(authorize.includes("if: ${{ steps.classify.outputs.signal_available == 'true' }}"));
+  assert.ok(authorize.includes('SIGNAL_AVAILABLE: ${{ steps.classify.outputs.signal_available }}'));
+  assert.ok(authorize.includes('No qualifying production signal; production verification is a clean no-op.'));
+  assert.ok(authorize.includes("echo 'authorized=false' >> \"$GITHUB_OUTPUT\""));
+});
+
 test('only authorized production verification jobs enter the shared queued concurrency membrane', () => {
   const workflowHeader = proofWorkflow.slice(0, proofWorkflow.indexOf('\njobs:'));
   assert.doesNotMatch(workflowHeader, /\nconcurrency:/);
