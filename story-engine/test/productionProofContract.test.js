@@ -71,6 +71,13 @@ test('production proof validates provider-native Railway identity and fails clos
   assert.doesNotMatch(workflow, /delay\(10_000\)/);
 });
 
+test('production proof distinguishes transport reachability from later runtime validation failure', () => {
+  assert.ok(workflow.includes('let reachedThisAttempt = false;'));
+  assert.ok(workflow.includes('reachedThisAttempt = true;'));
+  assert.ok(workflow.includes('if (!reachedThisAttempt) last = null;'));
+  assert.doesNotMatch(workflow, /catch \(error\) \{\s*last = null;/);
+});
+
 test('production proof enforces persistent volume witness continuity across browser mutation', () => {
   assert.ok(workflow.includes('EXPECTED_PERSISTENCE_WITNESS'));
   assert.ok(workflow.includes('persistence_witness is missing or invalid'));
