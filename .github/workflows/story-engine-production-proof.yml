@@ -12,10 +12,6 @@ permissions:
   actions: read
   deployments: read
 
-concurrency:
-  group: storyengine-production-proof-production
-  cancel-in-progress: false
-
 jobs:
   authorize-signal:
     name: Authorize production signal on trusted main
@@ -56,6 +52,8 @@ jobs:
           TRIGGERING_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           TRIGGERING_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           TRIGGERING_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          PROOF_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          PROOF_RUN_ATTEMPT: ${{ github.run_attempt }}
           REPOSITORY: ${{ github.repository }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
@@ -72,7 +70,9 @@ jobs:
           const triggeringRunAttempt = String(process.env.TRIGGERING_RUN_ATTEMPT || '').trim();
           const triggeringHeadSha = String(process.env.TRIGGERING_HEAD_SHA || '').trim().toLowerCase();
           const triggeringHeadBranch = String(process.env.TRIGGERING_HEAD_BRANCH || '').trim();
-          const owner = String(process.env.REPOSITORY_OWNER || '');
+          const proofTriggeringActor = String(process.env.PROOF_TRIGGERING_ACTOR || '').trim();
+          const proofRunAttempt = String(process.env.PROOF_RUN_ATTEMPT || '').trim();
+          const owner = String(process.env.REPOSITORY_OWNER || '').trim();
           const token = String(process.env.GH_TOKEN || '');
           const authorizationTime = Date.now();
           const maxSignalAgeMs = 15 * 60 * 1000;
@@ -89,6 +89,11 @@ jobs:
           if (!triggeringCurrentActor) throw new Error('current triggering actor is missing');
           if (Number(triggeringRunAttempt) > 1 && triggeringCurrentActor !== owner) {
             throw new Error('production signal reruns are repository-owner only');
+          }
+          if (!/^\d+$/.test(proofRunAttempt)) throw new Error('current production proof run attempt is missing');
+          if (!proofTriggeringActor) throw new Error('current production proof triggering actor is missing');
+          if (Number(proofRunAttempt) > 1 && proofTriggeringActor.toLowerCase() !== owner.toLowerCase()) {
+            throw new Error('production proof reruns are repository-owner only');
           }
 
           const signalObservedAt = Date.parse(String(signal.observed_at || '').trim());
@@ -178,6 +183,8 @@ jobs:
               triggering_run_id: triggeringRunId,
               triggering_run_attempt: triggeringRunAttempt,
               triggering_actor: triggeringCurrentActor,
+              proof_run_attempt: proofRunAttempt,
+              proof_triggering_actor: proofTriggeringActor,
               authorized_by: 'trusted-main-workflow',
               observed_at: new Date().toISOString()
             }, null, 2) + '\n'
@@ -203,6 +210,10 @@ jobs:
     name: Verify exact StoryEngine production runtime
     needs: authorize-signal
     if: ${{ needs.authorize-signal.outputs.authorized == 'true' }}
+    concurrency:
+      group: storyengine-production-proof-production
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -280,6 +291,7 @@ jobs:
               message,
               release_sha: expected,
               trigger_sha: process.env.PROOF_TRIGGER_SHA || null,
+              authorized_origin_present: Boolean(authorizedOrigin),
               github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
               signal_mode: process.env.SIGNAL_MODE || null,
               github_run_id: process.env.GITHUB_RUN_ID || null,
