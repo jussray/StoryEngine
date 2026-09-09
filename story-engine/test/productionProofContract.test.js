@@ -17,8 +17,8 @@ function beforeSteps(source) {
   return source.slice(0, index);
 }
 
-test('production proof requires independent GitHub environment origin authority', () => {
-  assert.match(workflow, /environment:\s+production/);
+test('production proof requires independent GitHub environment origin authority without creating its own deployment', () => {
+  assert.match(workflow, /environment:\s*[\s\S]*name:\s+production[\s\S]*deployment:\s+false/);
   assert.ok(
     workflow.includes("STORYENGINE_AUTHORIZED_PRODUCTION_ORIGIN: ${{ vars.STORYENGINE_PRODUCTION_ORIGIN || secrets.STORYENGINE_PRODUCTION_ORIGIN }}"),
     'production origin authority must come from GitHub configuration outside application source'
@@ -34,28 +34,37 @@ test('production proof requires independent GitHub environment origin authority'
   assert.doesNotMatch(workflow, /optionalEnvironmentOrigin|SOURCE_BOUND|source-canonical-live-runtime-required/);
 });
 
-test('production proof is post-CI and cannot participate in Railway Wait for CI deadlock', () => {
-  assert.match(workflow, /workflow_run:\s*[\s\S]*workflows:\s*[\s\S]*- L99 Story Engine CI/);
-  assert.match(workflow, /types:\s*[\s\S]*- completed/);
-  assert.match(workflow, /branches:\s*[\s\S]*- main/);
-  assert.ok(workflow.includes("github.event.workflow_run.conclusion == 'success'"));
+test('production proof runs after successful production deployment status instead of participating in provider CI gating', () => {
+  assert.match(workflow, /\non:\s*\n\s+deployment_status:/);
+  assert.ok(workflow.includes("github.event.deployment_status.state == 'success'"));
+  assert.ok(workflow.includes("github.event.deployment.environment == 'production'"));
+  assert.doesNotMatch(workflow, /workflow_run:/);
   assert.doesNotMatch(workflow, /\n  push:\s*\n/);
 });
 
-test('new post-CI proof supersedes stale main proof without cancelling manual historical proof', () => {
+test('new production deployment proof supersedes stale live proof without cancelling manual historical proof', () => {
   assert.ok(
-    workflow.includes('group: "storyengine-production-proof-${{ github.event_name == \'workflow_dispatch\' && inputs.release_sha || \'main\' }}"')
+    workflow.includes("group: \"storyengine-production-proof-${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || 'production' }}\"")
   );
-  assert.ok(workflow.includes("cancel-in-progress: ${{ github.event_name == 'workflow_run' }}"));
+  assert.ok(workflow.includes("cancel-in-progress: ${{ github.event_name == 'deployment_status' }}"));
 });
 
-test('production proof binds immutable release subject to upstream green CI head or manual SHA', () => {
-  assert.ok(workflow.includes('UPSTREAM_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}'));
-  assert.ok(workflow.includes('release_sha="$UPSTREAM_RELEASE_SHA"'));
+test('production proof binds immutable release subject to provider deployment SHA or manual SHA', () => {
+  assert.ok(workflow.includes('DEPLOYED_RELEASE_SHA: ${{ github.event.deployment.sha }}'));
+  assert.ok(workflow.includes('release_sha="$DEPLOYED_RELEASE_SHA"'));
   assert.ok(workflow.includes('git checkout --detach "$release_sha"'));
   assert.ok(workflow.includes('test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"'));
   assert.ok(workflow.includes('git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" origin/main'));
   assert.ok(workflow.includes("redirect: 'error'"));
+});
+
+test('production proof validates provider-native Railway identity and fails closed on runtime mismatch', () => {
+  assert.ok(workflow.includes("identity.release_sha_source !== 'railway-git'"));
+  assert.ok(workflow.includes("reason = last ? 'provider-runtime-identity-mismatch' : 'provider-runtime-unreachable'"));
+  assert.ok(workflow.includes('Provider reported a successful production deployment'));
+  assert.doesNotMatch(workflow, /provider-release-not-converged/);
+  assert.doesNotMatch(workflow, /attempt <= 60/);
+  assert.doesNotMatch(workflow, /delay\(10_000\)/);
 });
 
 test('production proof enforces persistent volume witness continuity across browser mutation', () => {
@@ -77,9 +86,11 @@ test('production browser secrets remain step-scoped and are not job-level enviro
 
 test('blocked and verified production proof states retain machine-readable evidence', () => {
   assert.ok(workflow.includes('production-proof-blocked.json'));
-  assert.ok(workflow.includes("reason: 'provider-release-not-converged'"));
+  assert.ok(workflow.includes('provider-runtime-identity-mismatch'));
+  assert.ok(workflow.includes('provider-runtime-unreachable'));
   assert.ok(workflow.includes('production-runtime-before.json'));
   assert.ok(workflow.includes('production-proof-summary.json'));
+  assert.ok(workflow.includes('provider_deployment_id'));
   assert.ok(workflow.includes('actions/upload-artifact@v4'));
   assert.ok(workflow.includes('${{ github.run_attempt }}'));
   assert.ok(workflow.includes('retention-days: 90'));

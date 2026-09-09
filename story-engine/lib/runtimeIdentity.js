@@ -40,16 +40,31 @@ export function runtimeIdentitySnapshot({
   persistenceWitnessId = null
 } = {}) {
   const production = env.NODE_ENV === 'production';
-  const releaseSha = String(env.L99_RELEASE_SHA || '').trim();
+  const configuredReleaseSha = String(env.L99_RELEASE_SHA || '').trim();
+  const railwayReleaseSha = String(env.RAILWAY_GIT_COMMIT_SHA || '').trim();
   const configuredDbPath = String(env.L99_DB_PATH || '').trim();
 
-  if (production && !GIT_SHA_PATTERN.test(releaseSha)) {
-    throw new Error('Production requires L99_RELEASE_SHA bound to the exact 40-character Git commit SHA.');
+  if (production && railwayReleaseSha && !GIT_SHA_PATTERN.test(railwayReleaseSha)) {
+    throw new Error('Production RAILWAY_GIT_COMMIT_SHA must be an exact 40-character Git commit SHA.');
+  }
+
+  if (production && !railwayReleaseSha && !GIT_SHA_PATTERN.test(configuredReleaseSha)) {
+    throw new Error(
+      'Production requires RAILWAY_GIT_COMMIT_SHA or fallback L99_RELEASE_SHA bound to the exact 40-character Git commit SHA.'
+    );
   }
 
   if (production && !configuredDbPath) {
     throw new Error('Production requires L99_DB_PATH bound to a persistent mounted path.');
   }
+
+  const releaseSha = railwayReleaseSha || configuredReleaseSha;
+  const releaseShaSource = production
+    ? (railwayReleaseSha ? 'railway-git' : 'configured')
+    : 'development';
+  const configuredReleaseShaMatches = production && railwayReleaseSha && configuredReleaseSha
+    ? configuredReleaseSha.toLowerCase() === railwayReleaseSha.toLowerCase()
+    : null;
 
   const witnessId = production
     ? String(persistenceWitnessId || ensurePersistenceWitness(configuredDbPath)).trim()
@@ -62,6 +77,8 @@ export function runtimeIdentitySnapshot({
   return Object.freeze({
     service: 'l99-story-engine',
     release_sha: releaseSha || 'development',
+    release_sha_source: releaseShaSource,
+    configured_release_sha_matches: configuredReleaseShaMatches,
     runtime_mode: production ? 'production' : 'development',
     state_backend: 'sqlite',
     persistence_contract: production ? 'explicit-mounted-path' : 'repo-local',
