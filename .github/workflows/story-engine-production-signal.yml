@@ -81,7 +81,7 @@ jobs:
       - name: Upload untrusted production signal
         uses: actions/upload-artifact@v4
         with:
-          name: storyengine-production-signal
+          name: storyengine-production-signal-${{ github.run_attempt }}
           path: production-signal/signal.json
           if-no-files-found: error
           retention-days: 7
