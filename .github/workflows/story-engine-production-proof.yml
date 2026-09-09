@@ -52,9 +52,10 @@ jobs:
           TRIGGERING_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGERING_EVENT: ${{ github.event.workflow_run.event }}
           TRIGGERING_ACTOR: ${{ github.event.workflow_run.actor.login }}
+          TRIGGERING_CURRENT_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
+          TRIGGERING_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           TRIGGERING_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           TRIGGERING_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          TRIGGERING_RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}
           REPOSITORY: ${{ github.repository }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
@@ -67,11 +68,14 @@ jobs:
           const triggeringRunId = String(process.env.TRIGGERING_RUN_ID || '');
           const triggeringEvent = String(process.env.TRIGGERING_EVENT || '');
           const triggeringActor = String(process.env.TRIGGERING_ACTOR || '');
+          const triggeringCurrentActor = String(process.env.TRIGGERING_CURRENT_ACTOR || '').trim();
+          const triggeringRunAttempt = String(process.env.TRIGGERING_RUN_ATTEMPT || '').trim();
           const triggeringHeadSha = String(process.env.TRIGGERING_HEAD_SHA || '').trim().toLowerCase();
           const triggeringHeadBranch = String(process.env.TRIGGERING_HEAD_BRANCH || '').trim();
-          const triggeringRunCreatedAt = Date.parse(String(process.env.TRIGGERING_RUN_CREATED_AT || '').trim());
           const owner = String(process.env.REPOSITORY_OWNER || '');
           const token = String(process.env.GH_TOKEN || '');
+          const authorizationTime = Date.now();
+          const maxSignalAgeMs = 15 * 60 * 1000;
 
           if (signal.schema !== 'juss/storyengine-production-signal@v1') throw new Error('unsupported production signal schema');
           if (signal.trust !== 'untrusted-input') throw new Error('signal must remain explicitly untrusted');
@@ -79,6 +83,20 @@ jobs:
           if (String(signal.source_run_id || '') !== triggeringRunId) throw new Error('signal run identity mismatch');
           if (String(signal.source_event || '') !== triggeringEvent) throw new Error('signal event mismatch');
           if (String(signal.source_actor || '') !== triggeringActor) throw new Error('signal actor mismatch');
+          if (!/^\d+$/.test(triggeringRunAttempt) || String(signal.source_run_attempt || '') !== triggeringRunAttempt) {
+            throw new Error('signal run attempt mismatch');
+          }
+          if (!triggeringCurrentActor) throw new Error('current triggering actor is missing');
+          if (Number(triggeringRunAttempt) > 1 && triggeringCurrentActor !== owner) {
+            throw new Error('production signal reruns are repository-owner only');
+          }
+
+          const signalObservedAt = Date.parse(String(signal.observed_at || '').trim());
+          if (!Number.isFinite(signalObservedAt)) throw new Error('production signal observed_at is missing or invalid');
+          const signalAgeMs = authorizationTime - signalObservedAt;
+          if (signalAgeMs < 0 || signalAgeMs > maxSignalAgeMs) {
+            throw new Error('production signal is stale at authorization time');
+          }
 
           const releaseSha = String(signal.release_sha || '').trim().toLowerCase();
           if (!/^[0-9a-f]{40}$/.test(releaseSha)) throw new Error('release_sha must be an exact 40-character Git SHA');
@@ -128,15 +146,16 @@ jobs:
             }
 
             const statusCreatedAt = Date.parse(String(status.created_at || ''));
-            if (!Number.isFinite(triggeringRunCreatedAt) || !Number.isFinite(statusCreatedAt)) {
-              throw new Error('deployment signal freshness timestamp is missing or invalid');
+            if (!Number.isFinite(statusCreatedAt)) {
+              throw new Error('deployment status freshness timestamp is missing or invalid');
             }
-            if (Math.abs(triggeringRunCreatedAt - statusCreatedAt) > 15 * 60 * 1000) {
-              throw new Error('deployment status is not contemporaneous with triggering signal run');
+            const statusAgeMs = authorizationTime - statusCreatedAt;
+            if (statusAgeMs < 0 || statusAgeMs > maxSignalAgeMs) {
+              throw new Error('deployment status is stale at authorization time');
             }
           } else if (triggeringEvent === 'workflow_dispatch') {
             signalMode = 'manual';
-            if (triggeringActor !== owner) {
+            if (triggeringCurrentActor !== owner) {
               throw new Error('manual production proof is repository-owner only');
             }
           } else {
@@ -151,6 +170,8 @@ jobs:
               github_deployment_id: deploymentId,
               signal_mode: signalMode,
               triggering_run_id: triggeringRunId,
+              triggering_run_attempt: triggeringRunAttempt,
+              triggering_actor: triggeringCurrentActor,
               authorized_by: 'trusted-main-workflow',
               observed_at: new Date().toISOString()
             }, null, 2) + '\n'
