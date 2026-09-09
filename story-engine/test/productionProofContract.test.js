@@ -137,6 +137,16 @@ test('production proof validates Railway-native release and persistent-volume co
   assert.ok(proofWorkflow.includes('provider-runtime-unreachable'));
 });
 
+test('production proof polls bounded runtime convergence and classifies the latest endpoint evidence', () => {
+  assert.ok(proofWorkflow.includes('Promise.allSettled(['));
+  assert.ok(proofWorkflow.includes('for (let attempt = 1; attempt <= 12; attempt += 1)'));
+  assert.ok(proofWorkflow.includes('await delay(5_000)'));
+  assert.ok(proofWorkflow.includes("healthResult.status === 'fulfilled' || identityResult.status === 'fulfilled'"));
+  assert.ok(proofWorkflow.includes('lastObservation = lastReachable'));
+  assert.ok(proofWorkflow.includes("lastReachable ? 'provider-runtime-identity-mismatch' : 'provider-runtime-unreachable'"));
+  assert.ok(proofWorkflow.includes('bounded verification window'));
+});
+
 test('browser secrets remain step-scoped inside the trusted production job', () => {
   assert.ok(proofWorkflow.includes('PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}'));
   assert.ok(proofWorkflow.includes('PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}'));
