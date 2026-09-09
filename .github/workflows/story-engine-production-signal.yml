@@ -1,0 +1,87 @@
+name: StoryEngine Production Signal
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character Git SHA to verify against the canonical production runtime
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  emit-signal:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'production') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write untrusted production signal
+        shell: bash
+        env:
+          SIGNAL_EVENT: ${{ github.event_name }}
+          SIGNAL_REPOSITORY: ${{ github.repository }}
+          SIGNAL_RUN_ID: ${{ github.run_id }}
+          SIGNAL_RUN_ATTEMPT: ${{ github.run_attempt }}
+          SIGNAL_ACTOR: ${{ github.actor }}
+          MANUAL_RELEASE_SHA: ${{ inputs.release_sha }}
+          DEPLOYED_RELEASE_SHA: ${{ github.event.deployment.sha }}
+          DEPLOYMENT_ID: ${{ github.event.deployment.id }}
+          DEPLOYMENT_STATUS_ID: ${{ github.event.deployment_status.id }}
+          DEPLOYMENT_ENVIRONMENT: ${{ github.event.deployment.environment }}
+          DEPLOYMENT_STATUS_STATE: ${{ github.event.deployment_status.state }}
+        run: |
+          set -euo pipefail
+          mkdir -p production-signal
+          node --input-type=module <<'NODE'
+          import { writeFile } from 'node:fs/promises';
+
+          const eventName = String(process.env.SIGNAL_EVENT || '');
+          const releaseSha = eventName === 'workflow_dispatch'
+            ? String(process.env.MANUAL_RELEASE_SHA || '').trim().toLowerCase()
+            : String(process.env.DEPLOYED_RELEASE_SHA || '').trim().toLowerCase();
+
+          if (!/^[0-9a-f]{40}$/.test(releaseSha)) {
+            throw new Error('production signal requires an exact 40-character Git SHA');
+          }
+
+          const signal = {
+            schema: 'juss/storyengine-production-signal@v1',
+            trust: 'untrusted-input',
+            source_event: eventName,
+            repository: process.env.SIGNAL_REPOSITORY || null,
+            source_run_id: process.env.SIGNAL_RUN_ID || null,
+            source_run_attempt: process.env.SIGNAL_RUN_ATTEMPT || null,
+            source_actor: process.env.SIGNAL_ACTOR || null,
+            release_sha: releaseSha,
+            github_deployment_id: eventName === 'deployment_status'
+              ? String(process.env.DEPLOYMENT_ID || '')
+              : null,
+            github_deployment_status_id: eventName === 'deployment_status'
+              ? String(process.env.DEPLOYMENT_STATUS_ID || '')
+              : null,
+            deployment_environment: eventName === 'deployment_status'
+              ? String(process.env.DEPLOYMENT_ENVIRONMENT || '')
+              : null,
+            deployment_state: eventName === 'deployment_status'
+              ? String(process.env.DEPLOYMENT_STATUS_STATE || '')
+              : null,
+            observed_at: new Date().toISOString()
+          };
+
+          await writeFile(
+            'production-signal/signal.json',
+            JSON.stringify(signal, null, 2) + '\n'
+          );
+          console.log(JSON.stringify(signal, null, 2));
+          NODE
+
+      - name: Upload untrusted production signal
+        uses: actions/upload-artifact@v4
+        with:
+          name: storyengine-production-signal-${{ github.run_attempt }}
+          path: production-signal/signal.json
+          if-no-files-found: error
+          retention-days: 7
