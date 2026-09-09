@@ -166,11 +166,13 @@ jobs:
           let last = null;
           let lastError = null;
           for (let attempt = 1; attempt <= 6; attempt += 1) {
+            let reachedThisAttempt = false;
             try {
               const [health, identity] = await Promise.all([
                 readJson('/healthz'),
                 readJson('/runtime-identity')
               ]);
+              reachedThisAttempt = true;
               last = { health, identity };
               lastError = null;
               const healthSha = String(health.release_sha ?? '').toLowerCase();
@@ -210,7 +212,7 @@ jobs:
                 process.exit(0);
               }
             } catch (error) {
-              last = null;
+              if (!reachedThisAttempt) last = null;
               lastError = error instanceof Error ? error.message : String(error);
               console.log(`attempt ${attempt}/6: ${lastError}`);
             }
