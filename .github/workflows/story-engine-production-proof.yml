@@ -30,7 +30,53 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Classify upstream signal execution
+        id: classify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGERING_RUN_ID: ${{ github.event.workflow_run.id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+
+          const repository = String(process.env.REPOSITORY || '');
+          const runId = String(process.env.TRIGGERING_RUN_ID || '');
+          const token = String(process.env.GH_TOKEN || '');
+          const response = await fetch(
+            `https://api.github.com/repos/${repository}/actions/runs/${runId}/jobs?per_page=100`,
+            {
+              headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: `Bearer ${token}`,
+                'X-GitHub-Api-Version': '2022-11-28'
+              },
+              redirect: 'error',
+              signal: AbortSignal.timeout(8000)
+            }
+          );
+          if (!response.ok) throw new Error(`upstream signal job lookup returned HTTP ${response.status}`);
+          const payload = await response.json();
+          const signalJob = Array.isArray(payload.jobs)
+            ? payload.jobs.find(job => String(job.name || '').trim() === 'emit-signal')
+            : null;
+          if (!signalJob) throw new Error('upstream emit-signal job is missing');
+          const conclusion = String(signalJob.conclusion || '').trim().toLowerCase();
+          if (conclusion === 'skipped') {
+            appendFileSync(process.env.GITHUB_OUTPUT, 'signal_available=false\n');
+            console.log('Nonqualifying deployment status: no production signal artifact is expected.');
+            process.exit(0);
+          }
+          if (conclusion !== 'success') {
+            throw new Error(`upstream emit-signal conclusion=${conclusion || 'missing'}`);
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, 'signal_available=true\n');
+          NODE
+
       - name: Download untrusted signal artifact
+        if: ${{ steps.classify.outputs.signal_available == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: storyengine-production-signal-${{ github.event.workflow_run.run_attempt }}
@@ -44,6 +90,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SIGNAL_AVAILABLE: ${{ steps.classify.outputs.signal_available }}
           SIGNAL_PATH: production-signal/signal.json
           TRIGGERING_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGERING_EVENT: ${{ github.event.workflow_run.event }}
@@ -58,6 +105,12 @@ jobs:
           REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
+          if [ "${SIGNAL_AVAILABLE}" != "true" ]; then
+            echo 'authorized=false' >> "$GITHUB_OUTPUT"
+            echo 'No qualifying production signal; production verification is a clean no-op.'
+            exit 0
+          fi
+
           node --input-type=module <<'NODE'
           import { readFile, writeFile } from 'node:fs/promises';
 
