@@ -58,7 +58,7 @@ jobs:
           git cat-file -e "${release_sha}^{commit}"
           echo "EXPECTED_RELEASE_SHA=${release_sha,,}" >> "$GITHUB_ENV"
           echo "PROOF_TRIGGER_SHA=${release_sha,,}" >> "$GITHUB_ENV"
-          echo "PROVIDER_DEPLOYMENT_ID=${DEPLOYMENT_ID:-manual}" >> "$GITHUB_ENV"
+          echo "GITHUB_DEPLOYMENT_ID=${DEPLOYMENT_ID:-manual}" >> "$GITHUB_ENV"
           echo "Production proof subject: ${release_sha,,}"
           git checkout --detach "$release_sha"
 
@@ -104,7 +104,7 @@ jobs:
               message,
               release_sha: expected || null,
               trigger_sha: process.env.PROOF_TRIGGER_SHA || null,
-              provider_deployment_id: process.env.PROVIDER_DEPLOYMENT_ID || null,
+              github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
               authorized_origin_present: Boolean(authorizedOrigin),
               github_run_id: process.env.GITHUB_RUN_ID || null,
               github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
@@ -196,7 +196,7 @@ jobs:
                     phase: 'before-playwright',
                     release_sha: expected,
                     trigger_sha: triggerSha,
-                    provider_deployment_id: process.env.PROVIDER_DEPLOYMENT_ID || null,
+                    github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
                     production_origin: origin,
                     origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE,
                     persistence_witness: witness,
@@ -229,7 +229,7 @@ jobs:
             message,
             release_sha: expected,
             trigger_sha: triggerSha,
-            provider_deployment_id: process.env.PROVIDER_DEPLOYMENT_ID || null,
+            github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
             production_origin: origin,
             github_run_id: process.env.GITHUB_RUN_ID || null,
             github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
@@ -327,7 +327,7 @@ jobs:
             status: 'verified',
             release_sha: expected,
             trigger_sha: process.env.PROOF_TRIGGER_SHA || expected,
-            provider_deployment_id: process.env.PROVIDER_DEPLOYMENT_ID || null,
+            github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
             production_origin: origin,
             origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE,
             persistence_witness: expectedWitness,

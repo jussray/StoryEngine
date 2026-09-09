@@ -11,6 +11,7 @@ on:
       - 'docs/FOUNDER_INTELLIGENCE_CONSTITUTION.md'
       - 'scripts/verify-juss-os-commands.mjs'
       - '.github/workflows/l99-story-engine.yml'
+      - '.github/workflows/story-engine-production-proof.yml'
   pull_request:
     paths:
       - 'story-engine/**'
@@ -19,6 +20,7 @@ on:
       - 'docs/FOUNDER_INTELLIGENCE_CONSTITUTION.md'
       - 'scripts/verify-juss-os-commands.mjs'
       - '.github/workflows/l99-story-engine.yml'
+      - '.github/workflows/story-engine-production-proof.yml'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

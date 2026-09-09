@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "service": "l99-story-engine",
   "runtime": {
     "kind": "stateful-container",
@@ -16,7 +16,9 @@
     "durabilityRequirement": "database file survives container restart and reschedule"
   },
   "releaseIdentity": {
-    "environmentVariable": "L99_RELEASE_SHA",
+    "providerNativeEnvironmentVariable": "RAILWAY_GIT_COMMIT_SHA",
+    "fallbackEnvironmentVariable": "L99_RELEASE_SHA",
+    "providerNativePreferred": true,
     "format": "git-sha-1",
     "healthPath": "/healthz",
     "identityPath": "/runtime-identity"

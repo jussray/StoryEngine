@@ -9,6 +9,10 @@ const workflow = readFileSync(
   join(__dirname, '..', '..', '.github', 'workflows', 'story-engine-production-proof.yml'),
   'utf8'
 );
+const l99CiWorkflow = readFileSync(
+  join(__dirname, '..', '..', '.github', 'workflows', 'l99-story-engine.yml'),
+  'utf8'
+);
 
 function beforeSteps(source) {
   const marker = '\n    steps:';
@@ -84,13 +88,18 @@ test('production browser secrets remain step-scoped and are not job-level enviro
   assert.ok(workflow.includes('Revalidate authorized runtime immediately before credentialed browser proof'));
 });
 
+test('L99 Story Engine CI watches production proof workflow contract changes', () => {
+  const matches = l99CiWorkflow.match(/\.github\/workflows\/story-engine-production-proof\.yml/g) || [];
+  assert.equal(matches.length, 2, 'production proof workflow must be watched by both push and pull_request CI paths');
+});
+
 test('blocked and verified production proof states retain machine-readable evidence', () => {
   assert.ok(workflow.includes('production-proof-blocked.json'));
   assert.ok(workflow.includes('provider-runtime-identity-mismatch'));
   assert.ok(workflow.includes('provider-runtime-unreachable'));
   assert.ok(workflow.includes('production-runtime-before.json'));
   assert.ok(workflow.includes('production-proof-summary.json'));
-  assert.ok(workflow.includes('provider_deployment_id'));
+  assert.ok(workflow.includes('github_deployment_id'));
   assert.ok(workflow.includes('actions/upload-artifact@v4'));
   assert.ok(workflow.includes('${{ github.run_attempt }}'));
   assert.ok(workflow.includes('retention-days: 90'));
