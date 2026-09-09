@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: "storyengine-production-proof-${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || 'production' }}"
-  cancel-in-progress: ${{ github.event_name == 'deployment_status' }}
+  cancel-in-progress: ${{ github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'production' }}
 
 jobs:
   verify-production:
@@ -166,55 +166,72 @@ jobs:
           let last = null;
           let lastError = null;
           for (let attempt = 1; attempt <= 6; attempt += 1) {
-            let reachedThisAttempt = false;
-            try {
-              const [health, identity] = await Promise.all([
-                readJson('/healthz'),
-                readJson('/runtime-identity')
-              ]);
-              reachedThisAttempt = true;
-              last = { health, identity };
-              lastError = null;
-              const healthSha = String(health.release_sha ?? '').toLowerCase();
-              const identitySha = String(identity.release_sha ?? '').toLowerCase();
-              console.log(`attempt ${attempt}/6: health=${health.status} health_sha=${healthSha || 'missing'} identity_sha=${identitySha || 'missing'} source=${identity.release_sha_source || 'missing'}`);
+            const [healthResult, identityResult] = await Promise.allSettled([
+              readJson('/healthz'),
+              readJson('/runtime-identity')
+            ]);
+            const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
+            const identity = identityResult.status === 'fulfilled' ? identityResult.value : null;
+            const endpointErrors = [];
+            if (healthResult.status === 'rejected') {
+              endpointErrors.push(`/healthz: ${healthResult.reason instanceof Error ? healthResult.reason.message : String(healthResult.reason)}`);
+            }
+            if (identityResult.status === 'rejected') {
+              endpointErrors.push(`/runtime-identity: ${identityResult.reason instanceof Error ? identityResult.reason.message : String(identityResult.reason)}`);
+            }
 
-              if (health.status === 'ok' && healthSha === expected && identitySha === expected) {
-                if (identity.release_sha_source !== 'railway-git') throw new Error(`release_sha_source=${identity.release_sha_source}`);
-                if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
-                if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
-                if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
-                const witness = String(identity.persistence_witness ?? '').trim();
-                if (!uuidPattern.test(witness)) throw new Error('persistence_witness is missing or invalid');
-                if (identity.configured_release_sha_matches === false) {
-                  console.log('::warning title=StoryEngine release label drift::L99_RELEASE_SHA differs from Railway provider-native commit SHA and is ignored for runtime identity.');
-                }
-                appendFileSync(process.env.GITHUB_ENV, `EXPECTED_PERSISTENCE_WITNESS=${witness}\n`);
-                await mkdir('test-results', { recursive: true });
-                await writeFile(
-                  'test-results/production-runtime-before.json',
-                  JSON.stringify({
-                    schema: 'juss/storyengine-production-runtime@v1',
-                    phase: 'before-playwright',
-                    release_sha: expected,
-                    trigger_sha: triggerSha,
-                    github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
-                    production_origin: origin,
-                    origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE,
-                    persistence_witness: witness,
-                    observed_at: new Date().toISOString(),
-                    github_run_id: process.env.GITHUB_RUN_ID,
-                    health,
-                    identity
-                  }, null, 2) + '\n'
-                );
-                console.log(JSON.stringify({ health, identity }, null, 2));
-                process.exit(0);
-              }
-            } catch (error) {
-              if (!reachedThisAttempt) last = null;
-              lastError = error instanceof Error ? error.message : String(error);
+            if (!health && !identity) {
+              last = null;
+              lastError = endpointErrors.join('; ') || 'production runtime endpoints were unreachable';
               console.log(`attempt ${attempt}/6: ${lastError}`);
+            } else {
+              last = { health, identity };
+              lastError = endpointErrors.length > 0 ? endpointErrors.join('; ') : null;
+              try {
+                if (!health || !identity) {
+                  throw new Error(`runtime contract partial: ${endpointErrors.join('; ')}`);
+                }
+
+                const healthSha = String(health.release_sha ?? '').toLowerCase();
+                const identitySha = String(identity.release_sha ?? '').toLowerCase();
+                console.log(`attempt ${attempt}/6: health=${health.status} health_sha=${healthSha || 'missing'} identity_sha=${identitySha || 'missing'} source=${identity.release_sha_source || 'missing'}`);
+
+                if (health.status === 'ok' && healthSha === expected && identitySha === expected) {
+                  if (identity.release_sha_source !== 'railway-git') throw new Error(`release_sha_source=${identity.release_sha_source}`);
+                  if (identity.runtime_mode !== 'production') throw new Error(`runtime_mode=${identity.runtime_mode}`);
+                  if (identity.state_backend !== 'sqlite') throw new Error(`state_backend=${identity.state_backend}`);
+                  if (identity.persistence_contract !== 'explicit-mounted-path') throw new Error(`persistence_contract=${identity.persistence_contract}`);
+                  const witness = String(identity.persistence_witness ?? '').trim();
+                  if (!uuidPattern.test(witness)) throw new Error('persistence_witness is missing or invalid');
+                  if (identity.configured_release_sha_matches === false) {
+                    console.log('::warning title=StoryEngine release label drift::L99_RELEASE_SHA differs from Railway provider-native commit SHA and is ignored for runtime identity.');
+                  }
+                  appendFileSync(process.env.GITHUB_ENV, `EXPECTED_PERSISTENCE_WITNESS=${witness}\n`);
+                  await mkdir('test-results', { recursive: true });
+                  await writeFile(
+                    'test-results/production-runtime-before.json',
+                    JSON.stringify({
+                      schema: 'juss/storyengine-production-runtime@v1',
+                      phase: 'before-playwright',
+                      release_sha: expected,
+                      trigger_sha: triggerSha,
+                      github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
+                      production_origin: origin,
+                      origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE,
+                      persistence_witness: witness,
+                      observed_at: new Date().toISOString(),
+                      github_run_id: process.env.GITHUB_RUN_ID,
+                      health,
+                      identity
+                    }, null, 2) + '\n'
+                  );
+                  console.log(JSON.stringify({ health, identity }, null, 2));
+                  process.exit(0);
+                }
+              } catch (error) {
+                lastError = error instanceof Error ? error.message : String(error);
+                console.log(`attempt ${attempt}/6: ${lastError}`);
+              }
             }
 
             if (attempt < 6) await delay(5_000);
