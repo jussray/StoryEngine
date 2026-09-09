@@ -33,7 +33,7 @@ test('deployment status and manual recovery terminate in a secret-free signal wo
   assert.match(signalWorkflow, /\non:\s*\n\s+deployment_status:/);
   assert.match(signalWorkflow, /workflow_dispatch:/);
   assert.ok(signalWorkflow.includes("trust: 'untrusted-input'"));
-  assert.ok(signalWorkflow.includes('storyengine-production-signal'));
+  assert.ok(signalWorkflow.includes('name: storyengine-production-signal-${{ github.run_attempt }}'));
   assert.doesNotMatch(signalWorkflow, /environment:\s*[\s\S]*name:\s+production/);
   assert.doesNotMatch(signalWorkflow, /STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY/);
   assert.doesNotMatch(signalWorkflow, /STORYENGINE_PRODUCTION_SCOPED_API_KEY/);
@@ -44,6 +44,7 @@ test('secret-bearing proof is sourced only through workflow_run from the named s
   assert.match(proofWorkflow, /\non:\s*\n\s+workflow_run:/);
   assert.ok(proofWorkflow.includes('- StoryEngine Production Signal'));
   assert.ok(proofWorkflow.includes('- completed'));
+  assert.ok(proofWorkflow.includes('name: storyengine-production-signal-${{ github.event.workflow_run.run_attempt }}'));
   assert.doesNotMatch(proofWorkflow, /\n\s+deployment_status:/);
   assert.doesNotMatch(proofWorkflow, /\n\s+workflow_dispatch:/);
 });
@@ -51,7 +52,7 @@ test('secret-bearing proof is sourced only through workflow_run from the named s
 test('trusted authorize job validates untrusted signal before production environment exists', () => {
   const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
   assert.ok(authorize.includes('ref: main'));
-  assert.ok(authorize.includes('storyengine-production-signal'));
+  assert.ok(authorize.includes('storyengine-production-signal-${{ github.event.workflow_run.run_attempt }}'));
   assert.ok(authorize.includes("signal.trust !== 'untrusted-input'"));
   assert.ok(authorize.includes('signal run identity mismatch'));
   assert.ok(authorize.includes('/deployments/${deploymentId}'));
@@ -64,6 +65,15 @@ test('trusted authorize job validates untrusted signal before production environ
   assert.doesNotMatch(authorize, /environment:\s*[\s\S]*name:\s+production/);
   assert.doesNotMatch(authorize, /STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY/);
   assert.doesNotMatch(authorize, /STORYENGINE_PRODUCTION_SCOPED_API_KEY/);
+});
+
+test('deployment authorization accepts only Railway-created production success receipts', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes('status.creator?.login'));
+  assert.ok(authorize.includes('status.performed_via_github_app?.slug'));
+  assert.ok(authorize.includes("statusCreator === 'railway-app[bot]'"));
+  assert.ok(authorize.includes("statusAppSlug === 'railway-app'"));
+  assert.ok(authorize.includes('deployment status did not originate from Railway App'));
 });
 
 test('deployment authorization rejects stale, rerun, and cross-branch receipts', () => {
@@ -141,7 +151,11 @@ test('production proof polls bounded runtime convergence and classifies the late
   assert.ok(proofWorkflow.includes('Promise.allSettled(['));
   assert.ok(proofWorkflow.includes('for (let attempt = 1; attempt <= 12; attempt += 1)'));
   assert.ok(proofWorkflow.includes('await delay(5_000)'));
-  assert.ok(proofWorkflow.includes("healthResult.status === 'fulfilled' || identityResult.status === 'fulfilled'"));
+  assert.ok(proofWorkflow.includes('class ReachableEndpointError extends Error'));
+  assert.ok(proofWorkflow.includes('this.reachable = true'));
+  assert.ok(proofWorkflow.includes('const endpointReached = result =>'));
+  assert.ok(proofWorkflow.includes('result.reason.reachable === true'));
+  assert.ok(proofWorkflow.includes('endpoint_reachability'));
   assert.ok(proofWorkflow.includes('lastObservation = lastReachable'));
   assert.ok(proofWorkflow.includes("lastReachable ? 'provider-runtime-identity-mismatch' : 'provider-runtime-unreachable'"));
   assert.ok(proofWorkflow.includes('bounded verification window'));
@@ -157,6 +171,17 @@ test('browser secrets remain step-scoped inside the trusted production job', () 
   const jobHeader = proofWorkflow.slice(jobStart, stepsStart);
   assert.doesNotMatch(jobHeader, /STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY/);
   assert.doesNotMatch(jobHeader, /STORYENGINE_PRODUCTION_SCOPED_API_KEY/);
+});
+
+test('verified v1 receipt preserves historical compatibility while adding deployment metadata', () => {
+  assert.ok(proofWorkflow.includes("schema: 'juss/storyengine-production-proof@v1'"));
+  assert.ok(proofWorkflow.includes('trigger_sha: process.env.PROOF_TRIGGER_SHA || expected'));
+  assert.ok(proofWorkflow.includes('origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE || null'));
+  assert.ok(proofWorkflow.includes('verified_at: verifiedAt'));
+  assert.ok(proofWorkflow.includes('runtime_identity: identity'));
+  assert.ok(proofWorkflow.includes("playwright: 'passed'"));
+  assert.ok(proofWorkflow.includes('github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null'));
+  assert.ok(proofWorkflow.includes('signal_mode: process.env.SIGNAL_MODE || null'));
 });
 
 test('blocked and verified states retain machine-readable evidence', () => {
