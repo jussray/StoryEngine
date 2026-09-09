@@ -13,7 +13,7 @@ permissions:
   deployments: read
 
 concurrency:
-  group: "storyengine-production-proof-${{ github.event.workflow_run.id }}"
+  group: storyengine-production-proof-production
   cancel-in-progress: false
 
 jobs:
@@ -313,6 +313,7 @@ jobs:
 
           const origin = process.env.PRODUCTION_ORIGIN.replace(/\/+$/, '');
           const expected = process.env.EXPECTED_RELEASE_SHA.toLowerCase();
+          const triggerSha = String(process.env.PROOF_TRIGGER_SHA || expected).trim().toLowerCase();
           const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
           const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -330,9 +331,15 @@ jobs:
               redirect: 'error',
               signal: AbortSignal.timeout(8000)
             });
-            const text = await response.text();
             if (!response.ok) {
               throw new ReachableEndpointError(`${path} returned HTTP ${response.status}`, { status: response.status });
+            }
+            let text;
+            try {
+              text = await response.text();
+            } catch (error) {
+              const detail = error instanceof Error ? error.message : String(error);
+              throw new ReachableEndpointError(`${path} response body read failed: ${detail}`, { status: response.status });
             }
             try {
               return JSON.parse(text);
@@ -398,13 +405,16 @@ jobs:
                 schema: 'juss/storyengine-production-runtime@v1',
                 phase: 'before-playwright',
                 release_sha: expected,
+                trigger_sha: triggerSha,
                 github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
                 signal_mode: process.env.SIGNAL_MODE || null,
                 production_origin: origin,
+                origin_authority_mode: process.env.ORIGIN_AUTHORITY_MODE || null,
                 persistence_witness: witness,
                 health,
                 identity,
-                observed_at: new Date().toISOString()
+                observed_at: new Date().toISOString(),
+                github_run_id: process.env.GITHUB_RUN_ID || null
               }, null, 2) + '\n');
               console.log(`production runtime converged on attempt ${attempt}/12`);
               process.exit(0);
@@ -417,24 +427,29 @@ jobs:
           }
 
           await mkdir('test-results', { recursive: true });
-          const reason = lastReachable ? 'provider-runtime-identity-mismatch' : 'provider-runtime-unreachable';
+          const reasonDetail = lastReachable ? 'provider-runtime-identity-mismatch' : 'provider-runtime-unreachable';
           const message = lastReachable
             ? 'Provider reported a successful production deployment, but the canonical runtime did not converge to the exact deployed release contract within the bounded verification window.'
             : 'Provider reported a successful production deployment, but the canonical runtime remained unreachable through the bounded verification window.';
-          await writeFile('test-results/production-proof-blocked.json', JSON.stringify({
+          const blocked = {
             schema: 'juss/storyengine-production-proof-blocked@v1',
             status: 'blocked',
-            reason,
+            reason: 'provider-release-not-converged',
+            reason_detail: reasonDetail,
             message,
             release_sha: expected,
+            trigger_sha: triggerSha,
+            production_origin: origin,
             github_deployment_id: process.env.GITHUB_DEPLOYMENT_ID || null,
             signal_mode: process.env.SIGNAL_MODE || null,
-            last_observation: lastObservation,
-            last_error: lastError,
             github_run_id: process.env.GITHUB_RUN_ID || null,
             github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || null,
+            event_name: process.env.GITHUB_EVENT_NAME || null,
+            last_observation: lastObservation,
+            last_error: lastError,
             observed_at: new Date().toISOString()
-          }, null, 2) + '\n');
+          };
+          await writeFile('test-results/production-proof-blocked.json', JSON.stringify(blocked, null, 2) + '\n');
           throw new Error(lastError ? `${message} Last error: ${lastError}` : message);
           NODE
 
@@ -531,6 +546,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: storyengine-production-proof-${{ env.EXPECTED_RELEASE_SHA }}-${{ github.run_attempt }}
-          path: story-engine/test-results/
+          path: |
+            story-engine/playwright-report/
+            story-engine/test-results/
           if-no-files-found: warn
           retention-days: 90
