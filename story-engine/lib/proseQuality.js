@@ -1,6 +1,6 @@
 // lib/proseQuality.js
 // Phase-aware prose quality observation derived from the L99 Tone Galley / Redteam prototype.
-// This is a style-quality heuristic, not an authorship detector.
+// This is a density-based style-quality heuristic, never an authorship detector.
 
 import { createHash } from 'node:crypto';
 
@@ -21,31 +21,27 @@ export const PROSE_QUALITY_MODES = Object.freeze({
   })
 });
 
-const AI_PATTERNS = [
-  'it is important to note', 'in conclusion', 'it became clear', 'it became abundantly clear',
-  'not just', 'but also', 'tapestry', 'underscore', 'foster', 'delve', 'enhance',
-  'meaningful', 'shared journey', "in today's", 'at its core', 'honestly'
-];
-
 const CONCRETE_HINTS = [
   'block', 'car', 'cash', 'text', 'door', 'seat', 'phone', 'sirens', 'envelope', 'rent',
   'chain', 'corner', 'steps', 'kitchen', 'hallway', 'room', 'table', 'chair', 'window',
   'street', 'bag', 'coat', 'shoes', 'key', 'glass', 'cup', 'plate', 'screen'
 ];
 
+// Each family has an allowance before it contributes a penalty. A single familiar
+// phrase, ordinary word, list structure, or punctuation mark is never a failure.
 const TROPE_PATTERNS = Object.freeze({
-  em_dash_overuse: { regex: /—/g, weight: 8, threshold: 2 },
-  not_x_but_y: { regex: /(not just .*? but also|it'?s not just .*? it'?s|it'?s not .*? it'?s)/gis, weight: 12, threshold: 0 },
-  formal_filler: { regex: /(it is important to note|it'?s worth noting|in conclusion|at its core|in today'?s [^,.!?;:]+)/gi, weight: 10, threshold: 0 },
-  hype_words: { regex: /\b(delve|tapestry|underscore|foster|enhance|robust|leverage|meaningful|groundbreaking|seamless|ever-evolving|state-of-the-art)\b/gi, weight: 9, threshold: 0 },
-  rule_of_three: { regex: /\b\w+,\s+\w+,\s+and\s+\w+\b/gi, weight: 6, threshold: 1 },
-  rhetorical_result: { regex: /\b(The result\?|What happens next\?|Why does this matter\?)/gi, weight: 7, threshold: 0 },
-  stacked_transitions: { regex: /\b(Moreover|Furthermore|Additionally|Consequently|Importantly)\b/gi, weight: 5, threshold: 1 },
-  grand_summary: { regex: /\b(journey|complexity|survival|truth|emotion|pain|love|loyalty)\b/gi, weight: 3, threshold: 6 }
+  em_dash_overuse: { regex: /—/g, weight: 8, allowance: 2 },
+  negative_parallelism: { regex: /(not just .*? but also|it'?s not just .*? it'?s|it'?s not .*? it'?s)/gis, weight: 10, allowance: 1 },
+  formal_filler: { regex: /(it is important to note|it'?s worth noting|in conclusion|at its core|in today'?s [^,.!?;:]+)/gi, weight: 8, allowance: 1 },
+  loaded_vocabulary_cluster: { regex: /\b(delve|tapestry|underscore|foster|enhance|robust|leverage|meaningful|groundbreaking|seamless|ever-evolving|state-of-the-art)\b/gi, weight: 6, allowance: 2 },
+  rule_of_three: { regex: /\b\w+,\s+\w+,\s+and\s+\w+\b/gi, weight: 5, allowance: 1 },
+  rhetorical_result: { regex: /\b(The result\?|What happens next\?|Why does this matter\?)/gi, weight: 6, allowance: 1 },
+  stacked_transitions: { regex: /\b(Moreover|Furthermore|Additionally|Consequently|Importantly)\b/gi, weight: 5, allowance: 1 },
+  grand_summary: { regex: /\b(journey|complexity|survival|truth|emotion|pain|love|loyalty)\b/gi, weight: 3, allowance: 6 }
 });
 
 function matches(text, regex) {
-  return [...text.matchAll(regex)].length;
+  return [...String(text || '').matchAll(regex)].length;
 }
 
 function sentenceList(text) {
@@ -58,21 +54,50 @@ function words(text) {
 
 function fingerprint(text, phase, mode) {
   return createHash('sha256')
-    .update(`prose-quality-v1\0${mode || ''}\0${phase || ''}\0${String(text || '')}`)
+    .update(`prose-quality-v2\0${mode || ''}\0${phase || ''}\0${String(text || '')}`)
     .digest('hex')
     .slice(0, 24);
 }
 
+export function cleanProseMechanics(text = '') {
+  return String(text || '')
+    .trim()
+    .replace(/\s+([,.!?;:])/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+}
+
 export function detectProsePatterns(text) {
   const patterns = {};
-  let total = 0;
+  let familyPenalty = 0;
+  let rawHits = 0;
+  let activeFamilies = 0;
+
   for (const [name, rule] of Object.entries(TROPE_PATTERNS)) {
-    const count = matches(String(text || ''), rule.regex);
-    const score = Math.max(0, count - rule.threshold) * rule.weight;
-    patterns[name] = { count, score, weight: rule.weight, threshold: rule.threshold };
-    total += score;
+    const count = matches(text, rule.regex);
+    const excess = Math.max(0, count - rule.allowance);
+    const score = excess * rule.weight;
+    if (count > 0) activeFamilies += 1;
+    rawHits += count;
+    familyPenalty += score;
+    patterns[name] = { count, score, weight: rule.weight, allowance: rule.allowance };
   }
-  return { total_pattern_score: Math.min(100, total), patterns };
+
+  const crossFamilyCluster = rawHits >= 3 && activeFamilies >= 2;
+  const repeatedSingleFamilyCluster = rawHits >= 4 && activeFamilies === 1;
+  const clustered = crossFamilyCluster || repeatedSingleFamilyCluster || familyPenalty > 0;
+  const clusterPenalty = crossFamilyCluster
+    ? Math.max(0, rawHits - 2) * 3 + Math.max(0, activeFamilies - 1) * 2
+    : 0;
+
+  return {
+    total_pattern_score: Math.min(100, familyPenalty + clusterPenalty),
+    raw_hits: rawHits,
+    active_families: activeFamilies,
+    clustered,
+    patterns
+  };
 }
 
 export function analyzeProse(text) {
@@ -83,23 +108,17 @@ export function analyzeProse(text) {
   const avgSentence = tokenList.length / Math.max(sentences.length, 1);
   const fragments = sentences.filter(sentence => words(sentence).length < 6).length;
   const emDashCount = (raw.match(/—/g) || []).length;
-  const patternHits = AI_PATTERNS.filter(pattern => lower.includes(pattern));
   const concreteHits = CONCRETE_HINTS.filter(hint => new RegExp(`\\b${hint}\\b`, 'i').test(raw));
   const numericAnchors = (raw.match(/(?:[$£€]\s?\d|\b\d{1,4}(?::\d{2})?\b)/g) || []).length;
   const contractions = (raw.match(/\b\w+'\w+\b/g) || []).length;
   const abstractWords = (lower.match(/\b(love|pain|complexity|journey|survival|truth|emotion|feeling|loyalty)\b/g) || []).length;
   const hasContradiction = /\b(but|though|except|instead|lied|lying|swore|promised|turned|hid|hiding)\b/i.test(raw);
   const hasConcreteDetail = concreteHits.length > 0 || numericAnchors > 0;
+  const trope = detectProsePatterns(raw);
 
-  const aiishScore = Math.min(
-    100,
-    patternHits.length * 12 +
-      Math.max(0, fragments - 2) * 6 +
-      Math.max(0, emDashCount - 1) * 8 +
-      (avgSentence > 28 ? 12 : 0) +
-      (hasConcreteDetail ? 0 : 14)
-  );
-
+  // Legacy `aiish_score` is retained for API compatibility. Its semantics are now
+  // synthetic-style density only. It cannot identify who or what authored the text.
+  const syntheticDensityScore = trope.total_pattern_score;
   const voiceGrip = Math.max(
     0,
     Math.min(
@@ -107,19 +126,20 @@ export function analyzeProse(text) {
       55 +
         Math.min((concreteHits.length + Math.min(numericAnchors, 2)) * 5, 20) +
         Math.min(contractions * 3, 12) -
-        patternHits.length * 8 -
-        Math.max(0, fragments - 3) * 4
+        Math.round(syntheticDensityScore * 0.35) -
+        Math.max(0, fragments - 4) * 3
     )
   );
-
   const melodramaScore = Math.min(
     100,
-    abstractWords * 4 + Math.max(0, fragments - 3) * 7 + emDashCount * 5
+    Math.max(0, abstractWords - 6) * 4 +
+      Math.max(0, fragments - 4) * 6 +
+      Math.max(0, emDashCount - 2) * 5
   );
 
-  const trope = detectProsePatterns(raw);
   return {
-    aiish_score: aiishScore,
+    aiish_score: syntheticDensityScore,
+    synthetic_density_score: syntheticDensityScore,
     voice_grip: voiceGrip,
     melodrama_score: melodramaScore,
     pattern_score: trope.total_pattern_score,
@@ -131,8 +151,14 @@ export function analyzeProse(text) {
     numeric_anchors: numericAnchors,
     has_concrete_detail: hasConcreteDetail,
     has_contradiction: hasContradiction,
-    pattern_hits: patternHits,
-    patterns: trope.patterns
+    pattern_hits: Object.entries(trope.patterns).filter(([, value]) => value.count > 0).map(([name]) => name),
+    style_density: {
+      raw_hits: trope.raw_hits,
+      active_families: trope.active_families,
+      clustered: trope.clustered
+    },
+    patterns: trope.patterns,
+    authorship_inference: 'not_supported'
   };
 }
 
@@ -152,16 +178,17 @@ export function evaluateProseQuality(text, options = {}) {
       analysis,
       thresholds: null,
       fingerprint: fp,
-      continuity_cookie: `prose-quality:v1:${fp}:${phase || 'unphased'}:${mode}`,
-      note: 'No phase threshold was applied. Scores are quality signals, not proof of AI authorship.'
+      continuity_cookie: `prose-quality:v2:${fp}:${phase || 'unphased'}:${mode}`,
+      authorship_inference: 'not_supported',
+      note: 'No phase threshold was applied. Style-density scores are writing-quality signals, not proof of AI authorship.'
     };
   }
 
   const failures = [];
-  if (analysis.aiish_score > thresholds.max_aiish_score) failures.push('AI-ish score above threshold');
+  if (analysis.synthetic_density_score > thresholds.max_aiish_score) failures.push('Synthetic style density above threshold');
   if (analysis.voice_grip < thresholds.min_voice_grip) failures.push('Voice grip below threshold');
   if (analysis.melodrama_score > thresholds.max_melodrama_score) failures.push('Melodrama above threshold');
-  if (analysis.pattern_score > thresholds.max_pattern_score) failures.push('Pattern score above threshold');
+  if (analysis.pattern_score > thresholds.max_pattern_score) failures.push('Pattern density above threshold');
   if (thresholds.require_concrete_detail && !analysis.has_concrete_detail) failures.push('Missing concrete detail');
   if (thresholds.require_contradiction && !analysis.has_contradiction) failures.push('Missing contradiction signal');
 
@@ -173,7 +200,8 @@ export function evaluateProseQuality(text, options = {}) {
     analysis,
     thresholds,
     fingerprint: fp,
-    continuity_cookie: `prose-quality:v1:${fp}:${phase}:${mode}`,
-    note: 'Density-based prose quality gate. A single phrase or punctuation mark is not treated as proof of AI authorship.'
+    continuity_cookie: `prose-quality:v2:${fp}:${phase}:${mode}`,
+    authorship_inference: 'not_supported',
+    note: 'Density-based prose quality gate. Individual words, punctuation, or isolated rhetorical patterns are not failures and never establish authorship.'
   };
 }

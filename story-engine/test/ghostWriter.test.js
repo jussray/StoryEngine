@@ -13,17 +13,18 @@ test('Ghost builds a voice fingerprint from creative profile and intent', () => 
   assert.match(fingerprint.sentence_rhythm, /18 words/);
   assert.ok(fingerprint.constraints.includes('present tense'));
   assert.ok(fingerprint.outputs.includes('youtube_short'));
+  assert.ok(fingerprint.specificity_rules.some(rule => /clusters rather than banning individual words or punctuation/.test(rule)));
 });
 
-test('Ghost humanize pass strips common AI-signaling phrases', () => {
-  const text = ghostHumanizePass('Furthermore, the child learned. In conclusion, the garden was a tapestry of wonder. Needless to say, it was a beacon that underscores the journey.');
-  assert.doesNotMatch(text, /Furthermore/i);
-  assert.doesNotMatch(text, /In conclusion/i);
-  assert.doesNotMatch(text, /tapestry/i);
-  assert.doesNotMatch(text, /Needless to say/i);
-  assert.doesNotMatch(text, /beacon/i);
-  assert.doesNotMatch(text, /underscores/i);
-  assert.doesNotMatch(text, /journey/i);
+test('Ghost humanize pass preserves valid vocabulary and punctuation while cleaning mechanics', () => {
+  const text = ghostHumanizePass('Furthermore,  the crucial detail—her red umbrella—mattered .\n\n\nIn conclusion, she left.');
+  assert.match(text, /Furthermore/);
+  assert.match(text, /crucial/);
+  assert.match(text, /—her red umbrella—/);
+  assert.match(text, /In conclusion/);
+  assert.doesNotMatch(text, /  /);
+  assert.doesNotMatch(text, /\n{3,}/);
+  assert.doesNotMatch(text, /mattered \./);
 });
 
 test('Ghost humanize pass does not inject fixed cadence fragments', () => {
@@ -33,8 +34,9 @@ test('Ghost humanize pass does not inject fixed cadence fragments', () => {
 });
 
 test('Ghost commands expose draft, humanize, suggest, and rewrite', () => {
-  const commands = ghostCommandOptions().map(item => item.command);
-  assert.deepEqual(commands, ['/ghost draft', '/ghost humanize', '/ghost suggest', '/ghost rewrite']);
+  const options = ghostCommandOptions();
+  assert.deepEqual(options.map(item => item.command), ['/ghost draft', '/ghost humanize', '/ghost suggest', '/ghost rewrite']);
+  assert.match(options.find(item => item.command === '/ghost humanize').description, /voice-density audit/);
 });
 
 test('Ghost draft falls back safely when no provider key is configured', async () => {
@@ -54,6 +56,7 @@ test('Ghost draft falls back safely when no provider key is configured', async (
     assert.equal(draft.status, 'fallback_stub');
     assert.match(draft.draft_unit, /Little Cloud Garden/);
     assert.match(draft.draft_unit, /Human decision needed/);
+    assert.equal(draft.humanize_pass.authorship_inference, 'not_supported');
   } finally {
     if (priorAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
     else process.env.ANTHROPIC_API_KEY = priorAnthropic;

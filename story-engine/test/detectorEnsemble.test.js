@@ -1,31 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { scoreHumanLikeness, compareHumanScores } from '../lib/detectorEnsemble.js';
+import { scoreVoiceIntegrity, scoreHumanLikeness, compareVoiceIntegrity } from '../lib/detectorEnsemble.js';
 
 const fingerprint = { audience: 'adult', medium: 'book', tone: 'intimate' };
 
-const aiText = 'Furthermore, it is worth noting that this ever-evolving tapestry underscores the transformative journey. Moreover, this robust beacon showcases a seamless realm. In conclusion, the narrative leverages crucial insights.';
-const humanText = 'Mara left the cup on the windowsill. Rain ticked against the glass. She meant to call him back, but the phone stayed cold in her hand. Outside, the alley smelled like pennies and wet brick.';
+const clusteredText = 'Furthermore, it is worth noting that this ever-evolving tapestry underscores the transformative journey. Moreover, this robust beacon showcases a seamless realm. In conclusion, the narrative leverages crucial insights.';
+const concreteText = 'Mara left the cup on the windowsill. Rain ticked against the glass. She meant to call him back, but the phone stayed cold in her hand. Outside, the alley smelled like pennies and wet brick.';
 
-test('known AI-ish text scores lower than concrete human-ish prose', () => {
-  const ai = scoreHumanLikeness(aiText, fingerprint);
-  const human = scoreHumanLikeness(humanText, fingerprint);
-  assert.ok(ai.score < human.score, `expected AI score ${ai.score} to be lower than human score ${human.score}`);
-  assert.ok(ai.signals.ai_signal_hits > human.signals.ai_signal_hits);
+test('voice audit treats clustered style signals as a quality signal, not authorship proof', () => {
+  const clustered = scoreVoiceIntegrity(clusteredText, fingerprint);
+  const concrete = scoreVoiceIntegrity(concreteText, fingerprint);
+  assert.equal(clustered.authorship_inference, 'not_supported');
+  assert.equal(concrete.authorship_inference, 'not_supported');
+  assert.equal(clustered.signals.style_signal_clustered, true);
+  assert.ok(clustered.signals.style_signal_hits > concrete.signals.style_signal_hits);
 });
 
-test('detector report includes per-signal breakdown', () => {
-  const report = scoreHumanLikeness(humanText, fingerprint);
-  assert.equal(typeof report.score, 'number');
-  assert.equal(typeof report.threshold, 'number');
-  assert.equal(typeof report.signals.burstiness_score, 'number');
-  assert.equal(typeof report.signals.perplexity_proxy_score, 'number');
-  assert.equal(typeof report.signals.fingerprint_match_score, 'number');
+test('a single common marker does not become an authorship verdict or clustered failure', () => {
+  const report = scoreVoiceIntegrity('Furthermore, Mara took the red cup outside and waited for the rain.', fingerprint);
+  assert.equal(report.authorship_inference, 'not_supported');
+  assert.equal(report.signals.style_signal_hits, 1);
+  assert.equal(report.signals.style_signal_clustered, false);
 });
 
-test('compareHumanScores reports delta and improvement flag', () => {
-  const comparison = compareHumanScores(aiText, humanText, fingerprint);
-  assert.ok(comparison.delta > 0);
-  assert.equal(comparison.improved, true);
+test('legacy scoreHumanLikeness name is compatibility-only and carries the no-authorship boundary', () => {
+  const current = scoreVoiceIntegrity(concreteText, fingerprint);
+  const legacy = scoreHumanLikeness(concreteText, fingerprint);
+  assert.deepEqual(legacy, current);
+  assert.equal(legacy.audit_kind, 'voice-density-quality-control');
+});
+
+test('compareVoiceIntegrity reports quality delta without claiming who wrote the text', () => {
+  const comparison = compareVoiceIntegrity(clusteredText, concreteText, fingerprint);
+  assert.equal(comparison.authorship_inference, 'not_supported');
+  assert.equal(typeof comparison.delta, 'number');
+  assert.equal(typeof comparison.improved, 'boolean');
 });

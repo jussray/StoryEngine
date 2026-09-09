@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   analyzeProse,
+  cleanProseMechanics,
+  detectProsePatterns,
   evaluateProseQuality,
   PROSE_QUALITY_MODES
 } from '../lib/proseQuality.js';
@@ -12,7 +14,8 @@ test('unphased prose stays observational rather than inventing a narrative phase
   assert.equal(result.status, 'OBSERVE');
   assert.equal(result.phase, null);
   assert.equal(result.thresholds, null);
-  assert.match(result.continuity_cookie, /^prose-quality:v1:/);
+  assert.equal(result.authorship_inference, 'not_supported');
+  assert.match(result.continuity_cookie, /^prose-quality:v2:/);
 });
 
 test('phase thresholds preserve the approved Lindymode and Redteam budgets', () => {
@@ -37,12 +40,36 @@ test('retreat phase requires contradiction under the approved quality contract',
   assert.ok(result.failures.includes('Missing contradiction signal'));
 });
 
-test('dense synthetic markers fail strict aftermath without claiming authorship', () => {
-  const text = 'It is important to note that, at its core, this meaningful journey is not just love but also truth. Moreover, it is a tapestry of pain, emotion, loyalty, complexity, survival, and love.';
+test('isolated vocabulary and punctuation do not create a style-density penalty', () => {
+  const text = 'The tapestry hung beside the kitchen door—blue thread, loose at one corner.';
+  const analysis = analyzeProse(text);
+  assert.equal(analysis.synthetic_density_score, 0);
+  assert.equal(analysis.authorship_inference, 'not_supported');
+  assert.equal(analysis.style_density.clustered, false);
+});
+
+test('clustered synthetic style patterns can fail strict aftermath without claiming authorship', () => {
+  const text = 'It is important to note that, at its core, this meaningful journey is not just love but also truth. Moreover, it is a tapestry of pain, emotion, loyalty, complexity, survival, and love. Furthermore, the robust narrative underscores a seamless shared journey.';
   const result = evaluateProseQuality(text, { phase: 'aftermath', mode: 'redteam_strict' });
   assert.equal(result.status, 'FAIL');
-  assert.ok(result.analysis.aiish_score > result.thresholds.max_aiish_score);
-  assert.match(result.note, /not treated as proof of AI authorship/i);
+  assert.equal(result.authorship_inference, 'not_supported');
+  assert.equal(result.analysis.style_density.clustered, true);
+  assert.ok(result.analysis.synthetic_density_score > result.thresholds.max_aiish_score);
+  assert.match(result.note, /never establish authorship/i);
+});
+
+test('pattern detector scores density only after allowances are exceeded or patterns cluster', () => {
+  const isolated = detectProsePatterns('Furthermore, the room was quiet.');
+  const clustered = detectProsePatterns('Furthermore, moreover, additionally, the tapestry was robust and seamless.');
+  assert.equal(isolated.total_pattern_score, 0);
+  assert.equal(isolated.clustered, false);
+  assert.equal(clustered.clustered, true);
+  assert.ok(clustered.total_pattern_score > 0);
+});
+
+test('mechanical cleanup preserves valid words and em dashes', () => {
+  const cleaned = cleanProseMechanics('Furthermore,  the crucial detail—her red umbrella—mattered .');
+  assert.equal(cleaned, 'Furthermore, the crucial detail—her red umbrella—mattered.');
 });
 
 test('analysis emits a stable density fingerprint for unchanged subject and policy', () => {
