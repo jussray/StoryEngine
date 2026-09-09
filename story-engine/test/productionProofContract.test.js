@@ -46,11 +46,13 @@ test('production proof runs after successful production deployment status instea
   assert.doesNotMatch(workflow, /\n  push:\s*\n/);
 });
 
-test('new production deployment proof supersedes stale live proof without cancelling manual historical proof', () => {
+test('new production deployment proof supersedes stale live proof without cancelling nonqualifying events or manual historical proof', () => {
   assert.ok(
     workflow.includes("group: \"storyengine-production-proof-${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || 'production' }}\"")
   );
-  assert.ok(workflow.includes("cancel-in-progress: ${{ github.event_name == 'deployment_status' }}"));
+  assert.ok(
+    workflow.includes("cancel-in-progress: ${{ github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'production' }}")
+  );
 });
 
 test('production proof binds immutable release subject to provider deployment SHA or manual SHA', () => {
@@ -71,11 +73,13 @@ test('production proof validates provider-native Railway identity and fails clos
   assert.doesNotMatch(workflow, /delay\(10_000\)/);
 });
 
-test('production proof distinguishes transport reachability from later runtime validation failure', () => {
-  assert.ok(workflow.includes('let reachedThisAttempt = false;'));
-  assert.ok(workflow.includes('reachedThisAttempt = true;'));
-  assert.ok(workflow.includes('if (!reachedThisAttempt) last = null;'));
-  assert.doesNotMatch(workflow, /catch \(error\) \{\s*last = null;/);
+test('production proof distinguishes full outage, partial endpoint reachability, and later validation failure', () => {
+  assert.ok(workflow.includes('Promise.allSettled(['));
+  assert.ok(workflow.includes("healthResult.status === 'fulfilled'"));
+  assert.ok(workflow.includes("identityResult.status === 'fulfilled'"));
+  assert.ok(workflow.includes('if (!health && !identity) {'));
+  assert.ok(workflow.includes('last = { health, identity };'));
+  assert.ok(workflow.includes("throw new Error(`runtime contract partial: ${endpointErrors.join('; ')}`);"));
 });
 
 test('production proof enforces persistent volume witness continuity across browser mutation', () => {
