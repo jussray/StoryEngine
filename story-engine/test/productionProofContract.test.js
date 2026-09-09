@@ -22,8 +22,11 @@ function jobPrefix(source, jobName) {
   const marker = `  ${jobName}:`;
   const index = source.indexOf(marker);
   assert.notEqual(index, -1, `${jobName} must exist`);
-  const nextJob = source.indexOf('\n  ', index + marker.length);
-  return nextJob === -1 ? source.slice(index) : source.slice(index, nextJob);
+  const remainder = source.slice(index + marker.length);
+  const nextJobOffset = remainder.search(/\n  [A-Za-z0-9_-]+:\n/);
+  return nextJobOffset === -1
+    ? source.slice(index)
+    : source.slice(index, index + marker.length + nextJobOffset);
 }
 
 test('deployment status and manual recovery terminate in a secret-free signal workflow', () => {
