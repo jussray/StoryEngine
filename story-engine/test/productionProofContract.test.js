@@ -49,6 +49,14 @@ test('secret-bearing proof is sourced only through workflow_run from the named s
   assert.doesNotMatch(proofWorkflow, /\n\s+workflow_dispatch:/);
 });
 
+test('all production proofs serialize across signal runs without cancellation', () => {
+  assert.match(
+    proofWorkflow,
+    /concurrency:\s*\n\s+group:\s+storyengine-production-proof-production\s*\n\s+cancel-in-progress:\s+false/
+  );
+  assert.doesNotMatch(proofWorkflow, /group:\s*["']?storyengine-production-proof-\$\{\{\s*github\.event\.workflow_run\.id/);
+});
+
 test('trusted authorize job validates untrusted signal before production environment exists', () => {
   const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
   assert.ok(authorize.includes('ref: main'));
@@ -161,6 +169,17 @@ test('production proof polls bounded runtime convergence and classifies the late
   assert.ok(proofWorkflow.includes('bounded verification window'));
 });
 
+test('HTTP response headers establish reachability before body parsing can fail', () => {
+  const fetchIndex = proofWorkflow.indexOf('const response = await fetch(`${origin}${path}`');
+  const bodyReadIndex = proofWorkflow.indexOf('text = await response.text()', fetchIndex);
+  const bodyFailureIndex = proofWorkflow.indexOf('response body read failed', fetchIndex);
+  assert.ok(fetchIndex >= 0, 'runtime probe must fetch the endpoint');
+  assert.ok(bodyReadIndex > fetchIndex, 'body reading must occur after an HTTP response exists');
+  assert.ok(bodyFailureIndex > bodyReadIndex, 'body-read failure must be converted into reachable evidence');
+  assert.ok(proofWorkflow.includes('throw new ReachableEndpointError(`${path} response body read failed: ${detail}`'));
+  assert.ok(proofWorkflow.includes('{ status: response.status }'));
+});
+
 test('browser secrets remain step-scoped inside the trusted production job', () => {
   assert.ok(proofWorkflow.includes('PLAYWRIGHT_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_PLAYWRIGHT_API_KEY }}'));
   assert.ok(proofWorkflow.includes('PLAYWRIGHT_SCOPED_API_KEY: ${{ secrets.STORYENGINE_PRODUCTION_SCOPED_API_KEY }}'));
@@ -184,12 +203,24 @@ test('verified v1 receipt preserves historical compatibility while adding deploy
   assert.ok(proofWorkflow.includes('signal_mode: process.env.SIGNAL_MODE || null'));
 });
 
-test('blocked and verified states retain machine-readable evidence', () => {
+test('blocked v1 receipt preserves historical correlation fields and reason contract', () => {
+  assert.ok(proofWorkflow.includes("schema: 'juss/storyengine-production-proof-blocked@v1'"));
+  assert.ok(proofWorkflow.includes("reason: 'provider-release-not-converged'"));
+  assert.ok(proofWorkflow.includes('reason_detail: reasonDetail'));
+  assert.ok(proofWorkflow.includes('trigger_sha: triggerSha'));
+  assert.ok(proofWorkflow.includes('production_origin: origin'));
+  assert.ok(proofWorkflow.includes('event_name: process.env.GITHUB_EVENT_NAME || null'));
+  assert.ok(proofWorkflow.includes('last_observation: lastObservation'));
+});
+
+test('blocked and verified states retain machine-readable and browser evidence', () => {
   assert.ok(proofWorkflow.includes('production-proof-blocked.json'));
   assert.ok(proofWorkflow.includes('production-runtime-before.json'));
   assert.ok(proofWorkflow.includes('production-proof-summary.json'));
   assert.ok(proofWorkflow.includes('github_deployment_id'));
   assert.ok(proofWorkflow.includes('actions/upload-artifact@v4'));
+  assert.ok(proofWorkflow.includes('story-engine/playwright-report/'));
+  assert.ok(proofWorkflow.includes('story-engine/test-results/'));
   assert.ok(proofWorkflow.includes('${{ github.run_attempt }}'));
   assert.ok(proofWorkflow.includes('retention-days: 90'));
 });
