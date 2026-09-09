@@ -66,17 +66,34 @@ test('trusted authorize job validates untrusted signal before production environ
   assert.doesNotMatch(authorize, /STORYENGINE_PRODUCTION_SCOPED_API_KEY/);
 });
 
-test('deployment authorization rejects replayed or cross-branch success receipts', () => {
+test('deployment authorization rejects stale, rerun, and cross-branch receipts', () => {
   const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
   assert.ok(authorize.includes('TRIGGERING_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}'));
   assert.ok(authorize.includes('TRIGGERING_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}'));
-  assert.ok(authorize.includes('TRIGGERING_RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}'));
+  assert.ok(authorize.includes('TRIGGERING_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}'));
+  assert.ok(authorize.includes('TRIGGERING_CURRENT_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}'));
+  assert.ok(authorize.includes("String(signal.source_run_attempt || '') !== triggeringRunAttempt"));
+  assert.ok(authorize.includes('signal run attempt mismatch'));
+  assert.ok(authorize.includes("Number(triggeringRunAttempt) > 1 && triggeringCurrentActor !== owner"));
+  assert.ok(authorize.includes('production signal reruns are repository-owner only'));
+  assert.ok(authorize.includes('signal.observed_at'));
+  assert.ok(authorize.includes('authorizationTime = Date.now()'));
+  assert.ok(authorize.includes('production signal is stale at authorization time'));
   assert.ok(authorize.includes("triggeringHeadBranch !== 'main'"));
   assert.ok(authorize.includes('triggeringHeadSha !== releaseSha'));
   assert.ok(authorize.includes('deployment signal SHA does not match triggering workflow head SHA'));
   assert.ok(authorize.includes('statusCreatedAt'));
   assert.ok(authorize.includes('15 * 60 * 1000'));
-  assert.ok(authorize.includes('deployment status is not contemporaneous with triggering signal run'));
+  assert.ok(authorize.includes('deployment status is stale at authorization time'));
+  assert.doesNotMatch(authorize, /TRIGGERING_RUN_CREATED_AT/);
+});
+
+test('manual recovery authorizes only the current repository-owner initiator', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes("if (triggeringCurrentActor !== owner)"));
+  assert.ok(authorize.includes('manual production proof is repository-owner only'));
+  assert.ok(authorize.includes('triggering_actor: triggeringCurrentActor'));
+  assert.ok(authorize.includes('triggering_run_attempt: triggeringRunAttempt'));
 });
 
 test('production environment is attached only after authorized signal output', () => {
