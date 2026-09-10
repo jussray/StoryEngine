@@ -19,6 +19,29 @@ Required loop:
 → Repeat
 ```
 
+## Canonical challenge stack for nontrivial StoryEngine work
+
+```text
+ULTRATHINK
+→ Red Team 1 — premise
+→ Lindy mode
+→ L99
+→ Red Team 2 — implementation
+→ OODA
+→ Proof
+→ Rollback / Next Gate
+```
+
+- **ULTRATHINK:** reconcile story intent, authorship, provenance, canon, tenant/workspace isolation, provider boundaries, compatibility, release state, and evidence before choosing a bounded path.
+- **Red Team 1:** attack the premise, evidence, scope, and whether the proposed story, workflow, event, or implementation should exist.
+- **Lindy mode:** prefer existing durable event, provenance, compatibility, export, and release carriers; keep changes reversible and avoid duplicate truth stores.
+- **L99:** bind subject fingerprints, authorship/provenance, event history, scoped authority, tenant/workspace state, compatibility, release gates, rollback, and drift.
+- **Red Team 2:** attack the chosen implementation for provenance loss, canon drift, tenant leakage, provider overreach, regressions, stale proof, hidden assumptions, unsafe promotion, and missing recovery.
+- **OODA:** observe the exact current event/artifact state, orient to StoryEngine boundaries, decide one bounded slice, act only within authority, then re-observe and verify before continuing.
+- **Proof / Rollback / Next Gate:** separate artifact existence, export execution, provider execution, publication, and human outcome truth; preserve rollback and the smallest next gate.
+
+A failed pass narrows, changes, or stops the work. These modes coordinate one StoryEngine mission and never create a separate operating system or widen publication, deployment, provider, tenant, or founder authority.
+
 ## Portable Juss OS command adapter
 
 The shared Juss OS command surface is available here as reasoning and planning modes only:
