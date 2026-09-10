@@ -1,11 +1,23 @@
 name: Guardrails Playwright
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.mcp.json'
+      - '.mcp.example.json'
+      - '.vscode/mcp.json'
+      - 'scripts/verify_mcp_config.py'
+      - '.github/workflows/guardrails-playwright.yml'
   pull_request:
     paths:
       - 'story-engine/**'
       - 'docs/VISION.md'
       - 'docs/GUARDRAILS.md'
+      - '.mcp.json'
+      - '.mcp.example.json'
+      - '.vscode/mcp.json'
+      - 'scripts/verify_mcp_config.py'
       - '.github/workflows/guardrails-playwright.yml'
   workflow_dispatch:
 
@@ -41,6 +53,9 @@ jobs:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: story-engine/package-lock.json
+      - name: Verify project-scoped Supabase MCP boundary
+        working-directory: .
+        run: python scripts/verify_mcp_config.py
       - run: npm ci
       - name: Ensure deterministic MP4 renderer is available
         run: |
