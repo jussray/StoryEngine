@@ -130,3 +130,11 @@ Production promotion remains blocked until all service-level runtime conditions 
 7. Deployment/runtime evidence is retained for the promoted SHA.
 
 Until all seven conditions are satisfied, the service state is `NOT_LIVE` even when local and CI release gates are green.
+
+## Railway autodeploy authority
+
+The canonical production service depends on the Railway GitHub App being installed for `jussray/StoryEngine` so Railway can observe eligible `main` commits and create provider-native deployments.
+
+If Railway reports auto-deploy disabled with reason `NO_INSTALLATION`, classify the release plane as `PROVIDER_AUTODEPLOY_BLOCKED`. This is a provider-authority failure, not application-code evidence, and production equivalence remains `NOT_LIVE` until the integration is restored and a new exact release is observed.
+
+Do not compensate for `NO_INSTALLATION` by pinning `commitSha`, force-redeploying a stale source, accepting unrelated staged environment changes, or treating GitHub source green as Railway runtime proof. Restore the Railway GitHub App installation, re-enable normal auto-deploy, then require the ordinary exact-SHA Railway deployment signal, runtime identity, health, persistence, and Playwright proof chain before promotion is considered verified.
