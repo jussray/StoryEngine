@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {aggregateTestLedger, buildTestLedger, classifyProviderHandoff, mapCheckState, selectLatestChecks} from '../scripts/control-room-test-ledger.mjs';
+import {aggregateTestLedger, buildTestLedger, classifyProviderHandoff, mapCheckState, selectLatestChecks, shouldObserveProviderHandoff} from '../scripts/control-room-test-ledger.mjs';
 
 const SHA = '0b97f2a8a0d310c49c013a328ae61c97ddbc9bad';
 const workflow = readFileSync(new URL('../.github/workflows/control-room-test-ledger.yml', import.meta.url), 'utf8');
@@ -53,6 +53,14 @@ test('classifies Railway production handoff without granting merge authority', (
   assert.equal(classifyProviderHandoff([railwayObservation('failure')], SHA, observedAt).state, 'failed');
 });
 
+test('requires Railway identity on the deployment status itself', () => {
+  const foreignStatusOnRailwayDeployment = {
+    deployment: {id: 7, sha: SHA, environment: 'production', creator: {login: 'railway-app[bot]'}, performed_via_github_app: {slug: 'railway-app'}},
+    status: {id: 9, state: 'success', created_at: '2026-08-04T20:02:00Z', creator: {login: 'other-bot'}},
+  };
+  assert.equal(classifyProviderHandoff([foreignStatusOnRailwayDeployment], SHA, new Date('2026-08-04T20:03:00Z')).state, 'absent');
+});
+
 test('ignores foreign or wrong-SHA deployment statuses', () => {
   const foreign = railwayObservation('success', {
     deployment: {id: 7, sha: SHA, environment: 'production', creator: {login: 'other-bot'}},
@@ -60,6 +68,13 @@ test('ignores foreign or wrong-SHA deployment statuses', () => {
   });
   const wrongSha = railwayObservation('success', {deployment: {id: 8, sha: 'f'.repeat(40), environment: 'production', creator: {login: 'railway-app[bot]'}}});
   assert.equal(classifyProviderHandoff([foreign, wrongSha], SHA, new Date('2026-08-04T20:03:00Z')).state, 'absent');
+});
+
+test('observes provider handoff only for eligible main events', () => {
+  assert.equal(shouldObserveProviderHandoff({GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main'}), true);
+  assert.equal(shouldObserveProviderHandoff({GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/main'}), true);
+  assert.equal(shouldObserveProviderHandoff({GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF: 'refs/pull/95/merge', GITHUB_HEAD_REF: 'main'}), false);
+  assert.equal(shouldObserveProviderHandoff({GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/feature'}), false);
 });
 
 test('builds sanitized exact-SHA evidence with additive provider handoff', () => {

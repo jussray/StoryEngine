@@ -69,12 +69,15 @@ export function aggregateTestLedger(checks) {
 
 function railwayIdentity(record) {
   const status = record?.status ?? {};
-  const deployment = record?.deployment ?? {};
   const statusLogin = clean(status?.creator?.login);
-  const deploymentLogin = clean(deployment?.creator?.login);
   const statusApp = clean(status?.performed_via_github_app?.slug);
-  const deploymentApp = clean(deployment?.performed_via_github_app?.slug);
-  return statusLogin === 'railway-app[bot]' || deploymentLogin === 'railway-app[bot]' || statusApp === 'railway-app' || deploymentApp === 'railway-app';
+  return statusLogin === 'railway-app[bot]' || statusApp === 'railway-app';
+}
+
+export function shouldObserveProviderHandoff(env = {}) {
+  const eventName = clean(env.GITHUB_EVENT_NAME);
+  const ref = clean(env.GITHUB_REF);
+  return (eventName === 'push' || eventName === 'workflow_dispatch') && ref === 'refs/heads/main';
 }
 
 export function classifyProviderHandoff(observations, expectedSha, observedAt = new Date()) {
@@ -117,8 +120,8 @@ export function classifyProviderHandoff(observations, expectedSha, observedAt = 
     environment: clean(latest?.deployment?.environment) || null,
     eventAt,
     ageSeconds,
-    creator: clean(latest?.status?.creator?.login) || clean(latest?.deployment?.creator?.login) || null,
-    app: clean(latest?.status?.performed_via_github_app?.slug) || clean(latest?.deployment?.performed_via_github_app?.slug) || null,
+    creator: clean(latest?.status?.creator?.login) || null,
+    app: clean(latest?.status?.performed_via_github_app?.slug) || null,
   };
 }
 
@@ -221,7 +224,7 @@ export async function observeExactHeadChecks(env = process.env) {
   }
 
   let providerHandoff = null;
-  if (branch === 'main') {
+  if (shouldObserveProviderHandoff(env)) {
     try {
       providerHandoff = await fetchProviderHandoff({repository, sha, token});
     } catch (error) {
