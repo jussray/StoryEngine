@@ -5,6 +5,7 @@ import {aggregateTestLedger, buildTestLedger, classifyProviderHandoff, mapCheckS
 
 const SHA = '0b97f2a8a0d310c49c013a328ae61c97ddbc9bad';
 const workflow = readFileSync(new URL('../.github/workflows/control-room-test-ledger.yml', import.meta.url), 'utf8');
+const l99Workflow = readFileSync(new URL('../.github/workflows/l99-story-engine.yml', import.meta.url), 'utf8');
 const run = (overrides = {}) => ({id: 1, name: 'Promotion gates', status: 'completed', conclusion: 'success', head_sha: SHA, started_at: '2026-08-04T20:00:00Z', completed_at: '2026-08-04T20:01:00Z', details_url: 'https://github.com/jussray/StoryEngine/actions/runs/1', app: {slug: 'github-actions'}, ...overrides});
 const railwayObservation = (state = 'success', overrides = {}) => ({
   deployment: {id: 7, sha: SHA, environment: 'production', creator: {login: 'railway-app[bot]'}},
@@ -80,4 +81,15 @@ test('keeps the always-on ledger on one GitHub runner', () => {
   const contractIndex = workflow.indexOf('Run Control Room test-ledger contracts');
   const observeIndex = workflow.indexOf('Observe every exact-head check lane');
   assert.ok(contractIndex >= 0 && observeIndex > contractIndex);
+});
+
+test('changes to the Control Room ledger always trigger an independent L99 sibling lane', () => {
+  for (const path of [
+    "scripts/control-room-test-ledger.mjs",
+    "test/control-room-test-ledger.test.mjs",
+    ".github/workflows/control-room-test-ledger.yml",
+  ]) {
+    const occurrences = l99Workflow.split(`'${path}'`).length - 1;
+    assert.equal(occurrences, 2, `${path} must be watched for push and pull_request`);
+  }
 });
