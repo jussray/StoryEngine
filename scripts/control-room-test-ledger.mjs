@@ -4,6 +4,8 @@ import {fileURLToPath} from 'node:url';
 
 export const CONTROL_ROOM_TEST_LEDGER_SCHEMA_VERSION = 1;
 const FAILURE_CONCLUSIONS = new Set(['action_required', 'cancelled', 'failure', 'startup_failure', 'stale', 'timed_out']);
+const HANDOFF_PENDING_STATES = new Set(['queued', 'pending', 'in_progress']);
+const HANDOFF_FAILED_STATES = new Set(['error', 'failure', 'inactive']);
 const clean = (value) => typeof value === 'string' ? value.trim() : '';
 const normalizeSha = (value) => clean(value).toLowerCase();
 const timestamp = (value) => Number.isFinite(Date.parse(value ?? '')) ? Date.parse(value ?? '') : 0;
@@ -65,7 +67,65 @@ export function aggregateTestLedger(checks) {
   return {state, counts};
 }
 
-export function buildTestLedger({repository, sha, branch, runId, checks, observerState = 'observing', observedAt = new Date()}) {
+function railwayIdentity(record) {
+  const status = record?.status ?? {};
+  const statusLogin = clean(status?.creator?.login);
+  const statusApp = clean(status?.performed_via_github_app?.slug);
+  return statusLogin === 'railway-app[bot]' || statusApp === 'railway-app';
+}
+
+export function shouldObserveProviderHandoff(env = {}) {
+  const eventName = clean(env.GITHUB_EVENT_NAME);
+  const ref = clean(env.GITHUB_REF);
+  return (eventName === 'push' || eventName === 'workflow_dispatch') && ref === 'refs/heads/main';
+}
+
+export function classifyProviderHandoff(observations, expectedSha, observedAt = new Date()) {
+  const exactSha = normalizeSha(expectedSha);
+  const candidates = (Array.isArray(observations) ? observations : [])
+    .filter((record) => normalizeSha(record?.deployment?.sha) === exactSha)
+    .filter((record) => clean(record?.deployment?.environment).toLowerCase() === 'production')
+    .filter(railwayIdentity)
+    .sort((left, right) => timestamp(right?.status?.created_at ?? right?.status?.updated_at) - timestamp(left?.status?.created_at ?? left?.status?.updated_at));
+
+  if (candidates.length === 0) {
+    return {
+      state: 'absent',
+      provider: 'railway',
+      expectedSha: exactSha,
+      observedAt: observedAt.toISOString(),
+      authoritativeForMerge: false,
+      reason: 'no-railway-production-deployment-status-for-exact-sha',
+    };
+  }
+
+  const latest = candidates[0];
+  const rawState = clean(latest?.status?.state).toLowerCase() || 'unknown';
+  let state = 'unknown';
+  if (rawState === 'success') state = 'observed';
+  else if (HANDOFF_PENDING_STATES.has(rawState)) state = 'pending';
+  else if (HANDOFF_FAILED_STATES.has(rawState)) state = 'failed';
+
+  const eventAt = clean(latest?.status?.created_at) || clean(latest?.status?.updated_at) || null;
+  const ageSeconds = eventAt ? Math.max(0, Math.floor((observedAt.getTime() - timestamp(eventAt)) / 1000)) : null;
+  return {
+    state,
+    provider: 'railway',
+    expectedSha: exactSha,
+    observedAt: observedAt.toISOString(),
+    authoritativeForMerge: false,
+    deploymentId: String(latest?.deployment?.id ?? ''),
+    statusId: String(latest?.status?.id ?? ''),
+    providerState: rawState,
+    environment: clean(latest?.deployment?.environment) || null,
+    eventAt,
+    ageSeconds,
+    creator: clean(latest?.status?.creator?.login) || null,
+    app: clean(latest?.status?.performed_via_github_app?.slug) || null,
+  };
+}
+
+export function buildTestLedger({repository, sha, branch, runId, checks, observerState = 'observing', observedAt = new Date(), providerHandoff = null}) {
   return {
     schemaVersion: CONTROL_ROOM_TEST_LEDGER_SCHEMA_VERSION,
     repository,
@@ -75,13 +135,21 @@ export function buildTestLedger({repository, sha, branch, runId, checks, observe
     source: {provider: 'github-check-runs', exactRef: 'commit-sha', dedupe: 'latest-by-app-and-name', includesAllDiscoveredChecks: true, excludesObserverCheck: true},
     runner: {provider: 'github-actions', runId: clean(runId) || null, observerState, authoritativeForMerge: false},
     aggregate: aggregateTestLedger(checks),
+    providerHandoff: providerHandoff ?? {
+      state: 'not-applicable',
+      provider: 'railway',
+      expectedSha: normalizeSha(sha),
+      observedAt: observedAt.toISOString(),
+      authoritativeForMerge: false,
+      reason: 'non-main-subject-or-not-yet-observed',
+    },
     checks,
   };
 }
 
 async function githubJson(url, token) {
   const response = await fetch(url, {headers: {Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'User-Agent': 'control-room-test-ledger', 'X-GitHub-Api-Version': '2022-11-28'}});
-  if (!response.ok) throw new Error(`GitHub check lookup failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
+  if (!response.ok) throw new Error(`GitHub lookup failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
   return response.json();
 }
 
@@ -100,6 +168,23 @@ async function fetchAllCheckRuns({repository, sha, token}) {
     if (pageRuns.length < 100) break;
   }
   return runs;
+}
+
+async function fetchProviderHandoff({repository, sha, token, observedAt = new Date()}) {
+  const [owner, repo] = clean(repository).split('/');
+  const deploymentsUrl = new URL(`https://api.github.com/repos/${owner}/${repo}/deployments`);
+  deploymentsUrl.searchParams.set('sha', sha);
+  deploymentsUrl.searchParams.set('environment', 'production');
+  deploymentsUrl.searchParams.set('per_page', '100');
+  const deployments = await githubJson(deploymentsUrl, token);
+  const observations = [];
+  for (const deployment of Array.isArray(deployments) ? deployments.slice(0, 20) : []) {
+    const statusesUrl = new URL(`https://api.github.com/repos/${owner}/${repo}/deployments/${deployment.id}/statuses`);
+    statusesUrl.searchParams.set('per_page', '100');
+    const statuses = await githubJson(statusesUrl, token);
+    for (const status of Array.isArray(statuses) ? statuses : []) observations.push({deployment, status});
+  }
+  return classifyProviderHandoff(observations, sha, observedAt);
 }
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -138,7 +223,24 @@ export async function observeExactHeadChecks(env = process.env) {
     await sleep(pollMs);
   }
 
-  const ledger = buildTestLedger({repository, sha, branch, runId, checks, observerState: reachedStableTerminal ? 'stable' : 'window-expired'});
+  let providerHandoff = null;
+  if (shouldObserveProviderHandoff(env)) {
+    try {
+      providerHandoff = await fetchProviderHandoff({repository, sha, token});
+    } catch (error) {
+      providerHandoff = {
+        state: 'unknown',
+        provider: 'railway',
+        expectedSha: sha,
+        observedAt: new Date().toISOString(),
+        authoritativeForMerge: false,
+        reason: 'github-deployment-observation-failed',
+        error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+      };
+    }
+  }
+
+  const ledger = buildTestLedger({repository, sha, branch, runId, checks, observerState: reachedStableTerminal ? 'stable' : 'window-expired', providerHandoff});
   writeLedger(outputPath, ledger);
   if (ledger.aggregate.counts.total === 0) throw new Error(`No exact-head checks were discovered. Evidence: ${outputPath}`);
   console.log(JSON.stringify(ledger, null, 2));
