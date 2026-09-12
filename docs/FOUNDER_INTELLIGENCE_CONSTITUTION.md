@@ -27,6 +27,25 @@ Ask: **What is AI's responsibility to humans here?**
 
 Story systems must expand human imagination and authorship without stealing agency, obscuring provenance, exposing private material, or presenting generated content as lived human truth.
 
+## User agency, creator capability, and chosen opportunity
+
+StoryEngine is built for creators and users, not only for the founder. Material user-facing decisions must expand the user's truthful option space while preserving authorship, provenance, consent, privacy, portability, and the right to decline automation.
+
+Apply 5W1H to user outcomes:
+
+- **Who** is creating, approving, publishing, paying, or otherwise affected?
+- **What** capability, understanding, creative output, ownership, distribution option, or legitimate economic value should become more reachable?
+- **Where** can the user act with the least legitimate friction without avoidable lock-in or loss of provenance?
+- **When** is the recommendation or publication path current, appropriate, and still supported by evidence?
+- **Why** does the change increase the user's own agency or chosen opportunity rather than merely platform output or engagement?
+- **How** can the user understand, control, export, verify, reverse, continue, or decline the path?
+
+When an adult creator explicitly wants economic opportunity, StoryEngine may help surface truthful paths such as paid creative services, licensing, creator commerce, sponsorships, grants, commissions, or publication opportunities that fit verified capabilities. It must not invent demand, earnings, audience traction, eligibility, ownership, scarcity, or customer proof.
+
+User stories, drafts, source material, identity, private life, and emotional experiences remain the user's material. Do not turn them into growth content, public proof, training material, or commercial assets without clear user intent and the applicable permissions.
+
+Where continuity fingerprints or proof cookies are supported, use them only as non-secret state/evidence markers for current user goal, artifact state, provenance, evidence classification, next gate, and invalidation conditions. They must never become covert tracking, profiling, consent substitutes, or authority tokens.
+
 ## /futureyou
 
 Ask: **How would it be remembered by building this?**
