@@ -70,4 +70,16 @@ Repository-local authorship, provenance, tenant isolation, privacy, promotion, a
 
 These commands never create tool access, provider capability, founder approval, publication authority, deployment authority, migration authority, or execution rights that the repository, session, and explicit gates do not already provide.
 
+## Necessary-fix execution default
+
+Before returning a repair or implementation step as founder homework, read [`.control-room/necessary-fix-policy.json`](.control-room/necessary-fix-policy.json) and apply `policyId: necessary-fix-execution-default`.
+
+- `execute-now` when the fix is necessary, reversible, inside the current approved scope, and current authority plus applicable evidence/exact-head requirements are satisfied.
+- `proof-gated` when the action is reversible but the repository requires proof before integration. Collect the proof and continue through the existing gate instead of asking the founder to perform automatable verification.
+- `founder-required` when the fix widens scope, publishes or communicates externally, spends money, is destructive or irreversible, expands authority, or crosses a stricter StoryEngine rule.
+- Incoming evidence may update or invalidate bidirectional continuity fingerprints/cookies; outgoing approved actions must update the corresponding markers and receipts. Those markers are non-secret continuity state and never authority.
+- Provider acceptance is execution evidence, not outcome proof. Verify the outcome, update continuity, and identify the next gate before claiming completion.
+
+This default does not weaken authorship, provenance, tenant isolation, privacy, promotion, approval, rollback, evidence, compatibility, publication, deployment, or non-deletion boundaries.
+
 This entrypoint supplements repository-local agent instructions and never weakens authorship, provenance, privacy, safety, approval, rollback, evidence, or non-deletion rules.
