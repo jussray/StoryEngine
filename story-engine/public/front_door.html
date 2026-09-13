@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>L99 — Start Your Story</title>
+  <title>StoryEngine — Start Your Story</title>
   <script src="/l99_auth.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,8 +25,11 @@
       flex-direction: column;
       gap: 2rem;
     }
-    .wordmark { font-size: 1rem; letter-spacing: 0.3em; text-transform: uppercase; color: #888; text-align: center; }
+    .identity { text-align: center; }
+    .wordmark { font-size: 1rem; letter-spacing: 0.22em; text-transform: uppercase; color: #f0ede8; }
+    .runtime-mark { margin-top: 0.45rem; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: #666; }
     h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 400; line-height: 1.2; text-align: center; color: #f0ede8; }
+    .promise { color: #888; text-align: center; line-height: 1.6; margin-top: -1rem; }
     .prompt-area { display: flex; flex-direction: column; gap: 1rem; }
     label { font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: #888; }
     textarea {
@@ -56,11 +59,15 @@
 </head>
 <body>
   <div class="stage">
-    <p class="wordmark">L99</p>
-    <h1>What story do you want to tell?</h1>
+    <div class="identity">
+      <p class="wordmark">StoryEngine</p>
+      <p class="runtime-mark">Powered by L99</p>
+    </div>
+    <h1>What do you want to create?</h1>
+    <p class="promise">Start with the idea. Write it, shape it, and carry it toward release with one creator-controlled pipeline.</p>
 
     <div class="prompt-area">
-      <label for="vision">Your story in a sentence or two</label>
+      <label for="vision">Your idea in a sentence or two</label>
       <textarea id="vision" placeholder="A retired astronaut discovers her late husband left clues to a life she never knew..." maxlength="1000"></textarea>
     </div>
 
@@ -82,7 +89,7 @@
       </div>
     </div>
 
-    <button class="cta" id="startBtn" disabled>Begin</button>
+    <button class="cta" id="startBtn" disabled>Begin creating</button>
     <p class="status" id="status"></p>
   </div>
 
@@ -116,7 +123,7 @@
         const run = await res.json();
         const runId = run.run_id || run.run?.run_id;
         const workspaceId = run.workspace_id || run.run?.workspace_id;
-        if (!runId) throw new Error('Story Engine did not return a run id.');
+        if (!runId) throw new Error('StoryEngine did not return a run id.');
         const next = new URLSearchParams({ run_id: runId });
         if (workspaceId) next.set('workspace_id', workspaceId);
         window.location.href = `/story_engine.html?${next.toString()}`;
