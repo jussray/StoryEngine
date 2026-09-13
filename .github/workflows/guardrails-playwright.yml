@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     paths:
+      - 'story-engine/**'
+      - 'docs/VISION.md'
+      - 'docs/GUARDRAILS.md'
       - '.mcp.json'
       - '.mcp.example.json'
       - '.vscode/mcp.json'
