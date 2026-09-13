@@ -10,6 +10,15 @@
     "founderBoundaryCrossed": "founder-required"
   },
   "founderRequiredWhen": ["scope-expansion","external-publication-or-communication","spend","destructive-change","irreversible-change","authority-expansion"],
+  "mergeCanon": {
+    "mergeAuthorityAvailable": true,
+    "mergeApprovalRequired": true,
+    "approvalScope": "exact-repository-pr-base-head",
+    "approvalCarryForward": false,
+    "askFounderWhenApprovalMissingOrStale": true,
+    "reviewOrGreenChecksDoNotAuthorizeMerge": true,
+    "baseOrHeadMovementExpiresApproval": true
+  },
   "truthBoundary": {
     "doesNotGrantAuthority": true,
     "requiresCurrentAuthority": true,
