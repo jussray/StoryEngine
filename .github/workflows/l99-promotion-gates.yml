@@ -15,6 +15,10 @@ on:
       - '.security/**'
       - '.control/**'
       - '.control-room/**'
+      - '.mcp.json'
+      - '.mcp.example.json'
+      - '.vscode/mcp.json'
+      - 'scripts/verify_mcp_config.py'
       - 'control-room.manifest.json'
       - 'story-engine/**'
       - '.github/workflows/l99-promotion-gates.yml'
@@ -33,6 +37,10 @@ on:
       - '.security/**'
       - '.control/**'
       - '.control-room/**'
+      - '.mcp.json'
+      - '.mcp.example.json'
+      - '.vscode/mcp.json'
+      - 'scripts/verify_mcp_config.py'
       - 'control-room.manifest.json'
       - 'story-engine/**'
       - '.github/workflows/l99-promotion-gates.yml'
@@ -51,6 +59,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  mcp-config:
+    name: MCP Supabase boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - name: Verify project-scoped read-only Supabase MCP
+        run: python scripts/verify_mcp_config.py
+
   capability-contract:
     name: Capability contract trust
     runs-on: ubuntu-latest

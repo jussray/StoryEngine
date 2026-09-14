@@ -1,27 +1,8 @@
 // lib/detectorEnsemble.js
+// Backward-compatible voice-quality scoring. Despite the historical filename and
+// exported aliases, this module does not infer whether a human or model authored text.
 
-const AI_SIGNAL_PATTERNS = [
-  /\bfurthermore\b/i,
-  /\bin conclusion\b/i,
-  /\bit'?s worth noting\b/i,
-  /\bmoreover\b/i,
-  /\badditionally\b/i,
-  /\bneedless to say\b/i,
-  /\bin other words\b/i,
-  /\bunderscores\b/i,
-  /\bshowcase\b/i,
-  /\bembark\b/i,
-  /\bdelve into\b/i,
-  /\btapestry\b/i,
-  /\bbeacon\b/i,
-  /\ba testament to\b/i,
-  /\bever-evolving\b/i,
-  /\bseamlessly\b/i,
-  /\brobust\b/i,
-  /\butilize\b/i,
-  /\bleverage\b/i,
-  /\btransformative\b/i
-];
+import { analyzeProse } from './proseQuality.js';
 
 function words(text = '') {
   return String(text || '').toLowerCase().match(/[a-z0-9’'-]+/gi) || [];
@@ -48,11 +29,6 @@ function clamp(value, min = 0, max = 100) {
 function uniqueRatio(tokens) {
   if (!tokens.length) return 0;
   return new Set(tokens).size / tokens.length;
-}
-
-function aiSignalDensity(text, tokenCount) {
-  const hits = AI_SIGNAL_PATTERNS.reduce((total, pattern) => total + (pattern.test(text) ? 1 : 0), 0);
-  return { hits, density: tokenCount ? hits / Math.max(1, tokenCount / 100) : 0 };
 }
 
 function fingerprintMatchScore(text, fingerprint = {}) {
@@ -88,7 +64,7 @@ function fingerprintMatchScore(text, fingerprint = {}) {
   return clamp(score);
 }
 
-export function scoreHumanLikeness(text = '', fingerprint = {}) {
+export function scoreVoiceIntegrity(text = '', fingerprint = {}) {
   const raw = String(text || '').trim();
   const tokenList = words(raw);
   const sentenceList = sentences(raw);
@@ -97,29 +73,26 @@ export function scoreHumanLikeness(text = '', fingerprint = {}) {
   const burstiness = Math.sqrt(sentenceVariance);
   const avgSentence = average(sentenceLengths);
   const unique = uniqueRatio(tokenList);
-  const signals = aiSignalDensity(raw, tokenList.length);
-  const repetitionPenalty = tokenList.length ? Math.max(0, 1 - unique) : 1;
+  const quality = analyzeProse(raw);
   const fingerprintScore = fingerprintMatchScore(raw, fingerprint);
-
-  const burstinessScore = clamp(Math.min(100, burstiness * 9 + (sentenceLengths.length >= 3 ? 20 : 0)));
-  const perplexityProxy = clamp(unique * 85 + Math.min(15, burstiness * 2));
-  const sentenceVarianceScore = clamp(sentenceVariance >= 6 ? 85 : sentenceVariance * 12);
-  const aiSignalScore = clamp(100 - signals.density * 34);
-  const repetitionScore = clamp(100 - repetitionPenalty * 45);
-
-  const composite = clamp(
-    burstinessScore * 0.18 +
-    perplexityProxy * 0.22 +
-    sentenceVarianceScore * 0.16 +
-    aiSignalScore * 0.22 +
-    fingerprintScore * 0.16 +
-    repetitionScore * 0.06
+  const repetitionPenalty = tokenList.length ? Math.max(0, 1 - unique) : 1;
+  const repetitionScore = clamp(100 - repetitionPenalty * 35);
+  const cadenceScore = clamp(70 + Math.min(20, burstiness * 2));
+  const baseScore = clamp(
+    fingerprintScore * 0.45 +
+    repetitionScore * 0.25 +
+    cadenceScore * 0.15 +
+    Math.min(100, unique * 110) * 0.15
   );
+  const composite = clamp(baseScore - Math.min(24, quality.synthetic_density_score * 0.4));
+  const threshold = Number(process.env.BLADER_VOICE_SCORE_THRESHOLD || process.env.BLADER_HUMAN_SCORE_THRESHOLD || 72);
 
   return {
     score: composite,
-    threshold: Number(process.env.BLADER_HUMAN_SCORE_THRESHOLD || 72),
-    passed: composite >= Number(process.env.BLADER_HUMAN_SCORE_THRESHOLD || 72),
+    threshold,
+    passed: composite >= threshold,
+    authorship_inference: 'not_supported',
+    audit_kind: 'voice-density-quality-control',
     signals: {
       word_count: tokenList.length,
       sentence_count: sentenceList.length,
@@ -127,25 +100,36 @@ export function scoreHumanLikeness(text = '', fingerprint = {}) {
       sentence_length_variance: Number(sentenceVariance.toFixed(2)),
       burstiness: Number(burstiness.toFixed(2)),
       unique_word_ratio: Number(unique.toFixed(3)),
-      ai_signal_hits: signals.hits,
-      ai_signal_density: Number(signals.density.toFixed(3)),
-      burstiness_score: burstinessScore,
-      perplexity_proxy_score: perplexityProxy,
-      sentence_variance_score: sentenceVarianceScore,
-      ai_signal_score: aiSignalScore,
+      style_signal_hits: quality.style_density.raw_hits,
+      style_signal_density: tokenList.length ? Number((quality.style_density.raw_hits / Math.max(1, tokenList.length / 100)).toFixed(3)) : 0,
+      style_signal_clustered: quality.style_density.clustered,
+      style_signal_families: quality.pattern_hits,
       fingerprint_match_score: fingerprintScore,
-      repetition_score: repetitionScore
+      repetition_score: repetitionScore,
+      cadence_score: cadenceScore,
+      synthetic_density_score: quality.synthetic_density_score
     }
   };
 }
 
-export function compareHumanScores(before = '', after = '', fingerprint = {}) {
-  const beforeReport = scoreHumanLikeness(before, fingerprint);
-  const afterReport = scoreHumanLikeness(after, fingerprint);
+// Historical export retained so existing integrations do not break. Its semantics are
+// now exactly scoreVoiceIntegrity and it carries an explicit no-authorship boundary.
+export function scoreHumanLikeness(text = '', fingerprint = {}) {
+  return scoreVoiceIntegrity(text, fingerprint);
+}
+
+export function compareVoiceIntegrity(before = '', after = '', fingerprint = {}) {
+  const beforeReport = scoreVoiceIntegrity(before, fingerprint);
+  const afterReport = scoreVoiceIntegrity(after, fingerprint);
   return {
     before: beforeReport,
     after: afterReport,
     delta: afterReport.score - beforeReport.score,
-    improved: afterReport.score >= beforeReport.score
+    improved: afterReport.score >= beforeReport.score,
+    authorship_inference: 'not_supported'
   };
+}
+
+export function compareHumanScores(before = '', after = '', fingerprint = {}) {
+  return compareVoiceIntegrity(before, after, fingerprint);
 }

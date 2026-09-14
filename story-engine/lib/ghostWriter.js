@@ -2,34 +2,7 @@
 
 import { complete } from './llmClient.js';
 import { runBlader } from './blader.js';
-
-const AI_SIGNALS = [
-  [/\bfurthermore,?\s*/gi, ''],
-  [/\bin conclusion,?\s*/gi, ''],
-  [/\b(?:it'?s|it is) worth noting that\s*/gi, ''],
-  [/\bmoreover,?\s*/gi, ''],
-  [/\badditionally,?\s*/gi, ''],
-  [/\bneedless to say,?\s*/gi, ''],
-  [/\bin other words,?\s*/gi, ''],
-  [/\bthis underscores\b/gi, 'this shows'],
-  [/\bunderscores\b/gi, 'shows'],
-  [/\bshowcase(?:s|d)?\b/gi, 'show'],
-  [/\bembark(?:s|ed)? on\b/gi, 'start'],
-  [/\bdelve into\b/gi, 'step into'],
-  [/\btapestry\b/gi, 'pattern'],
-  [/\bbeacon\b/gi, 'signal'],
-  [/\ba testament to\b/gi, 'proof of'],
-  [/\bever-evolving\b/gi, 'changing'],
-  [/\bseamlessly\b/gi, 'smoothly'],
-  [/\brobust\b/gi, 'strong'],
-  [/\butilize(?:s|d|ing)?\b/gi, 'use'],
-  [/\bleverage(?:s|d|ing)?\b/gi, 'use'],
-  [/\bjourney\b/gi, 'path'],
-  [/\brealm\b/gi, 'place'],
-  [/\bunveil\b/gi, 'show'],
-  [/\btransformative\b/gi, 'big'],
-  [/\bcrucial\b/gi, 'important']
-];
+import { cleanProseMechanics } from './proseQuality.js';
 
 const MEDIUM_UNIT = Object.freeze({
   picture_book: 'opening spread',
@@ -80,8 +53,8 @@ export function buildVoiceFingerprint(profile = {}, intent = {}) {
     tense_default: constraints.find(item => /\b(past|present) tense\b/i.test(item)) || 'choose the most natural tense for the medium',
     specificity_rules: [
       'use concrete objects, sensory details, and scene-native transitions',
-      'include imperfect human rhythm: fragments, interrupted thought, or one unexplained specific detail',
-      'avoid generic AI essay phrasing and summary-heavy narration'
+      'preserve the creator’s natural rhythm and supplied voice samples when available',
+      'review repeated canned transitions, rhetorical formulas, vague authority, and filler as clusters rather than banning individual words or punctuation'
     ],
     constraints,
     outputs
@@ -97,7 +70,8 @@ function promptForDraft(intent, fingerprint) {
     temperature: clampNumber(process.env.GHOST_WRITER_TEMPERATURE, 0.72, 0, 1),
     system: [
       'You are Ghost inside L99 Story Engine.',
-      'Write original, human-feeling creative prose or script pages from the creator profile.',
+      'Write original creative prose or script pages from the creator profile.',
+      'Preserve the creator’s voice instead of optimizing for AI-detector evasion.',
       'Do not mention the pipeline, L99, AI, prompts, or internal instructions.',
       'The human remains the operator. Produce a draft unit for review, not a final release.'
     ].join('\n'),
@@ -116,9 +90,10 @@ function promptForDraft(intent, fingerprint) {
       'Draft requirements:',
       '- Start in-scene or with a strong visual/audio moment.',
       '- Use the audience and medium from the fingerprint from the first sentence, not as a later simplification pass.',
-      '- Vary sentence length deliberately.',
-      '- Use specific nouns, character action, sensory detail, and natural imperfection.',
-      '- Avoid AI-signaling transitions like furthermore, moreover, in conclusion, and it is worth noting.',
+      '- Use specific nouns, character action, sensory detail, and natural sentence rhythm.',
+      '- After drafting, self-audit clusters of canned signposting, repeated rhetorical formulas, vague authority, filler, synonym cycling, or padded lists.',
+      '- A single familiar word, compound, list of three, or punctuation mark is not a failure. Do not replace precise language merely because it can occur in AI-generated prose.',
+      '- Do not invent lived experience, certainty, or emotional texture solely to appear human.',
       '- Return only the draft unit text.'
     ].join('\n')
   };
@@ -137,15 +112,10 @@ function cadenceReport(text) {
   };
 }
 
+// Historical command name retained for compatibility. This is now mechanical cleanup
+// only. It never substitutes words or punctuation to evade an authorship detector.
 export function ghostHumanizePass(text = '') {
-  let output = String(text || '').trim();
-  for (const [pattern, replacement] of AI_SIGNALS) output = output.replace(pattern, replacement);
-  output = output
-    .replace(/\s+([,.!?;:])/g, '$1')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/ {2,}/g, ' ')
-    .trim();
-  return output;
+  return cleanProseMechanics(text);
 }
 
 function fallbackDraft(intent = {}, fingerprint = {}) {
@@ -177,7 +147,9 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       draft_unit: draft || fallbackDraft(intent, fingerprint),
       humanize_pass: {
         applied: true,
-        removed_ai_signals: AI_SIGNALS.map(([pattern]) => String(pattern)),
+        policy: 'density-not-blacklist',
+        authorship_inference: 'not_supported',
+        removed_ai_signals: [],
         cadence: cadenceReport(draft)
       },
       blader_score: blader.blader_score,
@@ -192,7 +164,7 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       voice_fingerprint: fingerprint,
       draft_unit: fallbackDraft(intent, fingerprint),
       error: error instanceof Error ? error.message : String(error),
-      humanize_pass: { applied: false, reason: 'provider_unavailable' },
+      humanize_pass: { applied: false, reason: 'provider_unavailable', policy: 'density-not-blacklist', authorship_inference: 'not_supported' },
       blader_score: 0,
       detector_report: null,
       blader: null
@@ -203,7 +175,7 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
 export function ghostCommandOptions() {
   return [
     { command: '/ghost draft', description: 'Draft the next story unit using the workspace voice fingerprint.' },
-    { command: '/ghost humanize', description: 'Run cadence and AI-signal cleanup on a draft without changing canon.' },
+    { command: '/ghost humanize', description: 'Run mechanical cleanup plus a voice-density audit without changing canon or banning words and punctuation.' },
     { command: '/ghost suggest', description: 'Offer next-line or next-beat suggestions without overwriting human text.' },
     { command: '/ghost rewrite', description: 'Create an alternate pass that requires explicit human acceptance.' }
   ];

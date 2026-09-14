@@ -6,6 +6,7 @@ import { enqueueRuntime } from '../lib/runtimeDispatcher.js';
 import { getGenomeContext, patchMemoryFromChapter } from '../lib/memoryEngine.js';
 import { getWorkspaceAssist } from '../lib/assistMode.js';
 import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { evaluateProseQuality } from '../lib/proseQuality.js';
 
 function dispatchSummary(dispatch) {
   return dispatch ? {
@@ -21,6 +22,39 @@ function enqueueChapterRuntimeIfAuthorized(db, workspaceId, triggerType, chapter
   const assistMode = getWorkspaceAssist(db, workspaceId).assist_mode;
   if (assistMode === 'writer' || assistMode === 'co_writer') return null;
   return enqueueRuntime(db, workspaceId, triggerType, chapterId);
+}
+
+function proseQualityFor(content, body = {}) {
+  return evaluateProseQuality(content || '', {
+    phase: body.quality_phase,
+    mode: body.quality_mode
+  });
+}
+
+function logProseQuality(db, workspaceId, chapterId, quality) {
+  log(db, {
+    workspace_id: workspaceId,
+    mode: 'prose_quality',
+    event_type: quality.status === 'FAIL'
+      ? 'prose_quality.failed'
+      : quality.status === 'PASS'
+        ? 'prose_quality.passed'
+        : 'prose_quality.observed',
+    payload: {
+      chapter_id: chapterId,
+      status: quality.status,
+      phase: quality.phase,
+      mode: quality.mode,
+      fingerprint: quality.fingerprint,
+      continuity_cookie: quality.continuity_cookie,
+      aiish_score: quality.analysis.aiish_score,
+      voice_grip: quality.analysis.voice_grip,
+      melodrama_score: quality.analysis.melodrama_score,
+      pattern_score: quality.analysis.pattern_score,
+      failures: quality.failures
+    },
+    rollback: 0
+  });
 }
 
 export default function chapterRoutes(router, db) {
@@ -46,10 +80,18 @@ export default function chapterRoutes(router, db) {
       content || '',
       memory_patches
     );
+    const quality = proseQualityFor(content, req.body);
+    logProseQuality(db, workspace_id, Number(id), quality);
     log(db, {
       workspace_id,
       event_type: 'chapter_created',
-      payload: { id, title, memory_diff_count: memoryDiffs.length },
+      payload: {
+        id,
+        title,
+        memory_diff_count: memoryDiffs.length,
+        prose_quality_status: quality.status,
+        prose_quality_fingerprint: quality.fingerprint
+      },
       duration_ms: Date.now() - startedAt
     });
 
@@ -60,6 +102,7 @@ export default function chapterRoutes(router, db) {
       ok: true,
       queued,
       dispatch: dispatchSummary(dispatch),
+      quality,
       memory: {
         patched: true,
         diff_count: memoryDiffs.length,
@@ -78,17 +121,25 @@ export default function chapterRoutes(router, db) {
     const startedAt = Date.now();
     Chapter.update(db, id, req.body);
     const updated = Chapter.get(db, id);
+    const updatedContent = updated?.content || updated?.text || '';
     const memoryDiffs = patchMemoryFromChapter(
       db,
       chapter.workspace_id,
       id,
-      updated?.content || updated?.text || '',
+      updatedContent,
       req.body?.memory_patches
     );
+    const quality = proseQualityFor(updatedContent, req.body);
+    logProseQuality(db, chapter.workspace_id, id, quality);
     log(db, {
       workspace_id: chapter.workspace_id,
       event_type: 'chapter_updated',
-      payload: { id, memory_diff_count: memoryDiffs.length },
+      payload: {
+        id,
+        memory_diff_count: memoryDiffs.length,
+        prose_quality_status: quality.status,
+        prose_quality_fingerprint: quality.fingerprint
+      },
       duration_ms: Date.now() - startedAt
     });
 
@@ -98,6 +149,7 @@ export default function chapterRoutes(router, db) {
       ok: true,
       queued,
       dispatch: dispatchSummary(dispatch),
+      quality,
       memory: {
         patched: true,
         diff_count: memoryDiffs.length,

@@ -1,17 +1,44 @@
-# L99
+# StoryEngine / L99
 
 > **Copyright © 2024–2026 Juss Ray. All rights reserved.**
 > This is proprietary software. No license to use, copy, modify, distribute,
 > sublicense, or create derivative works is granted. See [LICENSE](LICENSE).
 
-L99 is an AI runtime and operations layer focused on state integrity, provenance-safe semantic reuse, recovery, shadow validation, and observable promotion controls.
+**StoryEngine is the creator-facing product. L99 is the execution runtime underneath it. They are one product architecture, not separate products.**
+
+StoryEngine is designed to help a creator carry an idea through writing, creation, packaging, release preparation, distribution, commerce handoff, and measurement across formats such as books, picture books, movies, TV, songs, podcasts, games, comics, plays, and short-form media.
+
+L99 supplies the runtime and operations layer that makes that product trustworthy: state integrity, provenance-safe semantic reuse, recovery, shadow validation, observable promotion controls, event truth, creator-control modes, and release gates.
+
+```text
+Idea
+→ Write
+→ Create
+→ Package
+→ Release gate
+→ Publish / distribute through approved channels
+→ Sell
+→ Measure
+```
+
+The product goal is end-to-end creation and publishing. Current capability claims remain bounded by verified runtime evidence: a designed stage is not automatically a production-ready stage, and draft generation is not direct publishing until the publishing path is implemented and proved.
+
+## Product identity
+
+| Surface | Role |
+|---|---|
+| **StoryEngine** | Customer-facing creator product and market identity |
+| **L99** | StoryEngine execution, state, provenance, recovery, orchestration, and evidence runtime |
+| **RiverEditor** | Authoring and transformation surface inside StoryEngine |
+| **Release gates** | Founder/creator-controlled boundary between generated work and consequential publication or distribution |
+
+Internal `l99_*` runtime names, event types, APIs, telemetry, and operational artifacts intentionally keep the L99 name. Customer-facing surfaces should lead with **StoryEngine** and may identify L99 as the runtime powering the product.
 
 ## Code audit status
 
 A repository-wide code audit is in progress. The runtime and promotion-gate foundations are substantial, but the system is not yet verified as production-safe.
 
 Known release blockers include cryptographic Stripe webhook verification, replacing browser-readable API-key persistence with a hardened authentication/session design, tightening the browser Content Security Policy, proving workspace authorization on every read and mutation path, and rebuilding stale feature branches on current `main` before merge. A present header is not proof of a valid Stripe signature, and passing isolated tests is not a production-readiness claim.
-
 
 ## AI operating contracts
 
@@ -86,13 +113,16 @@ The first redteam attacks the premise. The second attacks the selected implement
 ## Request path
 
 ```text
-Request
+Creator request
+→ StoryEngine surface
 → Identity Layer
 → Authorization Layer
-→ Provenance Engine
+→ L99 Provenance Engine
 → Partition Resolver
 → Semantic Cache
-→ Model
+→ Model / tool execution
+→ Evidence
+→ StoryEngine result
 ```
 
 ## Event read model
@@ -138,6 +168,7 @@ tenant / workspace
 1. Add a provenance decision evaluator (`artifact_writer.build_decision_artifact` formats and validates a decision from explicit inputs; it does not yet evaluate live cache candidates).
 2. Add boundary and revocation test fixtures beyond the property checks already covered by `runtime/promotion_gates.py`'s `revocation` and `partition_boundary` gates.
 3. Add a runtime book-to-social artifact producer that implements `story-engine/BOOK_TO_SOCIAL_GATE_NOTES.md`, validates `story-engine/schemas/book_to_social_artifact.schema.json`, and proves any user-visible preview with Playwright before promotion.
+4. Expand the verified StoryEngine release path format by format, preserving the rule that consequential publishing/distribution remains behind explicit authority and outcome evidence.
 
 ## License
 

@@ -28,6 +28,25 @@ for (const command of commands) {
   requireIncludes('Founder Intelligence entrypoint', entrypoint, command);
 }
 
+const challengeStack = [
+  'ULTRATHINK',
+  'Red Team 1 — premise',
+  'Lindy mode',
+  'L99',
+  'Red Team 2 — implementation',
+  'OODA',
+  'Proof',
+  'Rollback / Next Gate',
+];
+
+let previousIndex = -1;
+for (const step of challengeStack) {
+  const index = entrypoint.indexOf(step);
+  if (index < 0) failures.push(`Founder Intelligence entrypoint missing challenge step ${JSON.stringify(step)}`);
+  if (index <= previousIndex) failures.push(`Founder Intelligence challenge stack out of order at ${JSON.stringify(step)}`);
+  if (index >= 0) previousIndex = index;
+}
+
 for (const boundary of [
   'reasoning and planning modes only',
   'Repository-local authorship, provenance, tenant isolation, privacy, promotion, approval, rollback, evidence, compatibility, and non-deletion rules remain stricter and always win.',
