@@ -145,3 +145,48 @@ test('legacy anchors are baselined once and later ledger loss fails closed', () 
   assert.equal(Number(remaining.count), 0);
   db.close();
 });
+
+test('loss of only the latest ledger transition fails closed', () => {
+  const db = dbWithEvents();
+  const workspaceId = 'ws-latest-ledger-gap';
+  const kind = 'lore';
+  const key = 'signal';
+  const firstValue = 'First state.';
+  const secondValue = 'Second state.';
+
+  const created = setCanonAnchor(db, {
+    workspace_id: workspaceId,
+    kind,
+    key,
+    value: firstValue,
+    evidence: evidence(workspaceId, kind, key, firstValue, 'test:create-first'),
+    authority_grant: grant(workspaceId)
+  });
+
+  setCanonAnchor(db, {
+    workspace_id: workspaceId,
+    kind,
+    key,
+    value: secondValue,
+    evidence: evidence(workspaceId, kind, key, secondValue, 'test:update-second'),
+    authority_grant: grant(workspaceId)
+  });
+
+  const before = db.prepare(
+    'SELECT sequence, next_value FROM canon_change_ledger WHERE anchor_id=? ORDER BY sequence ASC'
+  ).all(created.anchor_id);
+  assert.equal(before.length, 2);
+  assert.equal(before[1].next_value, secondValue);
+
+  db.prepare('DELETE FROM canon_change_ledger WHERE sequence=?').run(before[1].sequence);
+  const remaining = db.prepare(
+    'SELECT COUNT(*) AS count FROM canon_change_ledger WHERE anchor_id=?'
+  ).get(created.anchor_id);
+  assert.equal(Number(remaining.count), 1);
+
+  assert.throws(
+    () => listCanonChanges(db, workspaceId),
+    /Canon ledger integrity violation: latest change for anchor .* does not match live canon state\./
+  );
+  db.close();
+});
