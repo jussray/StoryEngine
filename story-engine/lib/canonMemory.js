@@ -168,6 +168,31 @@ function ensureSchema(db) {
       `Canon ledger integrity violation: anchor ${ledgerGap.anchor_id} has no change history after ${LEGACY_CANON_LEDGER_MIGRATION}.`
     );
   }
+
+  const terminalMismatch = db.prepare(`
+    SELECT a.anchor_id
+    FROM canon_anchors a
+    JOIN canon_change_ledger c
+      ON c.sequence = (
+        SELECT c2.sequence
+        FROM canon_change_ledger c2
+        WHERE c2.anchor_id = a.anchor_id
+        ORDER BY c2.sequence DESC
+        LIMIT 1
+      )
+    WHERE c.workspace_id <> a.workspace_id
+       OR c.kind <> a.kind
+       OR c.key <> a.key
+       OR c.next_value <> a.value
+       OR (c.next_locked IS NOT NULL AND c.next_locked <> a.locked)
+       OR (c.operation <> 'legacy_baseline' AND c.source <> a.source)
+    LIMIT 1
+  `).get();
+  if (terminalMismatch) {
+    throw new Error(
+      `Canon ledger integrity violation: latest change for anchor ${terminalMismatch.anchor_id} does not match live canon state.`
+    );
+  }
 }
 
 function now() { return Date.now(); }
