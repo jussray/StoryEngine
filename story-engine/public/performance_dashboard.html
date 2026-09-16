@@ -6,19 +6,37 @@
   <title>L99 Performance Dashboard</title>
   <style>
     :root{--bg:#0f0f10;--surface:#171719;--surface2:#202024;--border:#34343a;--text:#e8e8ea;--muted:#8c8c93;--green:#6daa45;--gold:#e8af34;--red:#dd6974;--teal:#4f98a3;--blue:#5591c7;--purple:#a86fdf}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif}a{color:var(--teal);text-decoration:none}button{font:inherit}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif}a{color:var(--teal);text-decoration:none}button,input{font:inherit}
     header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0}.brand{font-weight:800}.pill{border:1px solid var(--border);border-radius:999px;padding:4px 9px;font-size:12px;background:var(--surface2)}.ok{color:var(--green)}.warn{color:var(--gold)}.bad{color:var(--red)}.teal{color:var(--teal)}.blue{color:var(--blue)}.purple{color:var(--purple)}
-    main{padding:22px;max-width:1280px;margin:auto}.section{margin-bottom:24px}.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}h2{font-size:16px;margin:0}.btn{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:8px;padding:7px 11px;cursor:pointer}
+    main{padding:22px;max-width:1280px;margin:auto}.section{margin-bottom:24px}.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px}h2{font-size:16px;margin:0}.btn{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:8px;padding:7px 11px;cursor:pointer}.btn:disabled{opacity:.5;cursor:not-allowed}
     .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.value{font-size:26px;font-weight:800;margin:5px 0}.sub{font-size:12px;color:var(--muted)}
     table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}th,td{padding:10px;text-align:left;border-bottom:1px solid var(--border);font-size:13px}th{font-size:11px;text-transform:uppercase;color:var(--muted)}tr:hover td{background:var(--surface2)}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.list{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}.row{padding:12px 14px;border-bottom:1px solid var(--border)}.row:last-child{border-bottom:0}.row-title{font-weight:700}.row-meta{font-size:12px;color:var(--muted);margin-top:3px}.bar{height:6px;border-radius:999px;background:var(--surface2);overflow:hidden}.fill{height:100%;background:var(--green)}
-    @media(max-width:780px){main{padding:14px}.grid{grid-template-columns:1fr}}
+    .evidence-form{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:10px;margin-bottom:12px}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}.field input{width:100%;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:8px;padding:8px}.field.file{grid-column:span 2}.actions{display:flex;align-items:end;gap:8px}.receipt{min-height:20px;margin-top:8px;font-size:12px}.business-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}.metric-chip{border:1px solid var(--border);background:var(--surface2);border-radius:999px;padding:5px 9px;font-size:12px}
+    @media(max-width:980px){.evidence-form{grid-template-columns:repeat(2,minmax(130px,1fr))}.field.file{grid-column:span 1}}@media(max-width:780px){main{padding:14px}.grid{grid-template-columns:1fr}.evidence-form{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <header><div class="brand">📈 L99 Performance Dashboard</div><div><span id="live" class="pill warn">Connecting…</span> <button id="refresh" class="btn">Refresh</button> <a class="pill" href="/control_room.html">Control Room</a></div></header>
   <main>
     <section class="section"><div class="head"><h2>Workspace L99 Metrics</h2><span id="updated" class="sub"></span></div><div id="stats" class="stats"></div></section>
+
+    <section class="section card" id="businessEvidence">
+      <div class="head"><div><h2>Business Evidence</h2><div class="sub">Import observed CSV metrics without turning missing values into zero.</div></div><span id="businessStatus" class="pill warn">No workspace loaded</span></div>
+      <div class="evidence-form">
+        <div class="field"><label for="metricWorkspace">Workspace ID</label><input id="metricWorkspace" autocomplete="off" placeholder="workspace-id"></div>
+        <div class="field"><label for="metricSource">Source</label><input id="metricSource" value="metricool:facebook" autocomplete="off"></div>
+        <div class="field"><label for="metricAccount">Account ID</label><input id="metricAccount" autocomplete="off" placeholder="brand/account"></div>
+        <div class="field"><label for="metricPage">Page ID</label><input id="metricPage" autocomplete="off" placeholder="optional"></div>
+        <div class="field"><label for="metricAudience">Audience segment</label><input id="metricAudience" autocomplete="off" placeholder="founders"></div>
+        <div class="field file"><label for="metricFile">CSV evidence</label><input id="metricFile" type="file" accept=".csv,text/csv"></div>
+        <div class="actions"><button id="loadBusiness" class="btn" type="button">Load Evidence</button><button id="importBusiness" class="btn" type="button">Import CSV</button></div>
+      </div>
+      <div id="businessReceipt" class="receipt sub"></div>
+      <div id="businessSummary" class="business-summary"></div>
+      <div style="overflow:auto"><table><thead><tr><th>Observed</th><th>Metric</th><th>Value</th><th>Unit</th><th>Audience</th><th>Source</th><th>Account/Page</th><th>Provenance</th></tr></thead><tbody id="businessRows"><tr><td colspan="8" class="sub">Load a workspace to inspect business evidence.</td></tr></tbody></table></div>
+    </section>
+
     <section class="section"><div class="head"><h2>Workspaces</h2></div><div style="overflow:auto"><table><thead><tr><th>Workspace</th><th>Status</th><th>Events</th><th>p50</th><th>p99</th><th>p99/p50</th><th>Error</th><th>Rollback</th></tr></thead><tbody id="workspaces"></tbody></table></div></section>
     <section class="section grid"><div><div class="head"><h2>Endpoint Metrics</h2></div><div id="endpoints" class="list"></div></div><div><div class="head"><h2>Gating & Incidents</h2></div><div id="incidents" class="list"></div></div></section>
     <section class="section"><div class="head"><h2>Recent Events</h2></div><div id="events" class="list"></div></section>
