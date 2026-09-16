@@ -14,6 +14,11 @@ import { ipSeedOverview } from '../lib/ipSeedMemoryGraph.js';
 import { llmRoutingSnapshot } from '../lib/llmClient.js';
 import { authSnapshot, requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
+  ProductBuildDirectiveValidationError,
+  executeProductBuildDirective,
+  isFounderControlRoomProductController,
+} from '../lib/productBuildControl.js';
+import {
   OPERATOR_PROFILE_OPTIONS,
   getOperatorSummary,
   updateOperatorProfile,
@@ -233,6 +238,56 @@ function registerOperatorRoutes(router, db, basePath) {
 }
 
 export default function controlRoomRoutes(router, db) {
+  // Product-build federation is a single bounded Control Room actuator. The
+  // outer /api middleware authenticates first; this route then requires the
+  // exact FCR scoped service principal instead of treating admin role alone as
+  // authority. Its receipt cannot authorize merge, deploy, or provider writes.
+  router.post('/api/control-room/product-build/execute', (req, res) => {
+    if (!isFounderControlRoomProductController(req.auth)) {
+      return json(res, 403, {
+        error: 'founder_control_room_controller_required',
+        message: 'Product Control Room execution requires the dedicated authenticated Founder Control Room service principal.',
+        request_id: req.request_id,
+      });
+    }
+
+    try {
+      const receipt = executeProductBuildDirective(db, req.body || {});
+      return json(res, 200, {
+        receipt,
+        authority: {
+          product_control_room: 'storyengine-control-room',
+          caller_tenant: req.auth?.tenant_id ?? null,
+          caller_actor: req.auth?.actor_id ?? null,
+          execution_authorized_by_directive: true,
+          merge_authorized: false,
+          deploy_authorized: false,
+          provider_mutation_authorized: false,
+          external_proof_still_required: true,
+        },
+      });
+    } catch (error) {
+      if (error instanceof ProductBuildDirectiveValidationError) {
+        return json(res, 400, {
+          error: 'invalid_product_build_directive',
+          message: error.message,
+          request_id: req.request_id,
+        });
+      }
+      console.error(JSON.stringify({
+        level: 'error',
+        event: 'product_build_execution_failed',
+        request_id: req.request_id,
+        error_name: error instanceof Error ? error.name : 'Error',
+      }));
+      return json(res, 500, {
+        error: 'product_build_execution_failed',
+        message: 'Product build execution failed.',
+        request_id: req.request_id,
+      });
+    }
+  });
+
   // Control Room is a cross-tenant founder/operator surface by design (it
   // aggregates run summaries and health across every workspace), so its
   // reads are gated by role rather than by workspace_id like every other
