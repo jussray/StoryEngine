@@ -1,13 +1,20 @@
 // models/storyModel.js
 import { randomUUID } from 'node:crypto';
 
-export function create(db, { title, genre, pitch }) {
+export function create(db, { title, genre, pitch, tenant_id, actor_id, role = 'creator' }) {
+  if (!tenant_id || !actor_id) throw new Error('Authenticated tenant and actor are required to create a story.');
   const workspace_id = randomUUID();
   const now = Date.now();
-  db.prepare(`
-    INSERT INTO stories (workspace_id, title, genre, pitch, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(workspace_id, title, genre ?? null, pitch ?? null, now, now);
+  db.transaction(() => {
+    db.prepare(`
+      INSERT INTO stories (workspace_id, title, genre, pitch, tenant_id, created_by_actor_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(workspace_id, title, genre ?? null, pitch ?? null, tenant_id, actor_id, now, now);
+    db.prepare(`
+      INSERT OR IGNORE INTO workspace_memberships (workspace_id, tenant_id, actor_id, role, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(workspace_id, tenant_id, actor_id, role, now);
+  });
   return workspace_id;
 }
 
@@ -15,7 +22,7 @@ export function get(db, workspace_id) {
   return db.prepare('SELECT * FROM stories WHERE workspace_id = ?').get(workspace_id);
 }
 
-export function list(db) {
+function selectList(db, whereSql = '', params = []) {
   return db.prepare(`
     SELECT
       s.*,
@@ -26,8 +33,37 @@ export function list(db) {
         WHERE li.workspace_id = s.workspace_id AND li.status = 'active') AS highest_severity,
       (SELECT MAX(e.created_at) FROM events e WHERE e.workspace_id = s.workspace_id) AS last_activity_at
     FROM stories s
+    ${whereSql}
     ORDER BY COALESCE(last_activity_at, s.updated_at, s.created_at) DESC
-  `).all();
+  `).all(...params);
+}
+
+export function list(db, identity = {}) {
+  const tenantId = String(identity.tenant_id || '').trim();
+  const actorId = String(identity.actor_id || '').trim();
+  if (!tenantId || !actorId) return [];
+
+  const configured = Array.isArray(identity.workspace_ids) ? identity.workspace_ids.map(String) : [];
+  if (configured.includes('*')) {
+    if (identity.role === 'administrator') {
+      return selectList(db, 'WHERE s.tenant_id = ? OR s.tenant_id IS NULL', [tenantId]);
+    }
+    return selectList(db, 'WHERE s.tenant_id = ?', [tenantId]);
+  }
+
+  const memberships = db.prepare(`
+    SELECT workspace_id FROM workspace_memberships
+    WHERE tenant_id = ? AND actor_id = ?
+  `).all(tenantId, actorId).map(row => row.workspace_id);
+  const allowed = [...new Set([...configured, ...memberships])].filter(Boolean);
+  if (!allowed.length) return [];
+
+  const placeholders = allowed.map(() => '?').join(',');
+  return selectList(
+    db,
+    `WHERE s.workspace_id IN (${placeholders}) AND (s.tenant_id = ? OR s.tenant_id IS NULL)`,
+    [...allowed, tenantId]
+  );
 }
 
 export function update(db, workspace_id, fields) {
