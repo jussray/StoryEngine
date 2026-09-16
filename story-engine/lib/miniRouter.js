@@ -1,5 +1,5 @@
 // lib/miniRouter.js — lightweight express-like router
-// Supports middleware, GET/POST/PUT/DELETE, :params, JSON parsing, and body limits.
+// Supports middleware, GET/POST/PUT/DELETE, :params, JSON/CSV parsing, and body limits.
 
 const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
 
@@ -49,9 +49,7 @@ export function createRouter(options = {}) {
       if (!item) return done();
       try {
         const result = item.handler(req, res, next);
-        if (result && typeof result.then === 'function') {
-          result.catch(next);
-        }
+        if (result && typeof result.then === 'function') result.catch(next);
       } catch (caught) {
         next(caught);
       }
@@ -63,10 +61,7 @@ export function createRouter(options = {}) {
   function parseBody(req, res, route) {
     const declaredLength = Number(req.headers?.['content-length'] || 0);
     if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
-      json(res, 413, {
-        error: 'body_too_large',
-        max_bytes: maxBodyBytes
-      });
+      json(res, 413, { error: 'body_too_large', max_bytes: maxBodyBytes });
       req.resume?.();
       return;
     }
@@ -78,10 +73,7 @@ export function createRouter(options = {}) {
     const failTooLarge = () => {
       if (finished) return;
       finished = true;
-      json(res, 413, {
-        error: 'body_too_large',
-        max_bytes: maxBodyBytes
-      });
+      json(res, 413, { error: 'body_too_large', max_bytes: maxBodyBytes });
       req.removeListener('data', onData);
       req.removeListener('end', onEnd);
       req.resume?.();
@@ -98,9 +90,15 @@ export function createRouter(options = {}) {
     const onEnd = () => {
       if (finished) return;
       finished = true;
-      const raw = Buffer.concat(chunks).toString('utf8');
+      const rawBuffer = Buffer.concat(chunks);
+      const raw = rawBuffer.toString('utf8');
+      req.rawBody = rawBuffer;
+      const contentType = String(req.headers?.['content-type'] || '').split(';', 1)[0].trim().toLowerCase();
+
       if (!raw.trim()) {
         req.body = {};
+      } else if (contentType === 'text/csv' || contentType === 'text/plain') {
+        req.body = raw;
       } else {
         try {
           req.body = JSON.parse(raw);
@@ -139,11 +137,8 @@ export function createRouter(options = {}) {
 
     runMiddleware(req, res, pathname, () => {
       if (res.writableEnded) return;
-      if (method === 'POST' || method === 'PUT') {
-        parseBody(req, res, route);
-      } else {
-        route.handler(req, res);
-      }
+      if (method === 'POST' || method === 'PUT') parseBody(req, res, route);
+      else route.handler(req, res);
     });
   }
 
