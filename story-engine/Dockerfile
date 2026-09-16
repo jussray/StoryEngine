@@ -5,14 +5,11 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
     L99_DB_PATH=/data/l99.db \
-    L99_VIDEO_OUTPUT_DIR=/data/video-exports \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    L99_VIDEO_OUTPUT_DIR=/data/video-exports
 
-COPY package.json package-lock.json ./
-
-RUN npm ci --include=dev \
-    && npx playwright install --with-deps chromium \
-    && chmod -R a+rX /ms-playwright
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --chown=node:node . .
 
