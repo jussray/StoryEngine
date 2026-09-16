@@ -74,6 +74,8 @@ jobs:
           npm test 2>&1 | tee node-test-output.log
       - run: npx playwright install --with-deps chromium
       - run: npm run test:guardrails
+      - name: Verify real creator persistence path
+        run: npx playwright test e2e/creator_persistence.spec.js
       - name: Verify business metrics evidence path
         run: npx playwright test e2e/business_metrics.spec.js
       - name: Verify local domain authority
