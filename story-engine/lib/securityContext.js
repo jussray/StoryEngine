@@ -217,11 +217,47 @@ export function enforceOperatorApiBoundary(req, res, next) {
   return requireRole('administrator')(req, res, next);
 }
 
+function workspaceMembershipAllows(req, workspaceId) {
+  if (!req.db || !req.auth?.tenant_id || !req.auth?.actor_id) return false;
+  try {
+    return Boolean(req.db.prepare(`
+      SELECT 1 AS allowed FROM workspace_memberships
+      WHERE workspace_id = ? AND tenant_id = ? AND actor_id = ?
+      LIMIT 1
+    `).get(workspaceId, req.auth.tenant_id, req.auth.actor_id));
+  } catch {
+    return false;
+  }
+}
+
+function workspaceTenant(req, workspaceId) {
+  if (!req.db) return null;
+  try {
+    const row = req.db.prepare('SELECT tenant_id FROM stories WHERE workspace_id = ?').get(workspaceId);
+    return row ? { exists: true, tenant_id: row.tenant_id || null } : null;
+  } catch {
+    return null;
+  }
+}
+
 export function assertWorkspaceAccess(req, workspaceId) {
   const normalized = String(workspaceId || '').trim();
   if (!normalized) return true;
-  const allowed = req.auth?.workspace_ids || [];
-  return allowed.includes('*') || allowed.includes(normalized);
+
+  const identity = req.auth || {};
+  const allowed = Array.isArray(identity.workspace_ids) ? identity.workspace_ids.map(String) : [];
+  const owner = workspaceTenant(req, normalized);
+
+  if (owner?.exists && owner.tenant_id && owner.tenant_id !== identity.tenant_id) return false;
+  if (workspaceMembershipAllows(req, normalized)) return true;
+  if (allowed.includes(normalized)) return true;
+
+  if (allowed.includes('*')) {
+    if (owner?.exists && owner.tenant_id === identity.tenant_id) return true;
+    if (owner?.exists && !owner.tenant_id) return identity.role === 'administrator';
+    return identity.role === 'administrator';
+  }
+  return false;
 }
 
 export function requireWorkspaceAccess(req, res, workspaceId) {
