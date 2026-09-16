@@ -43,16 +43,22 @@ export function list(db, identity = {}) {
   const actorId = String(identity.actor_id || '').trim();
   if (!tenantId || !actorId) return [];
 
-  const configured = Array.isArray(identity.workspace_ids) ? identity.workspace_ids.map(String) : [];
+  const configured = Array.isArray(identity.workspace_ids)
+    ? [...new Set(identity.workspace_ids.map(String).filter(Boolean))]
+    : [];
+
   if (configured.includes('*')) {
     return selectList(db, 'WHERE s.tenant_id = ?', [tenantId]);
   }
 
+  // A non-wildcard configured scope is an authority ceiling. Durable membership
+  // may prove access inside that scope, but must never silently widen the credential.
   const memberships = db.prepare(`
     SELECT workspace_id FROM workspace_memberships
     WHERE tenant_id = ? AND actor_id = ?
   `).all(tenantId, actorId).map(row => row.workspace_id);
-  const allowed = [...new Set([...configured, ...memberships])].filter(Boolean);
+  const membershipSet = new Set(memberships);
+  const allowed = configured.length ? configured : memberships;
   if (!allowed.length) return [];
 
   const placeholders = allowed.map(() => '?').join(',');
@@ -72,7 +78,7 @@ export function list(db, identity = {}) {
          )
        )`,
     [...allowed, tenantId, tenantId, actorId]
-  );
+  ).filter(story => story.tenant_id !== null || membershipSet.has(story.workspace_id));
 }
 
 export function update(db, workspace_id, fields) {
