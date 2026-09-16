@@ -22,22 +22,19 @@ const DEFAULT_MODELS = Object.freeze({
 
 const LLM_CLIENT_STARTED_AT = Date.now();
 const providerState = new Map();
-const ERROR_BODY_LIMIT_BYTES = 4096;
 
-function boundedNumber(value, fallback, { min, max, integer = true } = {}) {
+function boundedInteger(value, fallback, min, max) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
-  const normalized = integer ? Math.floor(parsed) : parsed;
-  if (Number.isFinite(min) && normalized < min) return fallback;
-  if (Number.isFinite(max) && normalized > max) return max;
-  return normalized;
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
 }
 
-const DEFAULT_TIMEOUT_MS = boundedNumber(process.env.LLM_TIMEOUT_MS || 60_000, 60_000, { min: 1000, max: 300_000 });
-const DEFAULT_MAX_RETRIES = boundedNumber(process.env.LLM_MAX_RETRIES || 2, 2, { min: 0, max: 5 });
-const CIRCUIT_FAILURE_THRESHOLD = boundedNumber(process.env.LLM_CIRCUIT_FAILURE_THRESHOLD || 5, 5, { min: 1, max: 100 });
-const CIRCUIT_RESET_MS = boundedNumber(process.env.LLM_CIRCUIT_RESET_MS || 60_000, 60_000, { min: 1000, max: 3_600_000 });
-const MAX_TOKENS_CAP = boundedNumber(process.env.LLM_MAX_TOKENS_CAP || 8192, 8192, { min: 1, max: 128_000 });
+const DEFAULT_TIMEOUT_MS = boundedInteger(process.env.LLM_TIMEOUT_MS, 60_000, 1_000, 300_000);
+const DEFAULT_MAX_RETRIES = boundedInteger(process.env.LLM_MAX_RETRIES, 2, 0, 10);
+const CIRCUIT_FAILURE_THRESHOLD = boundedInteger(process.env.LLM_CIRCUIT_FAILURE_THRESHOLD, 5, 1, 100);
+const CIRCUIT_RESET_MS = boundedInteger(process.env.LLM_CIRCUIT_RESET_MS, 60_000, 1_000, 3_600_000);
+const MAX_TOKENS_CAP = boundedInteger(process.env.LLM_MAX_TOKENS_CAP, 8192, 1, 128_000);
+const ERROR_BODY_MAX_BYTES = boundedInteger(process.env.LLM_ERROR_BODY_MAX_BYTES, 4096, 256, 65_536);
 
 function pickProvider(options = {}) {
   if (options.provider) return options.provider;
@@ -52,10 +49,11 @@ function pickModel(provider, options = {}) {
   return DEFAULT_MODELS[provider] || DEFAULT_MODELS.openai;
 }
 
-function boundedMaxTokens(options = {}) {
+function boundedMaxTokens(options = {}, model = '') {
   const requested = Number(options.maxTokens || 4096);
-  if (!Number.isFinite(requested) || requested < 1) return 4096;
-  return Math.min(Math.floor(requested), MAX_TOKENS_CAP);
+  const normalized = !Number.isFinite(requested) || requested < 1 ? 4096 : Math.floor(requested);
+  const modelCap = String(model).startsWith('claude-haiku-4-5') ? 64_000 : MAX_TOKENS_CAP;
+  return Math.min(normalized, modelCap, MAX_TOKENS_CAP);
 }
 
 function headers(extra = {}) {
@@ -89,6 +87,14 @@ function assertCircuitClosed(provider) {
   throw error;
 }
 
+function safeFailureSummary(provider, error) {
+  const status = Number(error?.status || 0);
+  if (status) return `${provider} HTTP ${status}`;
+  if (error?.code === 'llm_timeout' || error?.name === 'AbortError') return `${provider} timeout`;
+  if (error?.code === 'llm_circuit_open') return `${provider} circuit_open`;
+  return `${provider} request_failed`;
+}
+
 function noteSuccess(provider) {
   const state = stateFor(provider);
   state.calls += 1;
@@ -96,14 +102,6 @@ function noteSuccess(provider) {
   state.failures = 0;
   state.opened_at = null;
   state.last_error = null;
-}
-
-function safeFailureSummary(provider, error) {
-  const status = Number(error?.status || 0);
-  if (status) return `${provider} HTTP ${status}`;
-  if (error?.name === 'AbortError' || error?.code === 'llm_timeout') return `${provider} timeout`;
-  if (error?.code === 'llm_circuit_open') return `${provider} circuit_open`;
-  return `${provider} request_failed`;
 }
 
 function noteFailure(provider, error) {
@@ -122,31 +120,41 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function readBoundedErrorType(response, maxBytes = ERROR_BODY_LIMIT_BYTES) {
-  const reader = response.body?.getReader?.();
-  if (!reader) return null;
-  const chunks = [];
-  let received = 0;
+async function readBoundedResponseText(response, maxBytes = ERROR_BODY_MAX_BYTES) {
+  const body = response?.body;
+  if (!body || typeof body.getReader !== 'function') return '';
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = '';
+
   try {
-    while (received < maxBytes) {
-      const { value, done } = await reader.read();
+    while (bytesRead < maxBytes) {
+      const { done, value } = await reader.read();
       if (done) break;
-      const chunk = Buffer.from(value || []);
-      const remaining = maxBytes - received;
-      chunks.push(chunk.subarray(0, remaining));
-      received += Math.min(chunk.length, remaining);
-      if (chunk.length > remaining || received >= maxBytes) {
+      if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
+      const remaining = maxBytes - bytesRead;
+      const take = Math.min(remaining, value.byteLength);
+      text += decoder.decode(value.subarray(0, take), { stream: true });
+      bytesRead += take;
+      if (take < value.byteLength || bytesRead >= maxBytes) {
         await reader.cancel().catch(() => {});
         break;
       }
     }
+    text += decoder.decode();
+    return text;
   } catch {
-    return null;
+    return '';
+  } finally {
+    try { reader.releaseLock(); } catch {}
   }
+}
 
-  if (!chunks.length) return null;
+function safeProviderErrorType(rawBody) {
+  if (!rawBody) return null;
   try {
-    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const parsed = JSON.parse(rawBody);
     const type = String(parsed?.error?.type || parsed?.type || '').trim();
     return /^[a-z0-9_.-]{1,80}$/i.test(type) ? type : null;
   } catch {
@@ -156,8 +164,8 @@ async function readBoundedErrorType(response, maxBytes = ERROR_BODY_LIMIT_BYTES)
 
 async function fetchWithPolicy(provider, url, init, options = {}) {
   assertCircuitClosed(provider);
-  const retries = boundedNumber(options.maxRetries ?? DEFAULT_MAX_RETRIES, DEFAULT_MAX_RETRIES, { min: 0, max: 5 });
-  const timeoutMs = boundedNumber(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, { min: 1000, max: 300_000 });
+  const retries = boundedInteger(options.maxRetries, DEFAULT_MAX_RETRIES, 0, 10);
+  const timeoutMs = boundedInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS, 1_000, 300_000);
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -171,7 +179,8 @@ async function fetchWithPolicy(provider, url, init, options = {}) {
     try {
       const response = await fetch(url, { ...init, redirect: 'error', signal: controller.signal });
       if (!response.ok) {
-        const errorType = await readBoundedErrorType(response);
+        const rawBody = await readBoundedResponseText(response);
+        const errorType = safeProviderErrorType(rawBody);
         const error = new Error(`LLM provider request failed with status ${response.status}${errorType ? ` (${errorType})` : ''}.`);
         error.status = response.status;
         error.code = 'llm_provider_http_error';
@@ -213,7 +222,7 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
     headers: headers({ Authorization: `Bearer ${apiKey}` }),
     body: JSON.stringify({
       model,
-      max_tokens: boundedMaxTokens(options),
+      max_tokens: boundedMaxTokens(options, model),
       temperature: options.temperature ?? 0.2,
       response_format: options.json ? { type: 'json_object' } : undefined,
       messages: [
@@ -222,9 +231,16 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
       ].filter(Boolean)
     })
   }, options);
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (typeof text !== 'string') throw new Error('LLM provider returned an invalid OpenAI-compatible response.');
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('OpenAI-compatible response was not valid JSON.');
+  }
+  const text = data?.choices?.[0]?.message?.content;
+  if (typeof text !== 'string') throw new Error('OpenAI-compatible response is missing assistant text.');
+
   return Object.freeze({
     text,
     provenance: Object.freeze({
@@ -239,31 +255,45 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
 async function completeAnthropicWithReceipt(prompt, options = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is required.');
-
+  const workspaceId = String(process.env.ANTHROPIC_WORKSPACE_ID || '').trim();
   const model = pickModel('anthropic', options);
   const apiVersion = process.env.ANTHROPIC_VERSION || '2023-06-01';
+
   const body = {
     model,
-    max_tokens: boundedMaxTokens(options),
+    max_tokens: boundedMaxTokens(options, model),
     system: options.system || undefined,
     messages: [{ role: 'user', content: prompt }]
   };
-  if (options.temperature !== undefined) body.temperature = options.temperature;
+  if (options.temperature !== undefined && !String(model).startsWith('claude-sonnet-5')) {
+    body.temperature = options.temperature;
+  }
 
   const response = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: headers({ 'x-api-key': apiKey, 'anthropic-version': apiVersion }),
+    headers: headers({
+      'x-api-key': apiKey,
+      'anthropic-version': apiVersion,
+      ...(workspaceId ? { 'anthropic-workspace-id': workspaceId } : {})
+    }),
     body: JSON.stringify(body)
   }, options);
-  const data = await response.json();
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('Anthropic response was not valid JSON.');
+  }
   if (data?.type !== 'message' || data?.role !== 'assistant' || !Array.isArray(data.content)) {
-    throw new Error('LLM provider returned an invalid Anthropic Messages response.');
+    throw new Error('Anthropic response is not a valid Messages API assistant envelope.');
   }
   const text = data.content
     .filter(part => part?.type === 'text' && typeof part.text === 'string')
     .map(part => part.text)
     .join('\n')
     .trim();
+  if (!text) throw new Error('Anthropic response contained no text output.');
 
   return Object.freeze({
     text,
@@ -272,7 +302,8 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
       requested_model: model,
       response_model: typeof data.model === 'string' ? data.model : null,
       response_id: typeof data.id === 'string' ? data.id : null,
-      api_version: apiVersion
+      api_version: apiVersion,
+      workspace_header_configured: Boolean(workspaceId)
     })
   });
 }
@@ -310,9 +341,9 @@ export function llmRoutingSnapshot() {
     timeout_ms: DEFAULT_TIMEOUT_MS,
     max_retries: DEFAULT_MAX_RETRIES,
     max_tokens_cap: MAX_TOKENS_CAP,
+    error_body_max_bytes: ERROR_BODY_MAX_BYTES,
     circuit_failure_threshold: CIRCUIT_FAILURE_THRESHOLD,
     circuit_reset_ms: CIRCUIT_RESET_MS,
-    error_body_limit_bytes: ERROR_BODY_LIMIT_BYTES,
     client_started_at: LLM_CLIENT_STARTED_AT,
     circuit_state_scope: 'process_memory_resets_on_restart',
     circuits: Object.fromEntries([...providerState.entries()].map(([provider, state]) => [provider, { ...state, open: Boolean(state.opened_at) }]))
