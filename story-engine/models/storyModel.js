@@ -14,7 +14,7 @@ export function create(db, { title, genre, pitch, tenant_id, actor_id, role = 'c
       INSERT OR IGNORE INTO workspace_memberships (workspace_id, tenant_id, actor_id, role, created_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(workspace_id, tenant_id, actor_id, role, now);
-  });
+  })();
   return workspace_id;
 }
 
