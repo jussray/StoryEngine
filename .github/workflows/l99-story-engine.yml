@@ -16,6 +16,7 @@ on:
       - '.github/workflows/l99-story-engine.yml'
       - '.github/workflows/story-engine-production-signal.yml'
       - '.github/workflows/story-engine-production-proof.yml'
+      - '.gitignore'
   pull_request:
     paths:
       - 'story-engine/**'
@@ -29,6 +30,7 @@ on:
       - '.github/workflows/l99-story-engine.yml'
       - '.github/workflows/story-engine-production-signal.yml'
       - '.github/workflows/story-engine-production-proof.yml'
+      - '.gitignore'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -75,6 +77,36 @@ jobs:
             sudo apt-get install -y ffmpeg
           fi
           ffmpeg -version | head -n 1
+
+      - name: Inspect exact Docker carrier for leakage
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="storyengine-package-audit:${EXPECTED_HEAD_SHA}"
+          docker build --tag "$image" story-engine
+          cid="$(docker create "$image")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          mkdir -p /tmp/storyengine-package-audit
+          docker export "$cid" | tar -x -C /tmp/storyengine-package-audit app
+          find /tmp/storyengine-package-audit/app -type f -printf '%P\n' | sort > /tmp/storyengine-package-files.txt
+          cat /tmp/storyengine-package-files.txt
+
+          if grep -E '(^|/)\.git(/|$)|(^|/)(playwright-report|test-results|blob-report|coverage)(/|$)|(^|/)[^/]+\.(db|sqlite|sqlite3)(-wal|-shm)?$|(^|/)[^/]+\.(pem|key)$' /tmp/storyengine-package-files.txt; then
+            echo 'Forbidden runtime, proof, VCS, or private-key artifact found in /app.' >&2
+            exit 1
+          fi
+
+          env_hits="$(grep -E '(^|/)\.env($|\.)' /tmp/storyengine-package-files.txt | grep -v -E '(^|/)\.env\.example$' || true)"
+          if [ -n "$env_hits" ]; then
+            printf '%s\n' "$env_hits" >&2
+            echo 'Forbidden environment file found in /app.' >&2
+            exit 1
+          fi
+
+          if grep -RIlE --exclude='.env.example' '(-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,})' /tmp/storyengine-package-audit/app; then
+            echo 'Credential-shaped material found in packaged /app.' >&2
+            exit 1
+          fi
 
       - name: Run L99 integration tests
         working-directory: story-engine
