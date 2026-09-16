@@ -91,8 +91,8 @@ jobs:
           find /tmp/storyengine-package-audit/app -type f -printf '%P\n' | sort > /tmp/storyengine-package-files.txt
           cat /tmp/storyengine-package-files.txt
 
-          if grep -E '(^|/)\.git(/|$)|(^|/)(playwright-report|test-results|blob-report|coverage)(/|$)|(^|/)[^/]+\.(db|sqlite|sqlite3)(-wal|-shm)?$|(^|/)[^/]+\.(pem|key)$' /tmp/storyengine-package-files.txt; then
-            echo 'Forbidden runtime, proof, VCS, or private-key artifact found in /app.' >&2
+          if grep -E '(^|/)\.git(/|$)|(^|/)(test|e2e|playwright-report|test-results|blob-report|coverage)(/|$)|(^|/)playwright[^/]*\.js$|(^|/)[^/]+\.(db|sqlite|sqlite3)(-wal|-shm)?$|(^|/)[^/]+\.(pem|key)$' /tmp/storyengine-package-files.txt; then
+            echo 'Forbidden runtime, test, proof, VCS, or private-key artifact found in /app.' >&2
             exit 1
           fi
 
