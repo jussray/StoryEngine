@@ -61,6 +61,15 @@ function normalizedDirective(input = {}) {
   };
 }
 
+function trustedRuntimeHead(options = {}) {
+  return text(
+    options.expectedHeadSha
+      || process.env.EXPECTED_HEAD_SHA
+      || process.env.RAILWAY_GIT_COMMIT_SHA
+      || process.env.L99_RELEASE_SHA
+  ).toLowerCase();
+}
+
 export function productBuildDirectiveHash(input) {
   const value = normalizedDirective(input);
   return digest([
@@ -89,13 +98,15 @@ export function productBuildDirectiveHash(input) {
 export function validateProductBuildDirective(input, options = {}) {
   const value = normalizedDirective(input);
   const errors = [];
-  const expectedHeadSha = text(options.expectedHeadSha || process.env.EXPECTED_HEAD_SHA).toLowerCase();
+  const expectedHeadSha = trustedRuntimeHead(options);
 
   if (value.contract !== PRODUCT_BUILD_DIRECTIVE_CONTRACT) errors.push('product build directive contract is unsupported');
   if (!value.directiveId) errors.push('directiveId is required');
   if (!SHA256.test(value.proposal.proposalHash)) errors.push('proposalHash must be a SHA-256 hash');
   if (value.proposal.projectSlug !== STORYENGINE_PROJECT_ID) errors.push('product build directive project does not target StoryEngine');
   if (!FULL_SHA.test(value.proposal.expectedHeadSha || '')) errors.push('product build directive requires an exact expectedHeadSha');
+  if (expectedHeadSha && !FULL_SHA.test(expectedHeadSha)) errors.push('trusted runtime head must be an exact 40-character Git SHA');
+  if (!expectedHeadSha && process.env.NODE_ENV === 'production') errors.push('product build execution requires trusted runtime exact-head identity');
   if (expectedHeadSha && value.proposal.expectedHeadSha !== expectedHeadSha) errors.push('product build directive expectedHeadSha does not match this exact runtime head');
   if (!SHA256.test(value.proposal.capabilityPlanHash || '')) errors.push('product build directive requires a Chief capabilityPlanHash');
   if (!SHA256.test(value.founderDecisionHash)) errors.push('product build directive requires an exact founderDecisionHash');
