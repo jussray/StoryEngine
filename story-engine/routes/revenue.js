@@ -4,7 +4,7 @@
 import { requireRole } from '../lib/securityContext.js';
 import {
   handleStripeWebhook, getSubscription,
-  revenueOverview, listConversions
+  revenueOverview
 } from '../lib/revenueEngine.js';
 import { listConversions as listIpConversions } from '../lib/ipStudio.js';
 import { verifyStripeWebhookSignature } from '../lib/stripeWebhookSignature.js';
