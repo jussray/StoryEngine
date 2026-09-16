@@ -58,6 +58,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const API_MAX_BODY_BYTES = Number(process.env.API_MAX_BODY_BYTES || 2 * 1024 * 1024);
 const RUNTIME_IDENTITY = runtimeIdentitySnapshot();
+const EXTERNAL_AUTHORITY_PATHS = new Set(['/api/revenue/stripe/webhook']);
 
 const MIME = {
   '.html': 'text/html',
@@ -73,8 +74,16 @@ router.use('/api', (req, res, next) => {
   req.db = db;
   next();
 });
-router.use('/api', requireAuth);
-router.use('/api', enforceWorkspaceAccess);
+router.use('/api', (req, res, next) => {
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  if (EXTERNAL_AUTHORITY_PATHS.has(pathname)) return next();
+  return requireAuth(req, res, next);
+});
+router.use('/api', (req, res, next) => {
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  if (EXTERNAL_AUTHORITY_PATHS.has(pathname)) return next();
+  return enforceWorkspaceAccess(req, res, next);
+});
 router.use('/api/control-room', enforceOperatorApiBoundary);
 authSessionRoutes(router, db);
 storyRoutes(router, db);
