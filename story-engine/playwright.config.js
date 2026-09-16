@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const playwrightRuntimeId = `${process.pid}-${Date.now()}`;
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -21,6 +23,10 @@ export default defineConfig({
       ...process.env,
       PORT: '3000',
       NODE_ENV: 'test',
+      // Browser proof must never depend on or mutate tracked repository SQLite/WAL
+      // state. Production still requires its provider-mounted persistent path.
+      L99_DB_PATH: process.env.L99_DB_PATH || `/tmp/l99-playwright-${playwrightRuntimeId}.db`,
+      L99_VIDEO_OUTPUT_DIR: process.env.L99_VIDEO_OUTPUT_DIR || `/tmp/l99-playwright-video-${playwrightRuntimeId}`,
       API_KEY: process.env.API_KEY || 'playwright-test-key',
       L99_API_KEYS_JSON: process.env.L99_API_KEYS_JSON || JSON.stringify([
         {
