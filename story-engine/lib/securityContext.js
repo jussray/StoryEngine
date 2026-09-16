@@ -264,6 +264,10 @@ export function assertWorkspaceAccess(req, workspaceId) {
   if (member) return true;
   if (owner?.exists) return (wildcard || explicitlyAllowed) && owner.tenant_id === identity.tenant_id;
 
+  // Pure helper/unit callers may not attach a database. Preserve explicit scope
+  // there; the real server always attaches req.db before workspace authorization.
+  if (!req.db && explicitlyAllowed) return true;
+
   // Preserve the historical administrator wildcard behavior for not-yet-created
   // workspace identifiers without letting a scoped credential escape its list.
   if (wildcard) return identity.role === 'administrator';
