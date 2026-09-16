@@ -2,20 +2,21 @@
   const LEGACY_STORAGE_KEY = 'l99_api_key';
   let sessionPromise = null;
 
-  function readBootstrapKey() {
-    return sessionStorage.getItem(LEGACY_STORAGE_KEY) || '';
-  }
-
-  function clearBootstrapKey() {
-    sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+  function purgeLegacyBootstrapKey() {
+    for (const storage of [window.sessionStorage, window.localStorage]) {
+      try { storage.removeItem(LEGACY_STORAGE_KEY); } catch {}
+    }
   }
 
   function askBootstrapKey() {
     const entered = window.prompt('Enter the L99 bootstrap key for this session:');
-    const key = String(entered || '').trim();
-    if (key) sessionStorage.setItem(LEGACY_STORAGE_KEY, key);
-    return key;
+    return String(entered || '').trim();
   }
+
+  // Older builds persisted the bootstrap credential in web storage. Purge that
+  // state immediately. New credentials remain in memory only long enough to be
+  // exchanged for the server-issued HttpOnly SameSite session cookie.
+  purgeLegacyBootstrapKey();
 
   const originalFetch = window.fetch.bind(window);
 
@@ -32,29 +33,28 @@
   async function establishSession() {
     const existing = await currentSession();
     if (existing?.authenticated) {
-      clearBootstrapKey();
+      purgeLegacyBootstrapKey();
       return existing;
     }
 
-    const key = readBootstrapKey() || askBootstrapKey();
+    const key = askBootstrapKey();
     if (!key) throw new Error('Authentication required.');
 
-    const response = await originalFetch('/api/auth/session', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'x-api-key': key, 'Content-Type': 'application/json' },
-      body: '{}'
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      clearBootstrapKey();
-      throw new Error(payload.error || `Authentication failed (${response.status}).`);
+    try {
+      const response = await originalFetch('/api/auth/session', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'x-api-key': key, 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `Authentication failed (${response.status}).`);
+      return payload;
+    } finally {
+      // The lexical key reference becomes unreachable after this call returns;
+      // there is deliberately no localStorage/sessionStorage persistence path.
+      purgeLegacyBootstrapKey();
     }
-
-    // The explicit credential is bootstrap-only. Ordinary application requests
-    // use the server-issued HttpOnly session cookie from this point forward.
-    clearBootstrapKey();
-    return payload;
   }
 
   function ensureSession() {
@@ -78,7 +78,7 @@
         body: '{}'
       }).catch(() => null);
       sessionPromise = null;
-      clearBootstrapKey();
+      purgeLegacyBootstrapKey();
     }
   };
 
