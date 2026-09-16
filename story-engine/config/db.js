@@ -30,22 +30,32 @@ db.exec('PRAGMA cache_size = -10000;');
 db.exec('PRAGMA temp_store = MEMORY;');
 db.exec('PRAGMA wal_autocheckpoint = 1000;');
 
-const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
-db.exec(schema);
+function tableExists(table) {
+  return Boolean(db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1"
+  ).get(table));
+}
 
 function ensureColumn(table, column, definition) {
+  if (!tableExists(table)) return;
   const columns = db.prepare(`PRAGMA table_info(${table})`).all();
   if (!columns.some(item => item.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 }
 
+// Persisted production databases can predate columns referenced by indexes in
+// schema.sql. Migrate those legacy tables before replaying the canonical schema;
+// CREATE TABLE IF NOT EXISTS does not add columns to an existing SQLite table.
 ensureColumn('memory_diffs', 'diff_id', 'TEXT');
 ensureColumn('memory_diffs', 'resolution', 'TEXT');
 ensureColumn('memory_diffs', 'source', "TEXT NOT NULL DEFAULT 'system'");
 ensureColumn('memory_diffs', 'resolved_at', 'INTEGER');
 ensureColumn('stories', 'tenant_id', 'TEXT');
 ensureColumn('stories', 'created_by_actor_id', 'TEXT');
+
+const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+db.exec(schema);
 
 db.exec(`
   DELETE FROM memory_diffs
