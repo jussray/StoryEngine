@@ -1,5 +1,5 @@
 // routes/revenue.js
-// Revenue Engine routes: Stripe webhook receiver, subscription reads, notification log.
+// Revenue Engine routes: verified Stripe webhook receiver, subscription reads, notification log.
 
 import { requireRole } from '../lib/securityContext.js';
 import {
@@ -7,33 +7,71 @@ import {
   revenueOverview, listConversions
 } from '../lib/revenueEngine.js';
 import { listConversions as listIpConversions } from '../lib/ipStudio.js';
+import { verifyStripeWebhookSignature } from '../lib/stripeWebhookSignature.js';
 
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
 }
 
+function normalizedStripePayload(event) {
+  const object = event?.data?.object && typeof event.data.object === 'object' ? event.data.object : {};
+  const eventType = String(event?.type || '');
+  const metadata = object.metadata && typeof object.metadata === 'object' ? object.metadata : {};
+  const subscription = eventType.startsWith('customer.subscription') ? object : {};
+  const amountCandidate = object.amount_paid ?? object.amount_total ?? object.amount_received ?? object.amount_due ?? null;
+  const amount = Number(amountCandidate);
+
+  return {
+    workspace_id: metadata.workspace_id || subscription.metadata?.workspace_id || null,
+    customer: object.customer || null,
+    subscription_id: typeof object.subscription === 'string' ? object.subscription : subscription.id || null,
+    subscription,
+    amount_cents: amountCandidate === null || !Number.isFinite(amount) ? null : amount,
+    currency: typeof object.currency === 'string' ? object.currency : null,
+    stripe_object_id: typeof object.id === 'string' ? object.id : null
+  };
+}
+
 export default function revenueRoutes(router, db) {
-  // Stripe webhook — no auth (verified by signature in production via STRIPE_WEBHOOK_SECRET)
+  // Stripe webhook — authenticated by Stripe's signature, not the normal creator API key.
   router.post('/api/revenue/stripe/webhook', async (req, res) => {
     try {
-      const sig = req.headers['stripe-signature'] || '';
-      const secret = process.env.STRIPE_WEBHOOK_SECRET || '';
-      // Signature verification: in production, use stripe.webhooks.constructEvent().
-      // Here we verify the secret header is present when configured.
-      if (secret && !sig) {
-        json(res, 400, { error: 'Missing stripe-signature header.' });
+      const signature = req.headers['stripe-signature'] || '';
+      const secret = String(process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+
+      if (!secret && process.env.NODE_ENV === 'production') {
+        json(res, 503, { error: 'stripe_webhook_unconfigured' });
         return;
       }
-      const { stripe_event_id, event_type, payload = {} } = req.body || {};
+
+      if (secret) {
+        const verification = verifyStripeWebhookSignature({
+          rawBody: req.rawBody,
+          signatureHeader: signature,
+          secret
+        });
+        if (!verification.verified) {
+          json(res, 400, { error: 'invalid_stripe_signature', reason: verification.reason });
+          return;
+        }
+      }
+
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const stripe_event_id = String(body.id || body.stripe_event_id || '').trim();
+      const event_type = String(body.type || body.event_type || '').trim();
       if (!stripe_event_id || !event_type) {
-        json(res, 400, { error: 'stripe_event_id and event_type are required.' });
+        json(res, 400, { error: 'invalid_stripe_event' });
         return;
       }
+
+      const payload = body.payload && typeof body.payload === 'object'
+        ? body.payload
+        : normalizedStripePayload(body);
       const result = handleStripeWebhook(db, { stripe_event_id, event_type, payload });
-      json(res, 200, result);
+      json(res, 200, { ...result, signature_verified: Boolean(secret) });
     } catch (err) {
-      json(res, 500, { error: err.message });
+      json(res, 500, { error: 'webhook_processing_failed', message: err.message });
     }
   });
 
