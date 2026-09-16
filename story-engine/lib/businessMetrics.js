@@ -226,27 +226,31 @@ export function businessMetricsSummary(db, workspaceId) {
   const rows = db.prepare(`
     SELECT grouped.metric_name,
            grouped.unit,
+           grouped.source,
+           grouped.account_id,
+           grouped.page_id,
+           grouped.audience_segment,
            grouped.observations,
            grouped.missing,
            grouped.latest_observed_at,
            grouped.max_observed_value,
            latest.metric_value AS latest_value,
            latest.value_state AS latest_value_state,
-           latest.observed_at AS latest_value_observed_at,
-           latest.source AS latest_source,
-           latest.account_id AS latest_account_id,
-           latest.page_id AS latest_page_id,
-           latest.audience_segment AS latest_audience_segment
+           latest.observed_at AS latest_value_observed_at
     FROM (
       SELECT metric_name,
              unit,
+             source,
+             account_id,
+             page_id,
+             audience_segment,
              COUNT(*) AS observations,
              SUM(CASE WHEN value_state='missing' THEN 1 ELSE 0 END) AS missing,
              MAX(observed_at) AS latest_observed_at,
              MAX(CASE WHEN value_state='observed' THEN metric_value END) AS max_observed_value
       FROM business_metric_observations
       WHERE workspace_id = ?
-      GROUP BY metric_name, unit
+      GROUP BY metric_name, unit, source, account_id, page_id, audience_segment
     ) grouped
     LEFT JOIN business_metric_observations latest
       ON latest.observation_id = (
@@ -255,10 +259,18 @@ export function businessMetricsSummary(db, workspaceId) {
         WHERE candidate.workspace_id = ?
           AND candidate.metric_name = grouped.metric_name
           AND candidate.unit = grouped.unit
+          AND candidate.source = grouped.source
+          AND candidate.account_id = grouped.account_id
+          AND candidate.page_id IS grouped.page_id
+          AND candidate.audience_segment = grouped.audience_segment
         ORDER BY candidate.observed_at DESC, candidate.imported_at DESC, candidate.observation_id DESC
         LIMIT 1
       )
-    ORDER BY grouped.metric_name ASC
+    ORDER BY grouped.metric_name ASC,
+             grouped.source ASC,
+             grouped.account_id ASC,
+             grouped.page_id ASC,
+             grouped.audience_segment ASC
   `).all(id, id);
   return {
     workspace_id: id,
