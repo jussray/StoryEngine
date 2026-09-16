@@ -2,11 +2,11 @@
 
 import { json } from '../lib/miniRouter.js';
 import { buildPerformanceDashboard } from '../lib/performanceDashboard.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import { importBusinessMetricsCsv, listBusinessMetrics, businessMetricsSummary } from '../lib/businessMetrics.js';
 
 export default function performanceRoutes(router, db) {
-  router.get('/api/performance/overview', (req, res) => {
+  router.get('/api/performance/overview', requireRole('administrator'), (req, res) => {
     try {
       json(res, 200, buildPerformanceDashboard(db, {
         windowMs: req.query.window_ms,
@@ -29,7 +29,7 @@ export default function performanceRoutes(router, db) {
     }
   });
 
-  router.post('/api/performance/business/:workspace_id/import', (req, res) => {
+  router.post('/api/performance/business/:workspace_id/import', requireRole('creator'), (req, res) => {
     if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     if (typeof req.body !== 'string') {
       return json(res, 415, { error: 'text/csv body required' });
@@ -53,7 +53,7 @@ export default function performanceRoutes(router, db) {
     }
   });
 
-  router.get('/api/performance/stream', (req, res) => {
+  router.get('/api/performance/stream', requireRole('administrator'), (req, res) => {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
