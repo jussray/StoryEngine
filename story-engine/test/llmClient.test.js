@@ -7,6 +7,7 @@ const ENV_KEYS = [
   'ANTHROPIC_MODEL',
   'ANTHROPIC_FAST_MODEL',
   'ANTHROPIC_DEEP_MODEL',
+  'ANTHROPIC_VERSION',
   'LLM_ERROR_BODY_MAX_BYTES',
   'LLM_TIMEOUT_MS'
 ];
@@ -26,26 +27,37 @@ async function freshClient() {
   return import(`../lib/llmClient.js?test=${Date.now()}-${Math.random()}`);
 }
 
-test('Anthropic request uses current default model, version header, optional workspace, and never serializes the key', { concurrency: false }, async () => {
+function anthropicEnvelope({ model = 'claude-sonnet-5', text = 'ok' } = {}) {
+  return {
+    id: 'msg_test',
+    type: 'message',
+    role: 'assistant',
+    model,
+    content: [{ type: 'text', text }]
+  };
+}
+
+test('Anthropic request uses required headers and never serializes the API key', { concurrency: false }, async () => {
   const priorEnv = captureEnv();
   const priorFetch = globalThis.fetch;
-  const secret = 'sk-ant-test-secret-value';
+  const secret = 'test-anthropic-key-that-must-not-leak';
   let observed;
   try {
     process.env.ANTHROPIC_API_KEY = secret;
     process.env.ANTHROPIC_WORKSPACE_ID = 'wrkspc_test123';
     delete process.env.ANTHROPIC_MODEL;
+    delete process.env.ANTHROPIC_VERSION;
     globalThis.fetch = async (url, init) => {
       observed = { url, init };
-      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'ok' }] }), {
+      return new Response(JSON.stringify(anthropicEnvelope()), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       });
     };
 
-    const { complete } = await freshClient();
-    const result = await complete('hello', { provider: 'anthropic', maxTokens: 32, maxRetries: 0 });
-    assert.equal(result, 'ok');
+    const { completeWithReceipt } = await freshClient();
+    const receipt = await completeWithReceipt('hello', { provider: 'anthropic', maxTokens: 32, maxRetries: 0 });
+    assert.equal(receipt.text, 'ok');
     assert.equal(observed.url, 'https://api.anthropic.com/v1/messages');
     assert.equal(observed.init.headers['x-api-key'], secret);
     assert.equal(observed.init.headers['anthropic-version'], '2023-06-01');
@@ -53,7 +65,10 @@ test('Anthropic request uses current default model, version header, optional wor
     const body = JSON.parse(observed.init.body);
     assert.equal(body.model, 'claude-sonnet-5');
     assert.equal(body.max_tokens, 32);
+    assert.equal(Object.hasOwn(body, 'temperature'), false);
     assert.equal(JSON.stringify(body).includes(secret), false);
+    assert.equal(receipt.provenance.provider, 'anthropic');
+    assert.equal(receipt.provenance.requested_model, 'claude-sonnet-5');
   } finally {
     globalThis.fetch = priorFetch;
     restoreEnv(priorEnv);
@@ -65,11 +80,11 @@ test('Anthropic workspace header is omitted when no workspace id is configured',
   const priorFetch = globalThis.fetch;
   let observedHeaders;
   try {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
     delete process.env.ANTHROPIC_WORKSPACE_ID;
     globalThis.fetch = async (_url, init) => {
       observedHeaders = init.headers;
-      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'ok' }] }), { status: 200 });
+      return new Response(JSON.stringify(anthropicEnvelope()), { status: 200 });
     };
     const { complete } = await freshClient();
     await complete('hello', { provider: 'anthropic', maxRetries: 0 });
@@ -80,41 +95,46 @@ test('Anthropic workspace header is omitted when no workspace id is configured',
   }
 });
 
-test('provider error bodies are bounded and reflected API keys are redacted', { concurrency: false }, async () => {
+test('Anthropic reflected error bodies are bounded and cannot leak the API key', { concurrency: false }, async () => {
   const priorEnv = captureEnv();
   const priorFetch = globalThis.fetch;
-  const secret = 'sk-ant-super-secret-reflection';
+  const secret = 'test-reflected-anthropic-secret';
   try {
     process.env.ANTHROPIC_API_KEY = secret;
     process.env.LLM_ERROR_BODY_MAX_BYTES = '512';
-    globalThis.fetch = async () => new Response(`provider echoed ${secret} ${'x'.repeat(10000)}`, { status: 500 });
-    const { complete, llmRoutingSnapshot } = await freshClient();
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      type: 'error',
+      error: { type: 'authentication_error', message: `provider echoed ${secret} ${'x'.repeat(10000)}` }
+    }), { status: 401 });
+
+    const { completeWithReceipt, llmRoutingSnapshot } = await freshClient();
     assert.equal(llmRoutingSnapshot().error_body_max_bytes, 512);
     await assert.rejects(
-      () => complete('hello', { provider: 'anthropic', maxRetries: 0 }),
+      () => completeWithReceipt('hello', { provider: 'anthropic', maxRetries: 0 }),
       error => {
-        assert.equal(error.message.includes(secret), false);
-        assert.match(error.message, /\[REDACTED\]/);
-        assert.ok(error.message.length < 800);
+        assert.equal(String(error.message).includes(secret), false);
+        assert.match(String(error.message), /status 401/);
+        assert.ok(String(error.message).length < 300);
         return true;
       }
     );
+    assert.equal(JSON.stringify(llmRoutingSnapshot()).includes(secret), false);
   } finally {
     globalThis.fetch = priorFetch;
     restoreEnv(priorEnv);
   }
 });
 
-test('Anthropic success without a content array fails closed', { concurrency: false }, async () => {
+test('Anthropic success without the Messages API assistant envelope fails closed', { concurrency: false }, async () => {
   const priorEnv = captureEnv();
   const priorFetch = globalThis.fetch;
   try {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
-    globalThis.fetch = async () => new Response(JSON.stringify({ id: 'msg_test' }), { status: 200 });
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+    globalThis.fetch = async () => new Response(JSON.stringify({ id: 'msg_test', content: [] }), { status: 200 });
     const { complete } = await freshClient();
     await assert.rejects(
       () => complete('hello', { provider: 'anthropic', maxRetries: 0 }),
-      /missing the content array/
+      /valid Messages API assistant envelope/
     );
   } finally {
     globalThis.fetch = priorFetch;
@@ -126,13 +146,41 @@ test('Anthropic success with no text output fails closed', { concurrency: false 
   const priorEnv = captureEnv();
   const priorFetch = globalThis.fetch;
   try {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
-    globalThis.fetch = async () => new Response(JSON.stringify({ content: [{ type: 'tool_use', id: 'tool_1' }] }), { status: 200 });
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      ...anthropicEnvelope(),
+      content: [{ type: 'tool_use', id: 'tool_1' }]
+    }), { status: 200 });
     const { complete } = await freshClient();
     await assert.rejects(
       () => complete('hello', { provider: 'anthropic', maxRetries: 0 }),
       /no text output/
     );
+  } finally {
+    globalThis.fetch = priorFetch;
+    restoreEnv(priorEnv);
+  }
+});
+
+test('Opus 5 request omits deprecated temperature even when supplied by a caller', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  let observedBody;
+  try {
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+    globalThis.fetch = async (_url, init) => {
+      observedBody = JSON.parse(init.body);
+      return new Response(JSON.stringify(anthropicEnvelope({ model: 'claude-opus-5' })), { status: 200 });
+    };
+    const { complete } = await freshClient();
+    await complete('hello', {
+      provider: 'anthropic',
+      model: 'claude-opus-5',
+      temperature: 0.2,
+      maxRetries: 0
+    });
+    assert.equal(observedBody.model, 'claude-opus-5');
+    assert.equal(Object.hasOwn(observedBody, 'temperature'), false);
   } finally {
     globalThis.fetch = priorFetch;
     restoreEnv(priorEnv);

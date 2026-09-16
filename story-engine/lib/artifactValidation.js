@@ -212,18 +212,20 @@ function hydrateArtifact(row) {
 }
 
 async function tryPlaywrightSmoke(html) {
+  let browser = null;
   try {
     const { chromium } = await import('playwright');
-    const browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'domcontentloaded' });
     const artifactCount = await page.locator('[data-testid="l99-artifact"]').count();
     const unitCount = await page.locator('[data-testid="story-unit"]').count();
     const title = await page.title();
-    await browser.close();
     return { available: true, passed: artifactCount === 1 && unitCount >= 1 && title.trim().length > 0, artifact_count: artifactCount, unit_count: unitCount, title };
   } catch (error) {
-    return { available: false, passed: null, skipped_reason: error.code === 'ERR_MODULE_NOT_FOUND' ? 'playwright_not_installed' : error.message };
+    return { available: false, passed: false, skipped_reason: error.code === 'ERR_MODULE_NOT_FOUND' ? 'playwright_not_installed' : error.message };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
   }
 }
 
@@ -244,7 +246,7 @@ export async function validateArtifactWithPlaywright(db, artifactId) {
   };
   const structuralPassed = Object.values(structural).every(Boolean);
   const playwright = await tryPlaywrightSmoke(artifact.html);
-  const passed = structuralPassed && (playwright.available ? playwright.passed === true : true);
+  const passed = structuralPassed && playwright.available === true && playwright.passed === true;
   const validation = {
     validator: 'playwright_artifact_gate',
     passed,

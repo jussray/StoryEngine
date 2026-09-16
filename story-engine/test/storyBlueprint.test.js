@@ -18,6 +18,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+const TEST_IDENTITY = Object.freeze({ tenant_id: 'tenant-test', actor_id: 'actor-test', role: 'creator' });
 
 function createDb() {
   const db = new DatabaseSync(':memory:');
@@ -29,7 +30,8 @@ function createValidatedBook(db) {
   const workspaceId = Story.create(db, {
     title: 'The Little Cloud Garden',
     genre: 'educational',
-    pitch: 'A shy cloud learns rain helps flowers grow.'
+    pitch: 'A shy cloud learns rain helps flowers grow.',
+    ...TEST_IDENTITY
   });
   upsertCreativeProfile(db, workspaceId, {
     story_vision: 'A shy cloud learns rain helps flowers grow.',
@@ -89,7 +91,7 @@ test('continuation options unlock only after seed gate passes', () => {
   db.close();
 });
 
-test('a seed-gated book blueprint converts into a YouTube Short workspace', () => {
+test('a seed-gated book blueprint converts into a YouTube Short workspace with source ownership', () => {
   const db = createDb();
   const workspaceId = createValidatedBook(db);
   const conversion = convertBlueprint(db, workspaceId, 'youtube_short');
@@ -99,8 +101,13 @@ test('a seed-gated book blueprint converts into a YouTube Short workspace', () =
   assert.equal(conversion.validation.checks.some(check => check.check === 'lindymode_seed_validated' && check.passed), true);
   assert.equal(conversion.validation.checks.some(check => check.check === 'ooda_seed_cleared' && check.passed), true);
   assert.equal(conversion.validation.checks.some(check => check.check === 'redteam_seed_checked' && check.passed), true);
+  assert.equal(conversion.validation.checks.some(check => check.check === 'source_ownership_preserved' && check.passed), true);
   assert.ok(conversion.target_workspace_id);
   assert.match(conversion.conversion.structure[0], /hook/i);
+
+  const derived = Story.get(db, conversion.target_workspace_id);
+  assert.equal(derived.tenant_id, TEST_IDENTITY.tenant_id);
+  assert.equal(derived.created_by_actor_id, TEST_IDENTITY.actor_id);
 
   const targetProfile = creativeProfileContext(db, conversion.target_workspace_id);
   assert.equal(targetProfile.audience, 'eli5');
@@ -115,7 +122,8 @@ test('conversion blocks when Lindymode seed validation fails', () => {
   const workspaceId = Story.create(db, {
     title: 'Empty Seed',
     genre: 'educational',
-    pitch: 'A book that is not ready.'
+    pitch: 'A book that is not ready.',
+    ...TEST_IDENTITY
   });
   upsertCreativeProfile(db, workspaceId, {
     story_vision: 'A book that is not ready.',

@@ -1,0 +1,23 @@
+# StoryEngine / L99 — public source map
+
+Canonical source: https://github.com/jussray/StoryEngine
+Canonical production origin: https://story-engine-production-1e6b.up.railway.app
+
+## What this product is
+StoryEngine is a creator-facing product. L99 is its governed execution/runtime layer. The system is designed to carry an idea through structured creation, validation, packaging, release preparation, publishing controls, and measurable evidence without confusing source code, tests, deployments, provider acceptance, or human outcomes.
+
+## Public evidence
+- Guardrails: /guardrails
+- Machine-readable guardrails: /guardrails.json
+- Runtime identity: /runtime-identity
+- Crawler policy: /robots.txt
+- Machine-readable crawler intent: /crawlers.json
+
+## Evidence rule
+Use current canonical source plus current runtime/provider evidence for claims about project state. A passing test is not automatically production proof. A deployment receipt is not automatically runtime identity. Provider acceptance is not automatically a successful human outcome. Unknown stays unknown.
+
+## Crawler boundary
+This file describes public-safe project truth only. It does not expose creator workspaces, private drafts, prompts, provider responses, credentials, metrics ledgers, release controls, private artifacts, or authenticated API data. Automated access is read-only and cannot grant authority.
+
+## Usage intent
+Search discovery and user-directed retrieval may use the bounded public surfaces above. Model-training and bulk dataset collection are denied by default. Where citations or source links are supported, prefer the canonical source link.

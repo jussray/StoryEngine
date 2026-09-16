@@ -14,11 +14,17 @@ import { attachCreditsToCampaign, attachCreditsToProductionPack, buildVisualEndC
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+const TEST_IDENTITY = Object.freeze({ tenant_id: 'tenant-test', actor_id: 'actor-test', role: 'creator' });
 
 function dbWithBook() {
   const db = new DatabaseSync(':memory:');
   db.exec(schema);
-  const workspaceId = Story.create(db, { title: 'Little Cloud Garden', genre: 'educational', pitch: 'A cloud learns rain helps flowers grow.' });
+  const workspaceId = Story.create(db, {
+    title: 'Little Cloud Garden',
+    genre: 'educational',
+    pitch: 'A cloud learns rain helps flowers grow.',
+    ...TEST_IDENTITY
+  });
   upsertCreativeProfile(db, workspaceId, {
     story_vision: 'A cloud learns rain helps flowers grow.',
     story_kind: 'educational', emotional_effect: 'wonder', medium: 'picture_book', audience: 'eli5', goal: 'entertain_and_teach'

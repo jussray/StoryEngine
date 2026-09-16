@@ -50,11 +50,27 @@ import ipStudioRoutes from './routes/ipStudio.js';
 import campaignStudioRoutes from './routes/campaignStudio.js';
 import bootstrapEngineRoutes from './routes/bootstrapEngine.js';
 import ipSeedRoutes from './routes/ipSeed.js';
+import artifactRoutes from './routes/artifacts.js';
+import revenueRoutes from './routes/revenue.js';
+import videoEngineRoutes from './routes/videoEngine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const API_MAX_BODY_BYTES = Number(process.env.API_MAX_BODY_BYTES || 2 * 1024 * 1024);
 const RUNTIME_IDENTITY = runtimeIdentitySnapshot();
+const EXTERNAL_AUTHORITY_PATHS = new Set(['/api/revenue/stripe/webhook']);
+const DOCUMENT_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'"
+].join('; ');
 
 const MIME = {
   '.html': 'text/html',
@@ -66,8 +82,20 @@ const MIME = {
 
 const router = createRouter({ maxBodyBytes: API_MAX_BODY_BYTES });
 router.use('/api', requestContext);
-router.use('/api', requireAuth);
-router.use('/api', enforceWorkspaceAccess);
+router.use('/api', (req, res, next) => {
+  req.db = db;
+  next();
+});
+router.use('/api', (req, res, next) => {
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  if (EXTERNAL_AUTHORITY_PATHS.has(pathname)) return next();
+  return requireAuth(req, res, next);
+});
+router.use('/api', (req, res, next) => {
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  if (EXTERNAL_AUTHORITY_PATHS.has(pathname)) return next();
+  return enforceWorkspaceAccess(req, res, next);
+});
 router.use('/api/control-room', enforceOperatorApiBoundary);
 authSessionRoutes(router, db);
 storyRoutes(router, db);
@@ -102,6 +130,9 @@ ipStudioRoutes(router, db);
 campaignStudioRoutes(router, db);
 bootstrapEngineRoutes(router, db);
 ipSeedRoutes(router, db);
+artifactRoutes(router, db);
+revenueRoutes(router, db);
+videoEngineRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
@@ -143,7 +174,10 @@ function serveStatic(filePath, ext, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   if (ext === '.html') {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Security-Policy', DOCUMENT_CSP);
     const html = readFileSync(filePath, 'utf8');
     const injected = html.includes('/l99_auth.js')
       ? html
@@ -202,18 +236,15 @@ const server = createServer((req, res) => {
   }
 
   let urlPath = req.url.split('?')[0];
-  // Root redirects to the creator entry point.
   if (urlPath === '/') urlPath = '/front_door.html';
 
   const filePath = join(__dirname, 'public', urlPath);
   const ext = extname(filePath);
 
-  // Gate HTML and JavaScript clients through the creator/operator session boundary.
   if (ext === '.html' || ext === '.js') {
     enforcePageAccess(urlPath, req, res, () => {
-      if (existsSync(filePath)) {
-        serveStatic(filePath, ext, res);
-      } else {
+      if (existsSync(filePath)) serveStatic(filePath, ext, res);
+      else {
         res.writeHead(404);
         res.end('Not found');
       }
@@ -221,10 +252,8 @@ const server = createServer((req, res) => {
     return;
   }
 
-  // Non-gated static assets (css, ico, etc).
-  if (existsSync(filePath)) {
-    serveStatic(filePath, ext, res);
-  } else {
+  if (existsSync(filePath)) serveStatic(filePath, ext, res);
+  else {
     res.writeHead(404);
     res.end('Not found');
   }
@@ -259,4 +288,7 @@ server.listen(PORT, () => {
   console.log('OODA SSE: GET /api/ooda/incidents for authenticated live incidents.');
   console.log('Founder Economics: GET /api/bootstrap-engine/overview');
   console.log('IP Seed Memory Graph: GET /api/ip-seeds/overview');
+  console.log('Artifacts: GET /api/workspaces/:workspace_id/artifacts');
+  console.log('Video Engine: GET /api/video-engine/options');
+  console.log('Business metrics: GET /api/performance/business/:workspace_id');
 });

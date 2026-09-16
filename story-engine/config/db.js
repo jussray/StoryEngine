@@ -44,6 +44,8 @@ ensureColumn('memory_diffs', 'diff_id', 'TEXT');
 ensureColumn('memory_diffs', 'resolution', 'TEXT');
 ensureColumn('memory_diffs', 'source', "TEXT NOT NULL DEFAULT 'system'");
 ensureColumn('memory_diffs', 'resolved_at', 'INTEGER');
+ensureColumn('stories', 'tenant_id', 'TEXT');
+ensureColumn('stories', 'created_by_actor_id', 'TEXT');
 
 db.exec(`
   DELETE FROM memory_diffs
@@ -62,6 +64,46 @@ db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_content_hash_once
     ON memory_diffs(workspace_id, chapter_id, field, new_value)
     WHERE field = 'content_hash';
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS workspace_memberships (
+    workspace_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'creator',
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, tenant_id, actor_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_workspace_memberships_actor
+    ON workspace_memberships(tenant_id, actor_id, workspace_id);
+  CREATE INDEX IF NOT EXISTS idx_stories_tenant
+    ON stories(tenant_id, updated_at DESC);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS business_metric_observations (
+    observation_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    audience_segment TEXT NOT NULL,
+    source TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    page_id TEXT,
+    content_id TEXT,
+    metric_name TEXT NOT NULL,
+    metric_value REAL,
+    value_state TEXT NOT NULL CHECK(value_state IN ('observed','missing')),
+    unit TEXT NOT NULL,
+    observed_at INTEGER NOT NULL,
+    imported_at INTEGER NOT NULL,
+    historical INTEGER NOT NULL DEFAULT 0,
+    provenance_json TEXT NOT NULL DEFAULT '{}',
+    raw_row_hash TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_business_metrics_workspace_time
+    ON business_metric_observations(workspace_id, observed_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_business_metrics_source
+    ON business_metric_observations(source, account_id, page_id, observed_at DESC);
 `);
 
 db.exec(`

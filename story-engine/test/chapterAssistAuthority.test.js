@@ -11,6 +11,7 @@ import { setWorkspaceAssist } from '../lib/assistMode.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+const TEST_IDENTITY = Object.freeze({ tenant_id: 'tenant-test', actor_id: 'actor-test', role: 'creator' });
 
 function createDb() {
   const db = new DatabaseSync(':memory:');
@@ -46,7 +47,8 @@ function createWorkspace(db, assistMode) {
   const workspaceId = Story.create(db, {
     title: `${assistMode} story`,
     genre: 'fantasy',
-    pitch: 'A creator-owned story.'
+    pitch: 'A creator-owned story.',
+    ...TEST_IDENTITY
   });
   setWorkspaceAssist(db, workspaceId, { assist_mode: assistMode });
   return workspaceId;
@@ -91,7 +93,8 @@ test('Writer chapter create and save persist human text without autonomous runti
   const updated = responseRecorder();
   handlers.get('PUT /api/chapters/:id')({
     params: { id: String(created.body.id) },
-    auth: { workspace_ids: ['*'] },
+    auth: { ...TEST_IDENTITY, workspace_ids: ['*'] },
+    db,
     body: { title: 'Chapter One', content: 'Human-authored revised line.' }
   }, updated);
 

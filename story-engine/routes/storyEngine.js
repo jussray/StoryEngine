@@ -24,6 +24,7 @@ import {
 } from '../lib/storyEngineAssistAuthority.js';
 import { ensureRuntimeDispatchSchema } from '../lib/runtimeDispatcher.js';
 import { log } from '../models/eventModel.js';
+import * as Story from '../models/storyModel.js';
 import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 function cancelQueuedDispatch(db, dispatchId) {
@@ -106,6 +107,40 @@ function applyAssistMode(db, run, requestedMode) {
   };
 }
 
+function authorizedWorkspaceIds(db, auth) {
+  return new Set(Story.list(db, auth).map(item => item.workspace_id));
+}
+
+function scopedRuns(db, auth, limit) {
+  const allowed = authorizedWorkspaceIds(db, auth);
+  return listStoryEngineRuns(db, limit).filter(run => allowed.has(run.workspace_id));
+}
+
+function scopedBrain(db, auth) {
+  const allowed = authorizedWorkspaceIds(db, auth);
+  const brain = storyEngineBrainSnapshot(db);
+  const recentRuns = brain.recent_runs.filter(run => allowed.has(run.workspace_id));
+  const activeRuns = brain.active_runs.filter(run => allowed.has(run.workspace_id));
+  const reports = (brain.blader_health?.reports || []).filter(report => allowed.has(report.workspace_id));
+  const average = reports.length
+    ? Math.round(reports.reduce((sum, item) => sum + Number(item.score || 0), 0) / reports.length)
+    : 0;
+  return {
+    ...brain,
+    recent_runs: recentRuns,
+    active_runs: activeRuns,
+    active_count: activeRuns.length,
+    current: activeRuns[0] || recentRuns[0] || null,
+    blader_health: {
+      ...brain.blader_health,
+      average_score: average,
+      below_threshold_count: reports.filter(item => item.score < brain.blader_health.threshold).length,
+      last_run: reports[0] || null,
+      reports
+    }
+  };
+}
+
 export default function storyEngineRoutes(router, db) {
   ensureRuntimeDispatchSchema(db);
 
@@ -128,12 +163,18 @@ export default function storyEngineRoutes(router, db) {
 
   router.post('/api/story-engine/runs', async (req, res) => {
     try {
-      const assistMode = resolveStoryEngineAssistMode(db, req.body?.assist_mode);
+      const input = {
+        ...(req.body || {}),
+        tenant_id: req.auth?.tenant_id,
+        actor_id: req.auth?.actor_id,
+        role: req.auth?.role || 'creator'
+      };
+      const assistMode = resolveStoryEngineAssistMode(db, input.assist_mode);
       if (isHumanLedAssistMode(assistMode)) {
-        const run = await startHumanLedStoryEngineRun(db, req.body || {}, assistMode);
+        const run = await startHumanLedStoryEngineRun(db, input, assistMode);
         return json(res, 201, run);
       }
-      const run = await startStoryEngineRun(db, req.body || {});
+      const run = await startStoryEngineRun(db, input);
       json(res, 201, applyAssistMode(db, run, assistMode));
     } catch (error) {
       json(res, 400, { error: error.message });
@@ -143,14 +184,14 @@ export default function storyEngineRoutes(router, db) {
   router.get('/api/story-engine/runs', (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
-      json(res, 200, listStoryEngineRuns(db, Number(url.searchParams.get('limit') || 50)));
+      json(res, 200, scopedRuns(db, req.auth, Number(url.searchParams.get('limit') || 50)));
     } catch (error) {
       json(res, 500, { error: error.message });
     }
   });
 
   router.get('/api/story-engine/brain', (req, res) => {
-    try { json(res, 200, storyEngineBrainSnapshot(db)); }
+    try { json(res, 200, scopedBrain(db, req.auth)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
 

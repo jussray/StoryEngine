@@ -12,6 +12,7 @@ import { buildIpSeed, getIpSeed, ipSeedOverview, proposeSeedUpdate } from '../li
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+const TEST_IDENTITY = Object.freeze({ tenant_id: 'tenant-test', actor_id: 'actor-test', role: 'creator' });
 
 function createDb() {
   const db = new DatabaseSync(':memory:');
@@ -23,7 +24,8 @@ function createBook(db) {
   const workspaceId = Story.create(db, {
     title: 'Little Cloud Garden',
     genre: 'educational',
-    pitch: 'A shy cloud learns rain helps flowers grow.'
+    pitch: 'A shy cloud learns rain helps flowers grow.',
+    ...TEST_IDENTITY
   });
   upsertCreativeProfile(db, workspaceId, {
     story_vision: 'A shy cloud learns rain helps flowers grow.',
