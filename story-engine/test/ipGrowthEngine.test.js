@@ -12,6 +12,7 @@ import { evaluateIpGrowth, getLatestIpGrowth, listIpGrowthActions, startIpExpans
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+const TEST_IDENTITY = Object.freeze({ tenant_id: 'tenant-test', actor_id: 'actor-test', role: 'creator' });
 
 function createDb() {
   const db = new DatabaseSync(':memory:');
@@ -23,7 +24,8 @@ function createBook(db) {
   const workspaceId = Story.create(db, {
     title: 'The Little Cloud Garden',
     genre: 'educational',
-    pitch: 'A shy cloud learns rain helps flowers grow.'
+    pitch: 'A shy cloud learns rain helps flowers grow.',
+    ...TEST_IDENTITY
   });
   upsertCreativeProfile(db, workspaceId, {
     story_vision: 'A shy cloud learns rain helps flowers grow.',
@@ -72,6 +74,9 @@ test('IP Growth Engine starts expansion through existing seed-gated conversion',
   assert.equal(action.recommendation.target_medium, 'youtube_short');
   assert.ok(action.conversion.conversion_id);
   assert.ok(action.conversion.target_workspace_id);
+  const derived = Story.get(db, action.conversion.target_workspace_id);
+  assert.equal(derived.tenant_id, TEST_IDENTITY.tenant_id);
+  assert.equal(derived.created_by_actor_id, TEST_IDENTITY.actor_id);
 
   const actions = listIpGrowthActions(db, workspaceId);
   assert.equal(actions.length, 1);
@@ -81,7 +86,9 @@ test('IP Growth Engine starts expansion through existing seed-gated conversion',
 
 test('IP Growth Engine blocks an incomplete source', () => {
   const db = createDb();
-  const workspaceId = Story.create(db, { title: 'Empty IP', genre: 'fantasy', pitch: 'Not finished.' });
+  const workspaceId = Story.create(db, {
+    title: 'Empty IP', genre: 'fantasy', pitch: 'Not finished.', ...TEST_IDENTITY
+  });
   upsertCreativeProfile(db, workspaceId, {
     story_vision: 'An unfinished story.',
     story_kind: 'fantasy',

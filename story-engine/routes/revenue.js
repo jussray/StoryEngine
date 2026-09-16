@@ -40,21 +40,19 @@ export default function revenueRoutes(router, db) {
       const signature = req.headers['stripe-signature'] || '';
       const secret = String(process.env.STRIPE_WEBHOOK_SECRET || '').trim();
 
-      if (!secret && process.env.NODE_ENV === 'production') {
+      if (!secret) {
         json(res, 503, { error: 'stripe_webhook_unconfigured' });
         return;
       }
 
-      if (secret) {
-        const verification = verifyStripeWebhookSignature({
-          rawBody: req.rawBody,
-          signatureHeader: signature,
-          secret
-        });
-        if (!verification.verified) {
-          json(res, 400, { error: 'invalid_stripe_signature', reason: verification.reason });
-          return;
-        }
+      const verification = verifyStripeWebhookSignature({
+        rawBody: req.rawBody,
+        signatureHeader: signature,
+        secret
+      });
+      if (!verification.verified) {
+        json(res, 400, { error: 'invalid_stripe_signature', reason: verification.reason });
+        return;
       }
 
       const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -69,7 +67,7 @@ export default function revenueRoutes(router, db) {
         ? body.payload
         : normalizedStripePayload(body);
       const result = handleStripeWebhook(db, { stripe_event_id, event_type, payload });
-      json(res, 200, { ...result, signature_verified: Boolean(secret) });
+      json(res, 200, { ...result, signature_verified: true });
     } catch (err) {
       json(res, 500, { error: 'webhook_processing_failed', message: err.message });
     }

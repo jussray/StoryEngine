@@ -45,9 +45,6 @@ export function list(db, identity = {}) {
 
   const configured = Array.isArray(identity.workspace_ids) ? identity.workspace_ids.map(String) : [];
   if (configured.includes('*')) {
-    if (identity.role === 'administrator') {
-      return selectList(db, 'WHERE s.tenant_id = ? OR s.tenant_id IS NULL', [tenantId]);
-    }
     return selectList(db, 'WHERE s.tenant_id = ?', [tenantId]);
   }
 
@@ -61,8 +58,20 @@ export function list(db, identity = {}) {
   const placeholders = allowed.map(() => '?').join(',');
   return selectList(
     db,
-    `WHERE s.workspace_id IN (${placeholders}) AND (s.tenant_id = ? OR s.tenant_id IS NULL)`,
-    [...allowed, tenantId]
+    `WHERE s.workspace_id IN (${placeholders})
+       AND (
+         s.tenant_id = ?
+         OR (
+           s.tenant_id IS NULL
+           AND EXISTS (
+             SELECT 1 FROM workspace_memberships wm
+             WHERE wm.workspace_id = s.workspace_id
+               AND wm.tenant_id = ?
+               AND wm.actor_id = ?
+           )
+         )
+       )`,
+    [...allowed, tenantId, tenantId, actorId]
   );
 }
 

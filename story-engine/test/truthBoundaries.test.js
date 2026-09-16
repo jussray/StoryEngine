@@ -14,6 +14,7 @@ import { completeWithReceipt, llmRoutingSnapshot } from '../lib/llmClient.js';
 import { assertWorkspaceAccess } from '../lib/securityContext.js';
 import * as Story from '../models/storyModel.js';
 import { importBusinessMetricsCsv, listBusinessMetrics, businessMetricsSummary } from '../lib/businessMetrics.js';
+import revenueRoutes from '../routes/revenue.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
@@ -54,48 +55,42 @@ async function settled() {
   await new Promise(resolve => setImmediate(resolve));
 }
 
-function createTenantDb() {
+function createDb() {
   const db = new DatabaseSync(':memory:');
   db.exec(schema);
-  db.exec('ALTER TABLE stories ADD COLUMN tenant_id TEXT;');
-  db.exec('ALTER TABLE stories ADD COLUMN created_by_actor_id TEXT;');
-  db.exec(`
-    CREATE TABLE workspace_memberships (
-      workspace_id TEXT NOT NULL,
-      tenant_id TEXT NOT NULL,
-      actor_id TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'creator',
-      created_at INTEGER NOT NULL,
-      PRIMARY KEY (workspace_id, tenant_id, actor_id)
-    );
-  `);
   return db;
 }
 
-function createMetricsDb() {
-  const db = new DatabaseSync(':memory:');
-  db.exec(`
-    CREATE TABLE business_metric_observations (
-      observation_id TEXT PRIMARY KEY,
-      workspace_id TEXT NOT NULL,
-      audience_segment TEXT NOT NULL,
-      source TEXT NOT NULL,
-      account_id TEXT NOT NULL,
-      page_id TEXT,
-      content_id TEXT,
-      metric_name TEXT NOT NULL,
-      metric_value REAL,
-      value_state TEXT NOT NULL CHECK(value_state IN ('observed','missing')),
-      unit TEXT NOT NULL,
-      observed_at INTEGER NOT NULL,
-      imported_at INTEGER NOT NULL,
-      historical INTEGER NOT NULL DEFAULT 0,
-      provenance_json TEXT NOT NULL DEFAULT '{}',
-      raw_row_hash TEXT NOT NULL
-    );
-  `);
-  return db;
+function createTenantDb() {
+  return createDb();
 }
+
+function createMetricsDb() {
+  return createDb();
+}
+
+function captureRevenueRoutes(db) {
+  const handlers = new Map();
+  const router = {
+    get(path, ...routeHandlers) { handlers.set(`GET ${path}`, routeHandlers.at(-1)); },
+    post(path, ...routeHandlers) { handlers.set(`POST ${path}`, routeHandlers.at(-1)); }
+  };
+  revenueRoutes(router, db);
+  return handlers;
+}
+
+test('canonical schema includes ownership and business metric truth tables', () => {
+  const db = createDb();
+  try {
+    const storyColumns = db.prepare('PRAGMA table_info(stories)').all().map(row => row.name);
+    assert.ok(storyColumns.includes('tenant_id'));
+    assert.ok(storyColumns.includes('created_by_actor_id'));
+    assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='workspace_memberships'").get());
+    assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='business_metric_observations'").get());
+  } finally {
+    db.close();
+  }
+});
 
 test('miniRouter executes route middleware and final handler in order', async () => {
   const router = createRouter();
@@ -158,6 +153,27 @@ test('Stripe webhook signature verification rejects tampering and stale timestam
   assert.equal(verifyStripeWebhookSignature({
     rawBody, signatureHeader, secret, nowMs: nowMs + 301_000
   }).reason, 'signature_timestamp_outside_tolerance');
+});
+
+test('Stripe webhook fails closed when verification secret is unavailable in any environment', async () => {
+  const originalSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  delete process.env.STRIPE_WEBHOOK_SECRET;
+  const db = createDb();
+  try {
+    const handlers = captureRevenueRoutes(db);
+    const res = responseRecorder();
+    await handlers.get('POST /api/revenue/stripe/webhook')({
+      headers: {},
+      rawBody: Buffer.from('{"id":"evt_unsigned","type":"checkout.session.completed"}'),
+      body: { id: 'evt_unsigned', type: 'checkout.session.completed' }
+    }, res);
+    assert.equal(res.statusCode, 503);
+    assert.deepEqual(JSON.parse(res.body), { error: 'stripe_webhook_unconfigured' });
+  } finally {
+    db.close();
+    if (originalSecret === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
+    else process.env.STRIPE_WEBHOOK_SECRET = originalSecret;
+  }
 });
 
 test('Anthropic request uses required headers, current model defaults, and transport-owned provenance', async () => {
@@ -228,7 +244,7 @@ test('Anthropic reflected error body cannot leak API key into exception or circu
   }
 });
 
-test('story creation records durable tenant membership and listing never crosses tenants', () => {
+test('story creation records durable tenant membership and legacy null ownership fails closed', () => {
   const db = createTenantDb();
   try {
     const a = Story.create(db, {
@@ -249,7 +265,7 @@ test('story creation records durable tenant membership and listing never crosses
       tenant_id: 'tenant-a', actor_id: 'admin-a', role: 'administrator', workspace_ids: ['*']
     });
     assert.equal(adminStories.some(item => item.workspace_id === a), true);
-    assert.equal(adminStories.some(item => item.workspace_id === 'legacy-workspace'), true);
+    assert.equal(adminStories.some(item => item.workspace_id === 'legacy-workspace'), false);
     assert.equal(adminStories.some(item => item.workspace_id === b), false);
 
     const requestA = {
@@ -258,6 +274,25 @@ test('story creation records durable tenant membership and listing never crosses
     };
     assert.equal(assertWorkspaceAccess(requestA, a), true);
     assert.equal(assertWorkspaceAccess(requestA, b), false);
+
+    const legacyAdmin = {
+      db,
+      auth: { tenant_id: 'tenant-a', actor_id: 'admin-a', role: 'administrator', workspace_ids: ['*'] }
+    };
+    assert.equal(assertWorkspaceAccess(legacyAdmin, 'legacy-workspace'), false);
+
+    db.prepare(`
+      INSERT INTO workspace_memberships (workspace_id, tenant_id, actor_id, role, created_at)
+      VALUES (?, ?, ?, 'creator', ?)
+    `).run('legacy-workspace', 'tenant-a', 'actor-a', Date.now());
+    const migratedLegacy = Story.list(db, {
+      tenant_id: 'tenant-a', actor_id: 'actor-a', role: 'creator', workspace_ids: ['legacy-workspace']
+    });
+    assert.deepEqual(migratedLegacy.map(item => item.workspace_id), ['legacy-workspace']);
+    assert.equal(assertWorkspaceAccess({
+      db,
+      auth: { tenant_id: 'tenant-a', actor_id: 'actor-a', role: 'creator', workspace_ids: ['legacy-workspace'] }
+    }, 'legacy-workspace'), true);
   } finally {
     db.close();
   }
@@ -303,6 +338,50 @@ test('business metrics preserve identity, provenance, null-vs-zero, history and 
 
     const summary = businessMetricsSummary(db, 'workspace-a');
     assert.equal(summary.metrics.length, 2);
+  } finally {
+    db.close();
+  }
+});
+
+test('business metric CSV import is atomic when a later row is invalid', () => {
+  const db = createMetricsDb();
+  try {
+    const csv = [
+      'observed_at,metric_name,metric_value,unit',
+      '2026-09-01T12:00:00Z,impressions,100,count',
+      '2026-09-02T12:00:00Z,impressions,not-a-number,count'
+    ].join('\n');
+    assert.throws(() => importBusinessMetricsCsv(db, csv, {
+      workspace_id: 'workspace-a',
+      audience_segment: 'founders',
+      source: 'metricool:facebook',
+      account_id: 'brand-123'
+    }), /metric_value must be finite/i);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM business_metric_observations').get().count, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('business metrics summary separates actual latest value from historical maximum', () => {
+  const db = createMetricsDb();
+  try {
+    const csv = [
+      'observed_at,metric_name,metric_value,unit',
+      '2026-09-01T12:00:00Z,impressions,100,count',
+      '2026-09-02T12:00:00Z,impressions,20,count'
+    ].join('\n');
+    importBusinessMetricsCsv(db, csv, {
+      workspace_id: 'workspace-a',
+      audience_segment: 'founders',
+      source: 'metricool:facebook',
+      account_id: 'brand-123'
+    });
+    const metric = businessMetricsSummary(db, 'workspace-a').metrics.find(item => item.metric_name === 'impressions');
+    assert.equal(metric.latest_value, 20);
+    assert.equal(metric.max_observed_value, 100);
+    assert.equal(metric.latest_value_state, 'observed');
+    assert.equal(metric.latest_value_observed_at, Date.parse('2026-09-02T12:00:00Z'));
   } finally {
     db.close();
   }

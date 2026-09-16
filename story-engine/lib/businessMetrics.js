@@ -150,6 +150,10 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
   }
 
   const importedAt = Date.now();
+  const normalizedRows = rows.slice(1).map((values, index) => {
+    const row = Object.fromEntries(headers.map((header, column) => [header, values[column] ?? '']));
+    return normalizeRow(row, defaults, importedAt, index + 2);
+  });
   const insert = db.prepare(`
     INSERT OR IGNORE INTO business_metric_observations (
       observation_id, workspace_id, audience_segment, source, account_id, page_id, content_id,
@@ -163,33 +167,32 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
   let missingValues = 0;
   const observationIds = [];
 
-  for (let index = 1; index < rows.length; index += 1) {
-    const values = rows[index];
-    const row = Object.fromEntries(headers.map((header, column) => [header, values[column] ?? '']));
-    const normalized = normalizeRow(row, defaults, importedAt, index + 1);
-    const result = insert.run(
-      normalized.observation_id,
-      normalized.workspace_id,
-      normalized.audience_segment,
-      normalized.source,
-      normalized.account_id,
-      normalized.page_id,
-      normalized.content_id,
-      normalized.metric_name,
-      normalized.metric_value,
-      normalized.value_state,
-      normalized.unit,
-      normalized.observed_at,
-      normalized.imported_at,
-      normalized.historical,
-      normalized.provenance_json,
-      normalized.raw_row_hash
-    );
-    observationIds.push(normalized.observation_id);
-    if (normalized.value_state === 'missing') missingValues += 1;
-    if (Number(result.changes || 0) === 1) written += 1;
-    else duplicates += 1;
-  }
+  db.transaction(() => {
+    for (const normalized of normalizedRows) {
+      const result = insert.run(
+        normalized.observation_id,
+        normalized.workspace_id,
+        normalized.audience_segment,
+        normalized.source,
+        normalized.account_id,
+        normalized.page_id,
+        normalized.content_id,
+        normalized.metric_name,
+        normalized.metric_value,
+        normalized.value_state,
+        normalized.unit,
+        normalized.observed_at,
+        normalized.imported_at,
+        normalized.historical,
+        normalized.provenance_json,
+        normalized.raw_row_hash
+      );
+      observationIds.push(normalized.observation_id);
+      if (normalized.value_state === 'missing') missingValues += 1;
+      if (Number(result.changes || 0) === 1) written += 1;
+      else duplicates += 1;
+    }
+  })();
 
   return {
     rows_seen: rows.length - 1,
@@ -208,7 +211,7 @@ export function listBusinessMetrics(db, workspaceId, { limit = 100 } = {}) {
            provenance_json
     FROM business_metric_observations
     WHERE workspace_id = ?
-    ORDER BY observed_at DESC, metric_name ASC
+    ORDER BY observed_at DESC, imported_at DESC, metric_name ASC, observation_id DESC
     LIMIT ?
   `).all(String(workspaceId), safeLimit).map(row => ({
     ...row,
@@ -219,19 +222,46 @@ export function listBusinessMetrics(db, workspaceId, { limit = 100 } = {}) {
 }
 
 export function businessMetricsSummary(db, workspaceId) {
+  const id = String(workspaceId);
   const rows = db.prepare(`
-    SELECT metric_name, unit,
-           COUNT(*) AS observations,
-           SUM(CASE WHEN value_state='missing' THEN 1 ELSE 0 END) AS missing,
-           MAX(observed_at) AS latest_observed_at,
-           MAX(CASE WHEN value_state='observed' THEN metric_value END) AS latest_or_max_value
-    FROM business_metric_observations
-    WHERE workspace_id = ?
-    GROUP BY metric_name, unit
-    ORDER BY metric_name ASC
-  `).all(String(workspaceId));
+    SELECT grouped.metric_name,
+           grouped.unit,
+           grouped.observations,
+           grouped.missing,
+           grouped.latest_observed_at,
+           grouped.max_observed_value,
+           latest.metric_value AS latest_value,
+           latest.value_state AS latest_value_state,
+           latest.observed_at AS latest_value_observed_at,
+           latest.source AS latest_source,
+           latest.account_id AS latest_account_id,
+           latest.page_id AS latest_page_id,
+           latest.audience_segment AS latest_audience_segment
+    FROM (
+      SELECT metric_name,
+             unit,
+             COUNT(*) AS observations,
+             SUM(CASE WHEN value_state='missing' THEN 1 ELSE 0 END) AS missing,
+             MAX(observed_at) AS latest_observed_at,
+             MAX(CASE WHEN value_state='observed' THEN metric_value END) AS max_observed_value
+      FROM business_metric_observations
+      WHERE workspace_id = ?
+      GROUP BY metric_name, unit
+    ) grouped
+    LEFT JOIN business_metric_observations latest
+      ON latest.observation_id = (
+        SELECT candidate.observation_id
+        FROM business_metric_observations candidate
+        WHERE candidate.workspace_id = ?
+          AND candidate.metric_name = grouped.metric_name
+          AND candidate.unit = grouped.unit
+        ORDER BY candidate.observed_at DESC, candidate.imported_at DESC, candidate.observation_id DESC
+        LIMIT 1
+      )
+    ORDER BY grouped.metric_name ASC
+  `).all(id, id);
   return {
-    workspace_id: String(workspaceId),
+    workspace_id: id,
     metrics: rows
   };
 }

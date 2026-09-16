@@ -297,7 +297,14 @@ export async function startStoryEngineRun(db, input = {}) {
   ensureStoryEngineSchema(db);
   const intent = parseStoryIntent(input);
   const runId = randomUUID();
-  const workspaceId = Story.create(db, { title: intent.title, genre: intent.story_kind, pitch: intent.story_vision });
+  const workspaceId = Story.create(db, {
+    title: intent.title,
+    genre: intent.story_kind,
+    pitch: intent.story_vision,
+    tenant_id: input.tenant_id,
+    actor_id: input.actor_id,
+    role: input.role || 'creator'
+  });
   const now = Date.now();
   db.prepare(`
     INSERT INTO story_engine_runs (

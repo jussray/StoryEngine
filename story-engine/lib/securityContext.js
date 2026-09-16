@@ -250,11 +250,11 @@ export function assertWorkspaceAccess(req, workspaceId) {
 
   if (owner?.exists && owner.tenant_id && owner.tenant_id !== identity.tenant_id) return false;
   if (workspaceMembershipAllows(req, normalized)) return true;
+  if (owner?.exists && !owner.tenant_id) return false;
   if (allowed.includes(normalized)) return true;
 
   if (allowed.includes('*')) {
-    if (owner?.exists && owner.tenant_id === identity.tenant_id) return true;
-    if (owner?.exists && !owner.tenant_id) return identity.role === 'administrator';
+    if (owner?.exists) return owner.tenant_id === identity.tenant_id;
     return identity.role === 'administrator';
   }
   return false;
