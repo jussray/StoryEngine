@@ -56,6 +56,18 @@ function boundedMaxTokens(options = {}, model = '') {
   return Math.min(normalized, modelCap, MAX_TOKENS_CAP);
 }
 
+function supportsAnthropicTemperature(model) {
+  const normalized = String(model || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.startsWith('claude-sonnet-5')) return false;
+  if (normalized.startsWith('claude-opus-5')) return false;
+  if (normalized.startsWith('claude-fable-5')) return false;
+  if (normalized.startsWith('claude-mythos-5')) return false;
+  if (normalized.startsWith('claude-opus-4-7')) return false;
+  if (normalized.startsWith('claude-opus-4-8')) return false;
+  return true;
+}
+
 function headers(extra = {}) {
   return { 'Content-Type': 'application/json', ...extra };
 }
@@ -265,7 +277,7 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
     system: options.system || undefined,
     messages: [{ role: 'user', content: prompt }]
   };
-  if (options.temperature !== undefined && !String(model).startsWith('claude-sonnet-5')) {
+  if (options.temperature !== undefined && supportsAnthropicTemperature(model)) {
     body.temperature = options.temperature;
   }
 
