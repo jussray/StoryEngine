@@ -98,8 +98,7 @@ db.exec(`
     imported_at INTEGER NOT NULL,
     historical INTEGER NOT NULL DEFAULT 0,
     provenance_json TEXT NOT NULL DEFAULT '{}',
-    raw_row_hash TEXT NOT NULL,
-    UNIQUE(workspace_id, source, account_id, COALESCE(page_id,''), COALESCE(content_id,''), audience_segment, metric_name, observed_at, raw_row_hash)
+    raw_row_hash TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_business_metrics_workspace_time
     ON business_metric_observations(workspace_id, observed_at DESC);
