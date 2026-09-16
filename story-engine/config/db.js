@@ -31,7 +31,20 @@ db.exec('PRAGMA temp_store = MEMORY;');
 db.exec('PRAGMA wal_autocheckpoint = 1000;');
 
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
-db.exec(schema);
+const schemaIndexMarker = '\nCREATE INDEX IF NOT EXISTS ';
+const firstIndexOffset = schema.indexOf(schemaIndexMarker);
+
+if (firstIndexOffset < 0) {
+  throw new Error('Schema migration boundary missing: expected CREATE INDEX section.');
+}
+
+// Existing production databases can predate additive columns referenced by
+// current indexes. CREATE TABLE IF NOT EXISTS does not change an old table's
+// shape, so execute table DDL first, apply additive migrations, then indexes.
+// This keeps upgrades in place and never requires replacing persistent data.
+const schemaTables = schema.slice(0, firstIndexOffset);
+const schemaIndexes = schema.slice(firstIndexOffset);
+db.exec(schemaTables);
 
 function ensureColumn(table, column, definition) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -46,6 +59,8 @@ ensureColumn('memory_diffs', 'source', "TEXT NOT NULL DEFAULT 'system'");
 ensureColumn('memory_diffs', 'resolved_at', 'INTEGER');
 ensureColumn('stories', 'tenant_id', 'TEXT');
 ensureColumn('stories', 'created_by_actor_id', 'TEXT');
+
+db.exec(schemaIndexes);
 
 db.exec(`
   DELETE FROM memory_diffs
