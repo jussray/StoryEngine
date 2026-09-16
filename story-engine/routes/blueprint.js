@@ -9,6 +9,8 @@ import {
   listBlueprintConversions,
   getBlueprintContinuationOptions
 } from '../lib/storyBlueprint.js';
+import * as Story from '../models/storyModel.js';
+import { canCreateDerivedWorkspace, derivedWorkspaceCreationDenial } from '../lib/workspaceCreationAuthority.js';
 
 export default function blueprintRoutes(router, db) {
   router.get('/api/blueprints/options', (req, res) => {
@@ -57,6 +59,11 @@ export default function blueprintRoutes(router, db) {
   });
 
   router.post('/api/blueprints/:workspace_id/convert', (req, res) => {
+    const sourceStory = Story.get(db, req.params.workspace_id);
+    if (!sourceStory) return json(res, 404, { error: 'Source workspace not found.' });
+    if (!canCreateDerivedWorkspace(req.auth, sourceStory)) {
+      return json(res, 403, { ...derivedWorkspaceCreationDenial(req.auth), request_id: req.request_id });
+    }
     try {
       const target = req.body?.target_medium || req.body?.target;
       json(res, 201, convertBlueprint(db, req.params.workspace_id, target));
