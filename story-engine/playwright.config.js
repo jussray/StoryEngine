@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const playwrightRuntimeId = `${process.pid}-${Date.now()}`;
+const playwrightExpectedHeadSha = process.env.EXPECTED_HEAD_SHA || 'b'.repeat(40);
 
 export default defineConfig({
   testDir: './e2e',
@@ -23,6 +24,7 @@ export default defineConfig({
       ...process.env,
       PORT: '3000',
       NODE_ENV: 'test',
+      EXPECTED_HEAD_SHA: playwrightExpectedHeadSha,
       // Browser proof must never depend on or mutate tracked repository SQLite/WAL
       // state. Production still requires its provider-mounted persistent path.
       L99_DB_PATH: process.env.L99_DB_PATH || `/tmp/l99-playwright-${playwrightRuntimeId}.db`,
@@ -42,6 +44,27 @@ export default defineConfig({
           tenant_id: 'playwright',
           role: 'creator',
           workspace_ids: []
+        },
+        {
+          key: 'playwright-other-admin-key',
+          actor_id: 'playwright-other-admin-actor',
+          tenant_id: 'other-internal-service',
+          role: 'administrator',
+          workspace_ids: ['*']
+        },
+        {
+          key: 'playwright-other-fcr-admin-key',
+          actor_id: 'other-fcr-admin',
+          tenant_id: 'founder-control-room',
+          role: 'administrator',
+          workspace_ids: ['*']
+        },
+        {
+          key: 'playwright-admin-key',
+          actor_id: 'fcr-storyengine-control-room',
+          tenant_id: 'founder-control-room',
+          role: 'administrator',
+          workspace_ids: ['*']
         }
       ]),
       SOURCE_CANON_PROVIDER: process.env.SOURCE_CANON_PROVIDER || 'local',
