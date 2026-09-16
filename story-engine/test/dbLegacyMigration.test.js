@@ -67,7 +67,7 @@ test('production startup migrates a legacy stories table before tenant indexes a
     const preserved = migratedDb.prepare(
       'SELECT workspace_id, title, pitch FROM stories WHERE workspace_id = ?',
     ).get('legacy-workspace');
-    assert.deepEqual(preserved, {
+    assert.deepEqual({ ...preserved }, {
       workspace_id: 'legacy-workspace',
       title: 'Legacy Story',
       pitch: 'Preserve me',
