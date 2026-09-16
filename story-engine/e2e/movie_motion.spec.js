@@ -2,8 +2,16 @@ import { test, expect } from '@playwright/test';
 import { establishBrowserSession } from './session.js';
 
 async function mountBeat(page) {
+  // movie.js fetches beats on load and replaces #beats' children; without this
+  // mock that real request can race the injected node below and clobber it.
+  await page.route('**/api/movie/beats/motion-proof', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: '[]'
+  }));
   await establishBrowserSession(page);
   await page.goto('/movie.html?workspace_id=motion-proof');
+  await page.locator('#beats p').waitFor();
   await page.evaluate(() => {
     const beats = document.getElementById('beats');
     const card = document.createElement('div');
