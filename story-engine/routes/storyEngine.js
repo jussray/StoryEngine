@@ -26,6 +26,7 @@ import { ensureRuntimeDispatchSchema } from '../lib/runtimeDispatcher.js';
 import { log } from '../models/eventModel.js';
 import * as Story from '../models/storyModel.js';
 import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { canCreateWorkspace, workspaceCreationDenial } from '../lib/workspaceCreationAuthority.js';
 
 function cancelQueuedDispatch(db, dispatchId) {
   if (!dispatchId) return;
@@ -162,6 +163,9 @@ export default function storyEngineRoutes(router, db) {
   });
 
   router.post('/api/story-engine/runs', async (req, res) => {
+    if (!canCreateWorkspace(req.auth)) {
+      return json(res, 403, { ...workspaceCreationDenial(req.auth), request_id: req.request_id });
+    }
     try {
       const input = {
         ...(req.body || {}),
