@@ -5,10 +5,10 @@ const ms = value => value == null ? '—' : `${Math.round(Number(value))}ms`;
 
 let source;
 
-async function api(path) {
-  const response = await fetch(path);
+async function api(path, options = {}) {
+  const response = await fetch(path, options);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Request failed ${response.status}`);
+  if (!response.ok) throw new Error(data.error || data.message || `Request failed ${response.status}`);
   return data;
 }
 
@@ -65,6 +65,27 @@ function renderEvents(data) {
   $('events').innerHTML = (data.recent_events || []).map(item => `<div class="row"><div class="row-title">${esc(item.event_type)}</div><div class="row-meta">${esc(item.workspace_id)} · ${esc(item.mode || 'application')} · ${item.duration_ms == null ? '—' : ms(item.duration_ms)} · rollback ${item.rollback ? 'yes' : 'no'} · ${new Date(Number(item.created_at)).toLocaleString()}</div></div>`).join('') || '<div class="row sub">No events.</div>';
 }
 
+function renderBusiness(data) {
+  const metrics = data.metrics || [];
+  $('businessSummary').innerHTML = metrics.map(item => `<span class="metric-chip">${esc(item.metric_name)} · ${esc(item.observations)} obs · ${esc(item.missing)} missing · ${esc(item.unit)}</span>`).join('');
+  $('businessRows').innerHTML = (data.observations || []).map(item => {
+    const value = item.value_state === 'missing' ? '<span class="warn">Missing</span>' : esc(item.metric_value);
+    const provenance = item.provenance || {};
+    return `<tr>
+      <td>${esc(new Date(Number(item.observed_at)).toLocaleString())}${item.historical ? '<div class="sub">historical import</div>' : ''}</td>
+      <td><strong>${esc(item.metric_name)}</strong><div class="sub">${esc(item.content_id || '')}</div></td>
+      <td>${value}</td>
+      <td>${esc(item.unit)}</td>
+      <td>${esc(item.audience_segment)}</td>
+      <td>${esc(item.source)}</td>
+      <td>${esc(item.account_id)}${item.page_id ? `<div class="sub">${esc(item.page_id)}</div>` : ''}</td>
+      <td>${esc(provenance.connector || provenance.import_format || 'recorded')}<div class="sub">${esc(provenance.import_receipt || provenance.line_number || '')}</div></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" class="sub">No business evidence recorded for this workspace.</td></tr>';
+  $('businessStatus').textContent = `${(data.observations || []).length} observations`;
+  $('businessStatus').className = 'pill ok';
+}
+
 function render(data) {
   renderStats(data);
   renderWorkspaces(data);
@@ -72,6 +93,57 @@ function render(data) {
   renderIncidents(data);
   renderEvents(data);
   $('updated').textContent = `Updated ${new Date(data.generated_at).toLocaleString()}`;
+}
+
+function businessInputs() {
+  return {
+    workspace: $('metricWorkspace').value.trim(),
+    source: $('metricSource').value.trim(),
+    account: $('metricAccount').value.trim(),
+    page: $('metricPage').value.trim(),
+    audience: $('metricAudience').value.trim()
+  };
+}
+
+async function loadBusinessEvidence() {
+  const { workspace } = businessInputs();
+  if (!workspace) throw new Error('Workspace ID is required.');
+  $('businessStatus').textContent = 'Loading…';
+  $('businessStatus').className = 'pill warn';
+  const data = await api(`/api/performance/business/${encodeURIComponent(workspace)}?limit=100`);
+  renderBusiness(data);
+  return data;
+}
+
+async function importBusinessEvidence() {
+  const input = businessInputs();
+  const file = $('metricFile').files?.[0];
+  if (!input.workspace) throw new Error('Workspace ID is required.');
+  if (!input.source) throw new Error('Source is required.');
+  if (!input.account) throw new Error('Account ID is required.');
+  if (!input.audience) throw new Error('Audience segment is required.');
+  if (!file) throw new Error('Choose a CSV evidence file.');
+
+  const params = new URLSearchParams({
+    source: input.source,
+    account_id: input.account,
+    audience_segment: input.audience
+  });
+  if (input.page) params.set('page_id', input.page);
+
+  $('importBusiness').disabled = true;
+  $('businessReceipt').textContent = 'Importing evidence…';
+  try {
+    const receipt = await api(`/api/performance/business/${encodeURIComponent(input.workspace)}/import?${params}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/csv' },
+      body: await file.text()
+    });
+    $('businessReceipt').textContent = `Import receipt: ${receipt.written} written, ${receipt.duplicates} duplicates, ${receipt.missing_values} missing values.`;
+    await loadBusinessEvidence();
+  } finally {
+    $('importBusiness').disabled = false;
+  }
 }
 
 async function load() {
@@ -101,5 +173,25 @@ function connect() {
 }
 
 $('refresh').addEventListener('click', load);
+$('loadBusiness').addEventListener('click', async () => {
+  try {
+    $('businessReceipt').textContent = '';
+    await loadBusinessEvidence();
+  } catch (error) {
+    $('businessStatus').textContent = 'Evidence unavailable';
+    $('businessStatus').className = 'pill bad';
+    $('businessReceipt').textContent = error.message;
+  }
+});
+$('importBusiness').addEventListener('click', async () => {
+  try {
+    await importBusinessEvidence();
+  } catch (error) {
+    $('businessStatus').textContent = 'Import failed';
+    $('businessStatus').className = 'pill bad';
+    $('businessReceipt').textContent = error.message;
+  }
+});
+
 load();
 connect();
