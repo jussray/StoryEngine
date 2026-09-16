@@ -5,7 +5,7 @@ import { log } from '../models/eventModel.js';
 
 export default function storyRoutes(router, db) {
   router.get('/api/stories', (req, res) => {
-    json(res, 200, Story.list(db));
+    json(res, 200, Story.list(db, req.auth));
   });
 
   router.get('/api/story/:workspace_id', (req, res) => {
@@ -18,7 +18,14 @@ export default function storyRoutes(router, db) {
     const { title, genre, pitch } = req.body || {};
     if (!title) return json(res, 400, { error: 'title required' });
     const t0 = Date.now();
-    const workspace_id = Story.create(db, { title, genre, pitch });
+    const workspace_id = Story.create(db, {
+      title,
+      genre,
+      pitch,
+      tenant_id: req.auth?.tenant_id,
+      actor_id: req.auth?.actor_id,
+      role: req.auth?.role || 'creator'
+    });
     log(db, { workspace_id, event_type: 'story_created', payload: { title, genre }, duration_ms: Date.now() - t0 });
     json(res, 201, { workspace_id });
   });
