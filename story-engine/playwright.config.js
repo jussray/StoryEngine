@@ -35,6 +35,13 @@ export default defineConfig({
           tenant_id: 'playwright',
           role: 'creator',
           workspace_ids: ['playwright-allowed-workspace']
+        },
+        {
+          key: 'playwright-tenant-creator-key',
+          actor_id: 'playwright-tenant-creator',
+          tenant_id: 'playwright',
+          role: 'creator',
+          workspace_ids: []
         }
       ]),
       SOURCE_CANON_PROVIDER: process.env.SOURCE_CANON_PROVIDER || 'local',
