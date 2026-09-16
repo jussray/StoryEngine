@@ -63,6 +63,23 @@ function createEventDb() {
   return db;
 }
 
+function withEnv(changes, run) {
+  const previous = new Map();
+  for (const [key, value] of Object.entries(changes)) {
+    previous.set(key, Object.prototype.hasOwnProperty.call(process.env, key) ? process.env[key] : undefined);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 test('StoryEngine accepts only the exact bounded FCR product build directive', () => {
   const directive = validDirective();
   assert.deepEqual(validateProductBuildDirective(directive, { expectedHeadSha }), []);
@@ -76,6 +93,35 @@ test('StoryEngine accepts only the exact bounded FCR product build directive', (
   widened.directiveHash = productBuildDirectiveHash(widened);
   assert.ok(validateProductBuildDirective(widened, { expectedHeadSha })
     .includes('first product build actuator is limited to the Control Room event log'));
+});
+
+test('production binds product-build directives to Railway native exact release identity', () => {
+  withEnv({
+    NODE_ENV: 'production',
+    EXPECTED_HEAD_SHA: undefined,
+    RAILWAY_GIT_COMMIT_SHA: expectedHeadSha,
+    L99_RELEASE_SHA: undefined,
+  }, () => {
+    assert.deepEqual(validateProductBuildDirective(validDirective()), []);
+
+    const stale = validDirective();
+    stale.proposal = { ...stale.proposal, expectedHeadSha: 'e'.repeat(40) };
+    stale.directiveHash = productBuildDirectiveHash(stale);
+    assert.ok(validateProductBuildDirective(stale)
+      .includes('product build directive expectedHeadSha does not match this exact runtime head'));
+  });
+});
+
+test('production product-build execution fails closed without trusted runtime exact-head identity', () => {
+  withEnv({
+    NODE_ENV: 'production',
+    EXPECTED_HEAD_SHA: undefined,
+    RAILWAY_GIT_COMMIT_SHA: undefined,
+    L99_RELEASE_SHA: undefined,
+  }, () => {
+    assert.ok(validateProductBuildDirective(validDirective())
+      .includes('product build execution requires trusted runtime exact-head identity'));
+  });
 });
 
 test('product receipt remains directive-bound and cannot authorize merge/deploy/provider mutation', () => {
