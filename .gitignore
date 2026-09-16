@@ -1,2 +1,29 @@
 __pycache__/
 *.pyc
+
+# Local secrets and environment overlays
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node/browser build and proof output
+node_modules/
+playwright-report/
+test-results/
+blob-report/
+coverage/
+
+# Runtime state must live on mounted storage, not in Git
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+story-engine/video-exports/
+story-engine/artifacts/container-runtime/
+
+# Local OS/editor noise
+.DS_Store
+*.swp
