@@ -245,18 +245,28 @@ export function assertWorkspaceAccess(req, workspaceId) {
   if (!normalized) return true;
 
   const identity = req.auth || {};
-  const allowed = Array.isArray(identity.workspace_ids) ? identity.workspace_ids.map(String) : [];
+  const allowed = Array.isArray(identity.workspace_ids)
+    ? [...new Set(identity.workspace_ids.map(String).filter(Boolean))]
+    : [];
+  const wildcard = allowed.includes('*');
+  const explicitlyAllowed = allowed.includes(normalized);
+  const scopeConfigured = allowed.length > 0;
   const owner = workspaceTenant(req, normalized);
 
   if (owner?.exists && owner.tenant_id && owner.tenant_id !== identity.tenant_id) return false;
-  if (workspaceMembershipAllows(req, normalized)) return true;
-  if (owner?.exists && !owner.tenant_id) return false;
-  if (allowed.includes(normalized)) return true;
 
-  if (allowed.includes('*')) {
-    if (owner?.exists) return owner.tenant_id === identity.tenant_id;
-    return identity.role === 'administrator';
-  }
+  // Explicit non-wildcard workspace scope is a hard authority ceiling. A durable
+  // membership can validate access inside it, but cannot widen the credential.
+  if (scopeConfigured && !wildcard && !explicitlyAllowed) return false;
+
+  const member = workspaceMembershipAllows(req, normalized);
+  if (owner?.exists && !owner.tenant_id) return member;
+  if (member) return true;
+  if (owner?.exists) return (wildcard || explicitlyAllowed) && owner.tenant_id === identity.tenant_id;
+
+  // Preserve the historical administrator wildcard behavior for not-yet-created
+  // workspace identifiers without letting a scoped credential escape its list.
+  if (wildcard) return identity.role === 'administrator';
   return false;
 }
 
