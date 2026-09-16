@@ -27,6 +27,7 @@ const DEFAULT_MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 2);
 const CIRCUIT_FAILURE_THRESHOLD = Number(process.env.LLM_CIRCUIT_FAILURE_THRESHOLD || 5);
 const CIRCUIT_RESET_MS = Number(process.env.LLM_CIRCUIT_RESET_MS || 60_000);
 const MAX_TOKENS_CAP = Number(process.env.LLM_MAX_TOKENS_CAP || 8192);
+const SECRET_ENV_NAMES = Object.freeze(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY']);
 
 function pickProvider(options = {}) {
   if (options.provider) return options.provider;
@@ -49,6 +50,15 @@ function boundedMaxTokens(options = {}) {
 
 function headers(extra = {}) {
   return { 'Content-Type': 'application/json', ...extra };
+}
+
+function redactProviderSecrets(value) {
+  let text = String(value ?? '');
+  for (const name of SECRET_ENV_NAMES) {
+    const secret = process.env[name];
+    if (secret && secret.length >= 4) text = text.split(secret).join('[REDACTED]');
+  }
+  return text;
 }
 
 function stateFor(provider) {
@@ -82,7 +92,7 @@ function noteFailure(provider, error) {
   const state = stateFor(provider);
   state.calls += 1;
   state.failures += 1;
-  state.last_error = String(error?.message || error).slice(0, 300);
+  state.last_error = redactProviderSecrets(error?.message || error).slice(0, 300);
   if (state.failures >= CIRCUIT_FAILURE_THRESHOLD) state.opened_at = Date.now();
 }
 
@@ -107,7 +117,8 @@ async function fetchWithPolicy(provider, url, init, options = {}) {
       const response = await fetch(url, { ...init, signal: controller.signal });
       if (!response.ok) {
         const body = await response.text().catch(() => '');
-        const error = new Error(`LLM provider request failed with status ${response.status}: ${body.slice(0, 160)}`);
+        const safeBody = redactProviderSecrets(body).slice(0, 160);
+        const error = new Error(`LLM provider request failed with status ${response.status}${safeBody ? `: ${safeBody}` : ''}`);
         error.status = response.status;
         if (!retryableStatus(response.status) || attempt === retries) throw error;
         lastError = error;
@@ -116,11 +127,14 @@ async function fetchWithPolicy(provider, url, init, options = {}) {
         return response;
       }
     } catch (error) {
-      lastError = error;
-      const retryable = error?.name === 'AbortError' || retryableStatus(Number(error?.status || 0)) || !error?.status;
+      const safeError = new Error(redactProviderSecrets(error?.message || error));
+      safeError.name = error?.name || 'Error';
+      if (error?.status) safeError.status = error.status;
+      lastError = safeError;
+      const retryable = safeError.name === 'AbortError' || retryableStatus(Number(safeError.status || 0)) || !safeError.status;
       if (!retryable || attempt === retries) {
-        noteFailure(provider, error);
-        throw error;
+        noteFailure(provider, safeError);
+        throw safeError;
       }
     } finally {
       clearTimeout(timer);

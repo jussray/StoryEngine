@@ -1,2 +1,10 @@
 __pycache__/
 *.pyc
+
+# Runtime state and local secrets must never enter source control.
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
