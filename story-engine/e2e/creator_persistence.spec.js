@@ -1,10 +1,29 @@
 import { test, expect } from '@playwright/test';
-import { CREATOR_BOOTSTRAP_KEY, establishBrowserSession } from './session.js';
+import {
+  CREATOR_BOOTSTRAP_KEY,
+  TENANT_CREATOR_BOOTSTRAP_KEY,
+  establishBrowserSession
+} from './session.js';
 
 test('creator can create a real workspace, save a chapter, reload, and reopen persisted content', async ({ page }) => {
-  await establishBrowserSession(page, CREATOR_BOOTSTRAP_KEY);
-
   const stamp = Date.now();
+
+  const boundedCreate = await page.context().request.post('/api/story-engine/runs', {
+    headers: {
+      'x-api-key': CREATOR_BOOTSTRAP_KEY,
+      'Content-Type': 'application/json'
+    },
+    data: {
+      story_vision: `Bounded credential orphan check ${stamp}`,
+      medium: 'book',
+      audience: 'adult'
+    }
+  });
+  expect(boundedCreate.status()).toBe(403);
+  expect((await boundedCreate.json()).error).toBe('workspace_creation_forbidden_by_scope');
+
+  await establishBrowserSession(page, TENANT_CREATOR_BOOTSTRAP_KEY);
+
   const vision = `Persistence proof ${stamp}: a cartographer discovers a city that moves every midnight.`;
   const chapterTitle = `Proof Chapter ${stamp}`;
   const chapterBody = `At midnight the street signs turned toward the river. Persistence marker ${stamp}.`;
