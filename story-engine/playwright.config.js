@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const playwrightRuntimeId = `${process.pid}-${Date.now()}`;
+const playwrightExpectedHead = process.env.EXPECTED_HEAD_SHA || 'b'.repeat(40);
 
 export default defineConfig({
   testDir: './e2e',
@@ -23,6 +24,7 @@ export default defineConfig({
       ...process.env,
       PORT: '3000',
       NODE_ENV: 'test',
+      EXPECTED_HEAD_SHA: playwrightExpectedHead,
       // Browser proof must never depend on or mutate tracked repository SQLite/WAL
       // state. Production still requires its provider-mounted persistent path.
       L99_DB_PATH: process.env.L99_DB_PATH || `/tmp/l99-playwright-${playwrightRuntimeId}.db`,
