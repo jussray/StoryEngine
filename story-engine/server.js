@@ -59,6 +59,18 @@ const PORT = process.env.PORT || 3000;
 const API_MAX_BODY_BYTES = Number(process.env.API_MAX_BODY_BYTES || 2 * 1024 * 1024);
 const RUNTIME_IDENTITY = runtimeIdentitySnapshot();
 const EXTERNAL_AUTHORITY_PATHS = new Set(['/api/revenue/stripe/webhook']);
+const DOCUMENT_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'"
+].join('; ');
 
 const MIME = {
   '.html': 'text/html',
@@ -162,7 +174,10 @@ function serveStatic(filePath, ext, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   if (ext === '.html') {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Security-Policy', DOCUMENT_CSP);
     const html = readFileSync(filePath, 'utf8');
     const injected = html.includes('/l99_auth.js')
       ? html
