@@ -69,3 +69,36 @@ test('operator imports provenance-bound metrics and replay stays idempotent', as
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
+
+test('public AI crawler contract is reachable while private APIs remain closed', async ({ request }) => {
+  const robotsResponse = await request.get('/robots.txt');
+  expect(robotsResponse.status()).toBe(200);
+  const robots = await robotsResponse.text();
+  expect(robots).toContain('User-agent: OAI-SearchBot');
+  expect(robots).toMatch(/User-agent: OAI-SearchBot[\s\S]*?Allow: \/guardrails\$/);
+  expect(robots).toMatch(/User-agent: GPTBot[\s\S]*?Disallow: \/(?:\n|$)/);
+  expect(robots).toMatch(/User-agent: ClaudeBot[\s\S]*?Disallow: \/(?:\n|$)/);
+  expect(robots).toMatch(/User-agent: Google-Extended[\s\S]*?Disallow: \/(?:\n|$)/);
+
+  const llmsResponse = await request.get('/llms.txt');
+  expect(llmsResponse.status()).toBe(200);
+  const llms = await llmsResponse.text();
+  expect(llms).toContain('Canonical source: https://github.com/jussray/StoryEngine');
+  expect(llms).toContain('Model-training and bulk dataset collection are denied by default.');
+
+  const crawlersResponse = await request.get('/crawlers.json');
+  expect(crawlersResponse.status()).toBe(200);
+  const crawlers = await crawlersResponse.json();
+  expect(crawlers.schema).toBe('juss/ai-crawler-contract@v1');
+  expect(crawlers.policy.search_discovery).toBe('allow-bounded-public-surface');
+  expect(crawlers.policy.model_training).toBe('deny-by-default');
+  expect(crawlers.authority).toBe('read-only-public-surface');
+
+  const guardrailsResponse = await request.get('/guardrails.json');
+  expect(guardrailsResponse.status()).toBe(200);
+  const runtimeIdentityResponse = await request.get('/runtime-identity');
+  expect(runtimeIdentityResponse.status()).toBe(200);
+
+  const privateApi = await request.get('/api/stories');
+  expect(privateApi.status()).toBe(401);
+});
