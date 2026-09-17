@@ -82,6 +82,12 @@ function required(value, field) {
   return normalized;
 }
 
+function sameMetricValue(existing, incoming) {
+  if (existing.value_state !== incoming.value_state) return false;
+  if (incoming.value_state === 'missing') return existing.metric_value === null;
+  return Number(existing.metric_value) === incoming.metric_value;
+}
+
 function normalizeRow(row, defaults, importedAt, lineNumber) {
   const workspace_id = required(defaults.workspace_id, 'workspace_id');
   const audience_segment = required(row.audience_segment || defaults.audience_segment, 'audience_segment');
@@ -154,6 +160,21 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
     const row = Object.fromEntries(headers.map((header, column) => [header, values[column] ?? '']));
     return normalizeRow(row, defaults, importedAt, index + 2);
   });
+  const findLogicalObservation = db.prepare(`
+    SELECT observation_id, metric_value, value_state
+    FROM business_metric_observations
+    WHERE workspace_id = ?
+      AND audience_segment = ?
+      AND source = ?
+      AND account_id = ?
+      AND page_id IS ?
+      AND content_id IS ?
+      AND metric_name = ?
+      AND unit = ?
+      AND observed_at = ?
+    ORDER BY imported_at ASC, observation_id ASC
+    LIMIT 1
+  `);
   const insert = db.prepare(`
     INSERT OR IGNORE INTO business_metric_observations (
       observation_id, workspace_id, audience_segment, source, account_id, page_id, content_id,
@@ -169,6 +190,28 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
 
   db.transaction(() => {
     for (const normalized of normalizedRows) {
+      const existing = findLogicalObservation.get(
+        normalized.workspace_id,
+        normalized.audience_segment,
+        normalized.source,
+        normalized.account_id,
+        normalized.page_id,
+        normalized.content_id,
+        normalized.metric_name,
+        normalized.unit,
+        normalized.observed_at
+      );
+
+      if (existing) {
+        if (!sameMetricValue(existing, normalized)) {
+          throw new Error('Conflicting business metric observation for the same identity and timestamp.');
+        }
+        observationIds.push(existing.observation_id);
+        if (normalized.value_state === 'missing') missingValues += 1;
+        duplicates += 1;
+        continue;
+      }
+
       const result = insert.run(
         normalized.observation_id,
         normalized.workspace_id,
