@@ -68,7 +68,7 @@ function renderEvents(data) {
 function renderBusiness(data) {
   const metrics = data.metrics || [];
   $('businessSummary').innerHTML = metrics.map(item => {
-    const identity = [item.source, item.account_id, item.page_id, item.audience_segment].filter(Boolean).join(' · ');
+    const identity = [item.source, item.account_id, item.page_id, item.content_id, item.audience_segment].filter(Boolean).join(' · ');
     return `<span class="metric-chip">${esc(item.metric_name)} · ${esc(item.observations)} obs · ${esc(item.missing)} missing · ${esc(item.unit)}${identity ? ` · ${esc(identity)}` : ''}</span>`;
   }).join('');
   $('businessRows').innerHTML = (data.observations || []).map(item => {
