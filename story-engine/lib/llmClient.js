@@ -174,6 +174,19 @@ function safeProviderErrorType(rawBody) {
   }
 }
 
+function safeFetchError(provider, error) {
+  if (error?.code === 'llm_provider_http_error') return error;
+  if (error?.code === 'llm_timeout' || error?.name === 'AbortError') {
+    const timeout = new Error(`LLM provider request timed out for ${provider}.`);
+    timeout.name = 'AbortError';
+    timeout.code = 'llm_timeout';
+    return timeout;
+  }
+  const safe = new Error(`LLM provider request failed for ${provider}.`);
+  safe.code = 'llm_provider_request_failed';
+  return safe;
+}
+
 async function fetchWithPolicy(provider, url, init, options = {}) {
   assertCircuitClosed(provider);
   const retries = boundedInteger(options.maxRetries, DEFAULT_MAX_RETRIES, 0, 10);
@@ -203,11 +216,12 @@ async function fetchWithPolicy(provider, url, init, options = {}) {
         return response;
       }
     } catch (error) {
-      lastError = error;
-      const retryable = error?.name === 'AbortError' || error?.code === 'llm_timeout' || retryableStatus(Number(error?.status || 0)) || !error?.status;
+      const safeError = safeFetchError(provider, error);
+      lastError = safeError;
+      const retryable = safeError?.name === 'AbortError' || safeError?.code === 'llm_timeout' || retryableStatus(Number(safeError?.status || 0)) || !safeError?.status;
       if (!retryable || attempt === retries) {
-        noteFailure(provider, error);
-        throw error;
+        noteFailure(provider, safeError);
+        throw safeError;
       }
     } finally {
       clearTimeout(timer);

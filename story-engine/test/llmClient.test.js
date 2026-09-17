@@ -125,6 +125,33 @@ test('Anthropic reflected error bodies are bounded and cannot leak the API key',
   }
 });
 
+test('Anthropic transport exceptions cannot leak the API key', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  const secret = 'test-transport-anthropic-secret';
+  try {
+    process.env.ANTHROPIC_API_KEY = secret;
+    globalThis.fetch = async (_url, init) => {
+      throw new Error(`transport diagnostics echoed ${init.headers['x-api-key']}`);
+    };
+
+    const { completeWithReceipt, llmRoutingSnapshot } = await freshClient();
+    await assert.rejects(
+      () => completeWithReceipt('hello', { provider: 'anthropic', maxRetries: 0 }),
+      error => {
+        assert.equal(String(error.message).includes(secret), false);
+        assert.equal(error.code, 'llm_provider_request_failed');
+        assert.match(String(error.message), /request failed for anthropic/);
+        return true;
+      }
+    );
+    assert.equal(JSON.stringify(llmRoutingSnapshot()).includes(secret), false);
+  } finally {
+    globalThis.fetch = priorFetch;
+    restoreEnv(priorEnv);
+  }
+});
+
 test('Anthropic success without the Messages API assistant envelope fails closed', { concurrency: false }, async () => {
   const priorEnv = captureEnv();
   const priorFetch = globalThis.fetch;
