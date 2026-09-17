@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -232,6 +233,58 @@ test('business metric summaries do not mix context, test, comparison, or measure
     assert.equal(summary.metrics.length, 3);
     assert.deepEqual(new Set(summary.metrics.map(item => item.condition)), new Set(['context', 'comparison', 'test']));
     assert.equal(summary.metrics.find(item => item.condition === 'context').audience_segment, null);
+  } finally {
+    db.close();
+  }
+});
+
+
+test('pre-upgrade context fingerprints remain idempotent after comparability upgrade', () => {
+  const db = createDb();
+  try {
+    const observedAt = Date.parse('2026-09-15T12:00:00Z');
+    const legacyCanonical = JSON.stringify({
+      workspace_id: 'workspace-a',
+      audience_segment: 'founders',
+      source: 'metricool:facebook',
+      account_id: 'brand-a',
+      page_id: 'page-a',
+      content_id: 'post-legacy',
+      metric_name: 'impressions',
+      metric_value: 11,
+      value_state: 'observed',
+      unit: 'count',
+      observed_at: observedAt
+    });
+    const legacyId = `metric_${createHash('sha256').update(legacyCanonical).digest('hex').slice(0, 32)}`;
+    db.prepare(`
+      INSERT INTO business_metric_observations (
+        observation_id, workspace_id, audience_segment, source, account_id, page_id, content_id,
+        condition, published_at, measurement_window_hours,
+        metric_name, metric_value, value_state, unit, observed_at, imported_at, historical,
+        provenance_json, raw_row_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'context', NULL, NULL, ?, ?, 'observed', ?, ?, ?, 1, '{}', ?)
+    `).run(
+      legacyId, 'workspace-a', 'founders', 'metricool:facebook', 'brand-a', 'page-a', 'post-legacy',
+      'impressions', 11, 'count', observedAt, observedAt + 1000, 'legacy-row-hash'
+    );
+
+    const csv = [
+      'observed_at,metric_name,metric_value,unit,content_id',
+      '2026-09-15T12:00:00Z,impressions,11,count,post-legacy'
+    ].join('\n');
+    const replay = importBusinessMetricsCsv(db, csv, {
+      workspace_id: 'workspace-a',
+      audience_segment: 'founders',
+      source: 'metricool:facebook',
+      account_id: 'brand-a',
+      page_id: 'page-a'
+    });
+
+    assert.equal(replay.written, 0);
+    assert.equal(replay.duplicates, 1);
+    assert.equal(replay.observation_ids[0], legacyId);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM business_metric_observations').get().count, 1);
   } finally {
     db.close();
   }
