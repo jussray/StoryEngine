@@ -9,7 +9,7 @@ import '../lib/sqliteTransaction.js';
 import * as Story from '../models/storyModel.js';
 import { assertWorkspaceAccess } from '../lib/securityContext.js';
 import { canCreateWorkspace, canCreateDerivedWorkspace } from '../lib/workspaceCreationAuthority.js';
-import { importBusinessMetricsCsv, businessMetricsSummary } from '../lib/businessMetrics.js';
+import { importBusinessMetricsCsv, listBusinessMetrics, businessMetricsSummary } from '../lib/businessMetrics.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
@@ -126,6 +126,112 @@ test('business metric summaries never collapse distinct account/page/audience id
     assert.equal(brandB.max_observed_value, 900);
     assert.equal(brandB.page_id, 'page-b');
     assert.equal(brandB.audience_segment, 'parents');
+  } finally {
+    db.close();
+  }
+});
+
+
+test('business metric context imports preserve unknown audience instead of inventing a segment', () => {
+  const db = createDb();
+  try {
+    const csv = [
+      'observed_at,metric_name,metric_value,unit,content_id,condition',
+      '2026-09-15T12:00:00Z,impressions,11,count,post-1,context'
+    ].join('\n');
+    const result = importBusinessMetricsCsv(db, csv, {
+      workspace_id: 'workspace-a',
+      source: 'metricool:facebook',
+      account_id: 'brand-a',
+      page_id: 'page-a'
+    });
+    assert.equal(result.written, 1);
+    const [row] = listBusinessMetrics(db, 'workspace-a');
+    assert.equal(row.audience_segment, null);
+    assert.equal(row.condition, 'context');
+  } finally {
+    db.close();
+  }
+});
+
+test('business metrics reject naive timestamps and malformed metric identities atomically', () => {
+  const db = createDb();
+  try {
+    const naive = [
+      'observed_at,metric_name,metric_value,unit',
+      '2026-09-15T12:00:00,impressions,1,count'
+    ].join('\n');
+    assert.throws(() => importBusinessMetricsCsv(db, naive, {
+      workspace_id: 'workspace-a',
+      source: 'metricool:facebook',
+      account_id: 'brand-a'
+    }), /explicit timezone/i);
+
+    const malformed = [
+      'observed_at,metric_name,metric_value,unit',
+      '2026-09-15T12:00:00Z,Reach Total,1,count'
+    ].join('\n');
+    assert.throws(() => importBusinessMetricsCsv(db, malformed, {
+      workspace_id: 'workspace-a',
+      source: 'metricool:facebook',
+      account_id: 'brand-a'
+    }), /lowercase snake_case/i);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM business_metric_observations').get().count, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('controlled business evidence requires comparable publication semantics', () => {
+  const db = createDb();
+  try {
+    const incomplete = [
+      'observed_at,metric_name,metric_value,unit,content_id,condition',
+      '2026-09-15T12:00:00Z,shares,4,count,post-test,test'
+    ].join('\n');
+    assert.throws(() => importBusinessMetricsCsv(db, incomplete, {
+      workspace_id: 'workspace-a',
+      source: 'metricool:facebook',
+      account_id: 'brand-a',
+      audience_segment: 'followers'
+    }), /requires published_at/i);
+
+    const mismatchedWindow = [
+      'observed_at,published_at,measurement_window_hours,metric_name,metric_value,unit,content_id,condition',
+      '2026-09-15T12:00:00Z,2026-09-14T12:00:00Z,168,shares,4,count,post-test,test'
+    ].join('\n');
+    assert.throws(() => importBusinessMetricsCsv(db, mismatchedWindow, {
+      workspace_id: 'workspace-a',
+      source: 'metricool:facebook',
+      account_id: 'brand-a',
+      audience_segment: 'followers'
+    }), /does not match/i);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM business_metric_observations').get().count, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('business metric summaries do not mix context, test, comparison, or measurement windows', () => {
+  const db = createDb();
+  try {
+    const csv = [
+      'observed_at,published_at,measurement_window_hours,metric_name,metric_value,unit,content_id,condition,audience_segment',
+      '2026-09-15T12:00:00Z,2026-09-14T12:00:00Z,24,shares,4,count,post-context,context,',
+      '2026-09-15T12:00:00Z,2026-09-14T12:00:00Z,24,shares,8,count,post-control,comparison,followers',
+      '2026-09-15T12:00:00Z,2026-09-14T12:00:00Z,24,shares,12,count,post-test,test,followers'
+    ].join('\n');
+    const receipt = importBusinessMetricsCsv(db, csv, {
+      workspace_id: 'workspace-a',
+      source: 'metricool:facebook',
+      account_id: 'brand-a',
+      page_id: 'page-a'
+    });
+    assert.equal(receipt.written, 3);
+    const summary = businessMetricsSummary(db, 'workspace-a');
+    assert.equal(summary.metrics.length, 3);
+    assert.deepEqual(new Set(summary.metrics.map(item => item.condition)), new Set(['context', 'comparison', 'test']));
+    assert.equal(summary.metrics.find(item => item.condition === 'context').audience_segment, null);
   } finally {
     db.close();
   }
