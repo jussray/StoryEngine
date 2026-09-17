@@ -164,11 +164,19 @@ function normalizeRow(row, defaults, importedAt, lineNumber) {
     metric_name, metric_value, value_state, unit, observed_at,
     imported_at: importedAt, historical: observed_at < importedAt ? 1 : 0
   };
-  const canonical = JSON.stringify({
-    workspace_id, audience_segment, source, account_id, page_id, content_id,
-    condition, published_at, measurement_window_hours,
-    metric_name, metric_value, value_state, unit, observed_at
-  });
+  // Preserve the pre-comparability observation fingerprint for ordinary context
+  // imports so replaying historical CSV evidence after an upgrade stays idempotent.
+  // New publication/window semantics intentionally create a distinct identity.
+  const canonical = condition === 'context' && published_at == null && measurement_window_hours == null
+    ? JSON.stringify({
+        workspace_id, audience_segment, source, account_id, page_id, content_id,
+        metric_name, metric_value, value_state, unit, observed_at
+      })
+    : JSON.stringify({
+        workspace_id, audience_segment, source, account_id, page_id, content_id,
+        condition, published_at, measurement_window_hours,
+        metric_name, metric_value, value_state, unit, observed_at
+      });
   const provenance = {
     ...(defaults.provenance && typeof defaults.provenance === 'object' ? defaults.provenance : {}),
     import_format: 'csv',
