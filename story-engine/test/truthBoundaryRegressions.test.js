@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import '../lib/sqliteTransaction.js';
 import * as Story from '../models/storyModel.js';
 import { assertWorkspaceAccess } from '../lib/securityContext.js';
+import { canCreateWorkspace, canCreateDerivedWorkspace } from '../lib/workspaceCreationAuthority.js';
 import { importBusinessMetricsCsv, businessMetricsSummary } from '../lib/businessMetrics.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,43 @@ test('explicit workspace scope cannot be widened by durable membership', () => {
   } finally {
     db.close();
   }
+});
+
+test('workspace creation authority rejects named hard scopes and viewer roles', () => {
+  assert.equal(canCreateWorkspace({
+    tenant_id: 'tenant-a', actor_id: 'actor-a', role: 'creator', workspace_ids: ['workspace-a']
+  }), false);
+  assert.equal(canCreateWorkspace({
+    tenant_id: 'tenant-a', actor_id: 'actor-a', role: 'creator', workspace_ids: []
+  }), true);
+  assert.equal(canCreateWorkspace({
+    tenant_id: 'tenant-a', actor_id: 'actor-a', role: 'creator', workspace_ids: ['*']
+  }), true);
+  assert.equal(canCreateWorkspace({
+    tenant_id: 'tenant-a', actor_id: 'actor-a', role: 'viewer', workspace_ids: []
+  }), false);
+});
+
+test('derived workspace creation preserves source ownership without creating inaccessible targets', () => {
+  const source = {
+    tenant_id: 'tenant-a',
+    created_by_actor_id: 'actor-a'
+  };
+  assert.equal(canCreateDerivedWorkspace({
+    tenant_id: 'tenant-a', actor_id: 'actor-a', role: 'creator', workspace_ids: []
+  }, source), true);
+  assert.equal(canCreateDerivedWorkspace({
+    tenant_id: 'tenant-a', actor_id: 'actor-b', role: 'creator', workspace_ids: []
+  }, source), false);
+  assert.equal(canCreateDerivedWorkspace({
+    tenant_id: 'tenant-a', actor_id: 'actor-b', role: 'creator', workspace_ids: ['*']
+  }, source), true);
+  assert.equal(canCreateDerivedWorkspace({
+    tenant_id: 'tenant-a', actor_id: 'actor-a', role: 'creator', workspace_ids: ['workspace-source']
+  }, source), false);
+  assert.equal(canCreateDerivedWorkspace({
+    tenant_id: 'tenant-b', actor_id: 'actor-a', role: 'administrator', workspace_ids: ['*']
+  }, source), false);
 });
 
 test('business metric summaries never collapse distinct account/page/audience identity', () => {

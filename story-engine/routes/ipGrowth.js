@@ -2,6 +2,8 @@
 
 import { json } from '../lib/miniRouter.js';
 import { evaluateIpGrowth, getLatestIpGrowth, listIpGrowthActions, startIpExpansion, ipGrowthOverview } from '../lib/ipGrowthEngine.js';
+import * as Story from '../models/storyModel.js';
+import { canCreateDerivedWorkspace, derivedWorkspaceCreationDenial } from '../lib/workspaceCreationAuthority.js';
 
 export default function ipGrowthRoutes(router, db) {
   router.get('/api/ip-growth/overview', (req, res) => {
@@ -29,6 +31,11 @@ export default function ipGrowthRoutes(router, db) {
   });
 
   router.post('/api/ip-growth/:workspace_id/expand', (req, res) => {
+    const sourceStory = Story.get(db, req.params.workspace_id);
+    if (!sourceStory) return json(res, 404, { error: 'Source workspace not found.' });
+    if (!canCreateDerivedWorkspace(req.auth, sourceStory)) {
+      return json(res, 403, { ...derivedWorkspaceCreationDenial(req.auth), request_id: req.request_id });
+    }
     try {
       const target = req.body?.target_medium || req.body?.target;
       json(res, 201, startIpExpansion(db, req.params.workspace_id, target));
