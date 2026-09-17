@@ -229,6 +229,7 @@ export function businessMetricsSummary(db, workspaceId) {
            grouped.source,
            grouped.account_id,
            grouped.page_id,
+           grouped.content_id,
            grouped.audience_segment,
            grouped.observations,
            grouped.missing,
@@ -243,6 +244,7 @@ export function businessMetricsSummary(db, workspaceId) {
              source,
              account_id,
              page_id,
+             content_id,
              audience_segment,
              COUNT(*) AS observations,
              SUM(CASE WHEN value_state='missing' THEN 1 ELSE 0 END) AS missing,
@@ -250,7 +252,7 @@ export function businessMetricsSummary(db, workspaceId) {
              MAX(CASE WHEN value_state='observed' THEN metric_value END) AS max_observed_value
       FROM business_metric_observations
       WHERE workspace_id = ?
-      GROUP BY metric_name, unit, source, account_id, page_id, audience_segment
+      GROUP BY metric_name, unit, source, account_id, page_id, content_id, audience_segment
     ) grouped
     LEFT JOIN business_metric_observations latest
       ON latest.observation_id = (
@@ -262,6 +264,7 @@ export function businessMetricsSummary(db, workspaceId) {
           AND candidate.source = grouped.source
           AND candidate.account_id = grouped.account_id
           AND candidate.page_id IS grouped.page_id
+          AND candidate.content_id IS grouped.content_id
           AND candidate.audience_segment = grouped.audience_segment
         ORDER BY candidate.observed_at DESC, candidate.imported_at DESC, candidate.observation_id DESC
         LIMIT 1
@@ -270,6 +273,7 @@ export function businessMetricsSummary(db, workspaceId) {
              grouped.source ASC,
              grouped.account_id ASC,
              grouped.page_id ASC,
+             grouped.content_id ASC,
              grouped.audience_segment ASC
   `).all(id, id);
   return {
