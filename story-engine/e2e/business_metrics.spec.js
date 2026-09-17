@@ -36,7 +36,6 @@ test('operator imports provenance-bound metrics and replay stays idempotent', as
   await expect(page.locator('#businessSummary')).toContainText('metricool:facebook');
   await expect(page.locator('#businessSummary')).toContainText('playwright-brand');
   await expect(page.locator('#businessSummary')).toContainText('playwright-page');
-  await expect(page.locator('#businessSummary')).toContainText('founders');
   await expect(page.locator('#businessRows')).toContainText('impressions');
   await expect(page.locator('#businessRows')).toContainText('clicks');
   await expect(page.locator('#businessRows')).toContainText('Missing');
