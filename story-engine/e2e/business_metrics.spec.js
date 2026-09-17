@@ -23,6 +23,7 @@ test('operator imports provenance-bound metrics and replay stays idempotent', as
   const csv = [
     'observed_at,metric_name,metric_value,unit,content_id',
     '2026-09-01T12:00:00Z,impressions,0,count,post-1',
+    '2026-09-01T12:00:00Z,impressions,25,count,post-2',
     '2026-09-01T12:00:00Z,clicks,,count,post-1'
   ].join('\n');
   await page.locator('#metricFile').setInputFiles({
@@ -32,10 +33,12 @@ test('operator imports provenance-bound metrics and replay stays idempotent', as
   });
 
   await page.locator('#importBusiness').click();
-  await expect(page.locator('#businessReceipt')).toContainText('2 written, 0 duplicates, 1 missing values');
+  await expect(page.locator('#businessReceipt')).toContainText('3 written, 0 duplicates, 1 missing values');
   await expect(page.locator('#businessSummary')).toContainText('metricool:facebook');
   await expect(page.locator('#businessSummary')).toContainText('playwright-brand');
   await expect(page.locator('#businessSummary')).toContainText('playwright-page');
+  await expect(page.locator('#businessSummary')).toContainText('post-1');
+  await expect(page.locator('#businessSummary')).toContainText('post-2');
   await expect(page.locator('#businessSummary')).toContainText('founders');
   await expect(page.locator('#businessRows')).toContainText('impressions');
   await expect(page.locator('#businessRows')).toContainText('clicks');
@@ -43,26 +46,35 @@ test('operator imports provenance-bound metrics and replay stays idempotent', as
   await expect(page.locator('#businessRows')).toContainText('metricool:facebook');
   await expect(page.locator('#businessRows')).toContainText('playwright-brand');
   await expect(page.locator('#businessRows')).toContainText('playwright-page');
+  await expect(page.locator('#businessRows')).toContainText('post-1');
+  await expect(page.locator('#businessRows')).toContainText('post-2');
   await expect(page.locator('#businessRows')).toContainText('founders');
 
   await page.locator('#importBusiness').click();
-  await expect(page.locator('#businessReceipt')).toContainText('0 written, 2 duplicates, 1 missing values');
+  await expect(page.locator('#businessReceipt')).toContainText('0 written, 3 duplicates, 1 missing values');
 
   const business = await page.context().request.get(`/api/performance/business/${encodeURIComponent(workspaceId)}`);
   expect(business.status()).toBe(200);
   const payload = await business.json();
-  expect(payload.observations).toHaveLength(2);
-  expect(payload.metrics).toHaveLength(2);
+  expect(payload.observations).toHaveLength(3);
+  expect(payload.metrics).toHaveLength(3);
   for (const summary of payload.metrics) {
     expect(summary.source).toBe('metricool:facebook');
     expect(summary.account_id).toBe('playwright-brand');
     expect(summary.page_id).toBe('playwright-page');
     expect(summary.audience_segment).toBe('founders');
   }
-  const impressions = payload.observations.find(item => item.metric_name === 'impressions');
+  const impressionSummaries = payload.metrics.filter(item => item.metric_name === 'impressions');
+  expect(impressionSummaries).toHaveLength(2);
+  expect(impressionSummaries.map(item => item.content_id).sort()).toEqual(['post-1', 'post-2']);
+
+  const postOneImpressions = payload.observations.find(item => item.metric_name === 'impressions' && item.content_id === 'post-1');
+  const postTwoImpressions = payload.observations.find(item => item.metric_name === 'impressions' && item.content_id === 'post-2');
   const clicks = payload.observations.find(item => item.metric_name === 'clicks');
-  expect(impressions.metric_value).toBe(0);
-  expect(impressions.value_state).toBe('observed');
+  expect(postOneImpressions.metric_value).toBe(0);
+  expect(postOneImpressions.value_state).toBe('observed');
+  expect(postTwoImpressions.metric_value).toBe(25);
+  expect(postTwoImpressions.value_state).toBe('observed');
   expect(clicks.metric_value).toBeNull();
   expect(clicks.value_state).toBe('missing');
 
