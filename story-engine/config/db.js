@@ -59,6 +59,9 @@ ensureColumn('memory_diffs', 'source', "TEXT NOT NULL DEFAULT 'system'");
 ensureColumn('memory_diffs', 'resolved_at', 'INTEGER');
 ensureColumn('stories', 'tenant_id', 'TEXT');
 ensureColumn('stories', 'created_by_actor_id', 'TEXT');
+ensureColumn('business_metric_observations', 'condition', "TEXT NOT NULL DEFAULT 'context' CHECK(condition IN ('context','test','comparison'))");
+ensureColumn('business_metric_observations', 'published_at', 'INTEGER');
+ensureColumn('business_metric_observations', 'measurement_window_hours', 'REAL CHECK(measurement_window_hours IS NULL OR measurement_window_hours > 0)');
 
 db.exec(schemaIndexes);
 
@@ -100,11 +103,14 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS business_metric_observations (
     observation_id TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL,
-    audience_segment TEXT NOT NULL,
+    audience_segment TEXT NOT NULL DEFAULT '',
     source TEXT NOT NULL,
     account_id TEXT NOT NULL,
     page_id TEXT,
     content_id TEXT,
+    condition TEXT NOT NULL DEFAULT 'context' CHECK(condition IN ('context','test','comparison')),
+    published_at INTEGER,
+    measurement_window_hours REAL CHECK(measurement_window_hours IS NULL OR measurement_window_hours > 0),
     metric_name TEXT NOT NULL,
     metric_value REAL,
     value_state TEXT NOT NULL CHECK(value_state IN ('observed','missing')),
