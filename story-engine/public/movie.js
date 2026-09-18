@@ -1,5 +1,8 @@
 const params = new URLSearchParams(window.location.search);
 const workspace_id = params.get('workspace_id');
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+})[char]);
 document.getElementById('homeLink').href = `/story_home.html?workspace_id=${workspace_id}`;
 
 async function loadBeats() {
@@ -11,9 +14,9 @@ async function loadBeats() {
   }
   container.innerHTML = beats.map(b => `
     <div class="beat-card" data-id="${b.id}">
-      <span class="act-badge act-${b.act}">Act ${b.act}</span>
-      <strong>${b.beat}</strong>
-      <textarea class="logline" rows="2">${b.logline || ''}</textarea>
+      <span class="act-badge act-${escapeHtml(b.act)}">Act ${escapeHtml(b.act)}</span>
+      <strong>${escapeHtml(b.beat)}</strong>
+      <textarea class="logline" rows="2">${escapeHtml(b.logline)}</textarea>
       <button class="save-beat" data-id="${b.id}">Save beat</button>
     </div>
   `).join('');

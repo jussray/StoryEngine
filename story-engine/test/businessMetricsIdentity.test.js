@@ -25,6 +25,24 @@ const defaults = {
   page_id: 'page-456'
 };
 
+test('logical deduplication preserves unknown audience and distinct evidence windows', () => {
+  const db = createDb();
+  try {
+    const csv = [
+      'observed_at,published_at,measurement_window_hours,condition,metric_name,metric_value,unit,content_id',
+      '2026-09-03T12:00:00Z,2026-09-02T12:00:00Z,24,context,impressions,42,count,post-a',
+      '2026-09-03T12:00:00Z,2026-09-01T12:00:00Z,48,context,impressions,42,count,post-a'
+    ].join('\n');
+    const unknown = { ...defaults, audience_segment: null };
+    assert.equal(importBusinessMetricsCsv(db, csv, unknown).written, 2);
+    assert.equal(importBusinessMetricsCsv(db, csv, { ...unknown, provenance: { import_id: 'replay' } }).duplicates, 2);
+    const metrics = businessMetricsSummary(db, defaults.workspace_id).metrics;
+    assert.equal(metrics.length, 2);
+    assert.ok(metrics.every(row => row.audience_segment === null));
+    assert.deepEqual(metrics.map(row => row.measurement_window_hours).sort(), [24, 48]);
+  } finally { db.close(); }
+});
+
 test('business metrics summary keeps different content ids as separate evidence subjects', () => {
   const db = createDb();
   try {

@@ -224,3 +224,33 @@ test('invalid timeout configuration is bounded to a safe default', { concurrency
     restoreEnv(priorEnv);
   }
 });
+
+test('Anthropic deadline includes a stalled successful response body', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  try {
+    process.env.ANTHROPIC_API_KEY = 'test-stalled-body-secret';
+    globalThis.fetch = async (_url, init) => new Response(new ReadableStream({
+      start(controller) {
+        init.signal.addEventListener('abort', () => controller.error(init.signal.reason), { once: true });
+      }
+    }), { status: 200 });
+    const { completeWithReceipt, llmRoutingSnapshot } = await freshClient();
+    await assert.rejects(completeWithReceipt('hello', { provider: 'anthropic', timeoutMs: 1000, maxRetries: 0 }),
+      error => error.code === 'llm_timeout' && !error.message.includes('test-stalled-body-secret'));
+    assert.equal(llmRoutingSnapshot().circuits.anthropic.successes, 0);
+  } finally { globalThis.fetch = priorFetch; restoreEnv(priorEnv); }
+});
+
+test('Anthropic error type cannot reflect a credential into exceptions', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  const secret = 'test-key-reflected-as-error-type';
+  try {
+    process.env.ANTHROPIC_API_KEY = secret;
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: { type: secret } }), { status: 400 });
+    const { completeWithReceipt } = await freshClient();
+    await assert.rejects(completeWithReceipt('hello', { provider: 'anthropic', maxRetries: 0 }),
+      error => error.status === 400 && !String(error).includes(secret));
+  } finally { globalThis.fetch = priorFetch; restoreEnv(priorEnv); }
+});

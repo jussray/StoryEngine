@@ -76,10 +76,10 @@ function renderBusiness(data) {
     const provenance = item.provenance || {};
     return `<tr>
       <td>${esc(new Date(Number(item.observed_at)).toLocaleString())}${item.historical ? '<div class="sub">historical import</div>' : ''}</td>
-      <td><strong>${esc(item.metric_name)}</strong><div class="sub">${esc(item.content_id || '')}</div></td>
+      <td><strong>${esc(item.metric_name)}</strong><div class="sub">${esc(item.content_id || '')}</div><div class="sub">${esc(item.condition || 'context')}${item.measurement_window_hours == null ? '' : ` · ${esc(item.measurement_window_hours)}h`}</div></td>
       <td>${value}</td>
       <td>${esc(item.unit)}</td>
-      <td>${esc(item.audience_segment)}</td>
+      <td>${esc(item.audience_segment || 'Unknown')}</td>
       <td>${esc(item.source)}</td>
       <td>${esc(item.account_id)}${item.page_id ? `<div class="sub">${esc(item.page_id)}</div>` : ''}</td>
       <td>${esc(provenance.connector || provenance.import_format || 'recorded')}<div class="sub">${esc(provenance.import_receipt || provenance.line_number || '')}</div></td>
@@ -124,15 +124,14 @@ async function importBusinessEvidence() {
   if (!input.workspace) throw new Error('Workspace ID is required.');
   if (!input.source) throw new Error('Source is required.');
   if (!input.account) throw new Error('Account ID is required.');
-  if (!input.audience) throw new Error('Audience segment is required.');
   if (!file) throw new Error('Choose a CSV evidence file.');
 
   const params = new URLSearchParams({
     source: input.source,
-    account_id: input.account,
-    audience_segment: input.audience
+    account_id: input.account
   });
   if (input.page) params.set('page_id', input.page);
+  if (input.audience) params.set('audience_segment', input.audience);
 
   $('importBusiness').disabled = true;
   $('businessReceipt').textContent = 'Importing evidence…';

@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 
 const NULL_MARKERS = new Set(['', 'null', 'none', 'na', 'n/a']);
-const METRIC_NAME_PATTERN = /^[a-z][a-z0-9_.-]{0,79}$/i;
+const METRIC_NAME_PATTERN = /^[a-z][a-z0-9_]{0,79}$/;
 const UNIT_PATTERN = /^[a-z%$][a-z0-9_./%$-]{0,39}$/i;
+const CONDITIONS = new Set(['context', 'test', 'comparison']);
+const EXPLICIT_TIMEZONE_PATTERN = /(Z|[+-]\d{2}:\d{2})$/i;
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -55,17 +57,26 @@ function normalizeHeader(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function parseObservedAt(value) {
+function parseObservedAt(value, field = 'observed_at') {
   const text = String(value || '').trim();
-  if (!text) throw new Error('observed_at is required.');
+  if (!text) throw new Error(`${field} is required.`);
   if (/^\d{10,13}$/.test(text)) {
     const number = Number(text);
     const ms = text.length <= 10 ? number * 1000 : number;
     if (Number.isSafeInteger(ms)) return ms;
   }
+  if (!EXPLICIT_TIMEZONE_PATTERN.test(text)) {
+    throw new Error(`${field} must include an explicit timezone (Z or ±HH:MM).`);
+  }
   const parsed = Date.parse(text);
-  if (!Number.isFinite(parsed)) throw new Error(`Invalid observed_at: ${text}`);
+  if (!Number.isFinite(parsed)) throw new Error(`Invalid ${field}: ${text}`);
   return parsed;
+}
+
+function parseOptionalTimestamp(value, field) {
+  const text = String(value ?? '').trim();
+  if (!text || NULL_MARKERS.has(text.toLowerCase())) return null;
+  return parseObservedAt(text, field);
 }
 
 function normalizeMetricValue(value) {
@@ -82,54 +93,94 @@ function required(value, field) {
   return normalized;
 }
 
+function optionalText(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized || null;
+}
+
+function normalizeCondition(value) {
+  const condition = String(value ?? 'context').trim().toLowerCase() || 'context';
+  if (!CONDITIONS.has(condition)) {
+    throw new Error(`condition must be one of context, test, comparison; received: ${condition}`);
+  }
+  return condition;
+}
+
+function normalizeMeasurementWindow(value) {
+  const text = String(value ?? '').trim();
+  if (!text || NULL_MARKERS.has(text.toLowerCase())) return null;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error('measurement_window_hours must be a finite number greater than 0.');
+  }
+  return parsed;
+}
+
 function sameMetricValue(existing, incoming) {
-  if (existing.value_state !== incoming.value_state) return false;
-  if (incoming.value_state === 'missing') return existing.metric_value === null;
-  return Number(existing.metric_value) === incoming.metric_value;
+  return existing.value_state === incoming.value_state && existing.metric_value === incoming.metric_value;
 }
 
 function normalizeRow(row, defaults, importedAt, lineNumber) {
   const workspace_id = required(defaults.workspace_id, 'workspace_id');
-  const audience_segment = required(row.audience_segment || defaults.audience_segment, 'audience_segment');
+  const audience_segment = optionalText(row.audience_segment || defaults.audience_segment);
   const source = required(row.source || defaults.source, 'source');
   const account_id = required(row.account_id || defaults.account_id, 'account_id');
-  const page_id = String(row.page_id || defaults.page_id || '').trim() || null;
-  const content_id = String(row.content_id || row.post_id || defaults.content_id || '').trim() || null;
+  const page_id = optionalText(row.page_id || defaults.page_id);
+  const content_id = optionalText(row.content_id || row.post_id || defaults.content_id);
   const metric_name = required(row.metric_name, 'metric_name');
   const unit = required(row.unit, 'unit');
-  if (!METRIC_NAME_PATTERN.test(metric_name)) throw new Error(`Invalid metric_name: ${metric_name}`);
+  if (!METRIC_NAME_PATTERN.test(metric_name)) {
+    throw new Error(`Invalid metric_name: ${metric_name}; expected lowercase snake_case.`);
+  }
   if (!UNIT_PATTERN.test(unit)) throw new Error(`Invalid unit: ${unit}`);
 
   const observed_at = parseObservedAt(row.observed_at);
+  const published_at = parseOptionalTimestamp(row.published_at || defaults.published_at, 'published_at');
+  const measurement_window_hours = normalizeMeasurementWindow(
+    row.measurement_window_hours || defaults.measurement_window_hours
+  );
+  const condition = normalizeCondition(row.condition || defaults.condition);
   const { metric_value, value_state } = normalizeMetricValue(row.metric_value);
+
+  if (published_at != null && observed_at < published_at) {
+    throw new Error('observed_at cannot be earlier than published_at.');
+  }
+  if (published_at != null && measurement_window_hours != null) {
+    const actualHours = (observed_at - published_at) / 3_600_000;
+    if (Math.abs(actualHours - measurement_window_hours) > 0.25) {
+      throw new Error(
+        `measurement_window_hours does not match published_at -> observed_at elapsed time (${actualHours.toFixed(2)}h).`
+      );
+    }
+  }
+  if (condition !== 'context') {
+    if (!content_id) throw new Error(`${condition} evidence requires content_id.`);
+    if (!audience_segment) throw new Error(`${condition} evidence requires audience_segment.`);
+    if (published_at == null) throw new Error(`${condition} evidence requires published_at.`);
+    if (measurement_window_hours == null) {
+      throw new Error(`${condition} evidence requires measurement_window_hours.`);
+    }
+  }
+
   const normalized = {
-    workspace_id,
-    audience_segment,
-    source,
-    account_id,
-    page_id,
-    content_id,
-    metric_name,
-    metric_value,
-    value_state,
-    unit,
-    observed_at,
-    imported_at: importedAt,
-    historical: observed_at < importedAt ? 1 : 0
+    workspace_id, audience_segment, source, account_id, page_id, content_id,
+    condition, published_at, measurement_window_hours,
+    metric_name, metric_value, value_state, unit, observed_at,
+    imported_at: importedAt, historical: observed_at < importedAt ? 1 : 0
   };
-  const canonical = JSON.stringify({
-    workspace_id,
-    audience_segment,
-    source,
-    account_id,
-    page_id,
-    content_id,
-    metric_name,
-    metric_value,
-    value_state,
-    unit,
-    observed_at
-  });
+  // Preserve the pre-comparability observation fingerprint for ordinary context
+  // imports so replaying historical CSV evidence after an upgrade stays idempotent.
+  // New publication/window semantics intentionally create a distinct identity.
+  const canonical = condition === 'context' && published_at == null && measurement_window_hours == null
+    ? JSON.stringify({
+        workspace_id, audience_segment, source, account_id, page_id, content_id,
+        metric_name, metric_value, value_state, unit, observed_at
+      })
+    : JSON.stringify({
+        workspace_id, audience_segment, source, account_id, page_id, content_id,
+        condition, published_at, measurement_window_hours,
+        metric_name, metric_value, value_state, unit, observed_at
+      });
   const provenance = {
     ...(defaults.provenance && typeof defaults.provenance === 'object' ? defaults.provenance : {}),
     import_format: 'csv',
@@ -172,15 +223,19 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
       AND metric_name = ?
       AND unit = ?
       AND observed_at = ?
+      AND condition = ?
+      AND published_at IS ?
+      AND measurement_window_hours IS ?
     ORDER BY imported_at ASC, observation_id ASC
     LIMIT 1
   `);
   const insert = db.prepare(`
     INSERT OR IGNORE INTO business_metric_observations (
       observation_id, workspace_id, audience_segment, source, account_id, page_id, content_id,
+      condition, published_at, measurement_window_hours,
       metric_name, metric_value, value_state, unit, observed_at, imported_at, historical,
       provenance_json, raw_row_hash
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let written = 0;
@@ -192,14 +247,17 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
     for (const normalized of normalizedRows) {
       const existing = findLogicalObservation.get(
         normalized.workspace_id,
-        normalized.audience_segment,
+        normalized.audience_segment || '',
         normalized.source,
         normalized.account_id,
         normalized.page_id,
         normalized.content_id,
         normalized.metric_name,
         normalized.unit,
-        normalized.observed_at
+        normalized.observed_at,
+        normalized.condition,
+        normalized.published_at,
+        normalized.measurement_window_hours
       );
 
       if (existing) {
@@ -213,22 +271,12 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
       }
 
       const result = insert.run(
-        normalized.observation_id,
-        normalized.workspace_id,
-        normalized.audience_segment,
-        normalized.source,
-        normalized.account_id,
-        normalized.page_id,
-        normalized.content_id,
-        normalized.metric_name,
-        normalized.metric_value,
-        normalized.value_state,
-        normalized.unit,
-        normalized.observed_at,
-        normalized.imported_at,
-        normalized.historical,
-        normalized.provenance_json,
-        normalized.raw_row_hash
+        normalized.observation_id, normalized.workspace_id, normalized.audience_segment || '',
+        normalized.source, normalized.account_id, normalized.page_id, normalized.content_id,
+        normalized.condition, normalized.published_at, normalized.measurement_window_hours,
+        normalized.metric_name, normalized.metric_value, normalized.value_state, normalized.unit,
+        normalized.observed_at, normalized.imported_at, normalized.historical,
+        normalized.provenance_json, normalized.raw_row_hash
       );
       observationIds.push(normalized.observation_id);
       if (normalized.value_state === 'missing') missingValues += 1;
@@ -250,6 +298,7 @@ export function listBusinessMetrics(db, workspaceId, { limit = 100 } = {}) {
   const safeLimit = Math.max(1, Math.min(500, Math.floor(Number(limit) || 100)));
   return db.prepare(`
     SELECT observation_id, workspace_id, audience_segment, source, account_id, page_id, content_id,
+           condition, published_at, measurement_window_hours,
            metric_name, metric_value, value_state, unit, observed_at, imported_at, historical,
            provenance_json
     FROM business_metric_observations
@@ -258,6 +307,7 @@ export function listBusinessMetrics(db, workspaceId, { limit = 100 } = {}) {
     LIMIT ?
   `).all(String(workspaceId), safeLimit).map(row => ({
     ...row,
+    audience_segment: optionalText(row.audience_segment),
     provenance: JSON.parse(row.provenance_json || '{}'),
     provenance_json: undefined,
     historical: Boolean(row.historical)
@@ -273,7 +323,9 @@ export function businessMetricsSummary(db, workspaceId) {
            grouped.account_id,
            grouped.page_id,
            grouped.content_id,
-           grouped.audience_segment,
+           NULLIF(grouped.audience_segment, '') AS audience_segment,
+           grouped.condition,
+           grouped.measurement_window_hours,
            grouped.observations,
            grouped.missing,
            grouped.latest_observed_at,
@@ -282,20 +334,15 @@ export function businessMetricsSummary(db, workspaceId) {
            latest.value_state AS latest_value_state,
            latest.observed_at AS latest_value_observed_at
     FROM (
-      SELECT metric_name,
-             unit,
-             source,
-             account_id,
-             page_id,
-             content_id,
-             audience_segment,
+      SELECT metric_name, unit, source, account_id, page_id, content_id, audience_segment,
+             condition, measurement_window_hours,
              COUNT(*) AS observations,
              SUM(CASE WHEN value_state='missing' THEN 1 ELSE 0 END) AS missing,
              MAX(observed_at) AS latest_observed_at,
              MAX(CASE WHEN value_state='observed' THEN metric_value END) AS max_observed_value
       FROM business_metric_observations
       WHERE workspace_id = ?
-      GROUP BY metric_name, unit, source, account_id, page_id, content_id, audience_segment
+      GROUP BY metric_name, unit, source, account_id, page_id, content_id, audience_segment, condition, measurement_window_hours
     ) grouped
     LEFT JOIN business_metric_observations latest
       ON latest.observation_id = (
@@ -309,18 +356,14 @@ export function businessMetricsSummary(db, workspaceId) {
           AND candidate.page_id IS grouped.page_id
           AND candidate.content_id IS grouped.content_id
           AND candidate.audience_segment = grouped.audience_segment
+          AND candidate.condition = grouped.condition
+          AND candidate.measurement_window_hours IS grouped.measurement_window_hours
         ORDER BY candidate.observed_at DESC, candidate.imported_at DESC, candidate.observation_id DESC
         LIMIT 1
       )
-    ORDER BY grouped.metric_name ASC,
-             grouped.source ASC,
-             grouped.account_id ASC,
-             grouped.page_id ASC,
-             grouped.content_id ASC,
-             grouped.audience_segment ASC
+    ORDER BY grouped.metric_name ASC, grouped.source ASC, grouped.account_id ASC,
+             grouped.page_id ASC, grouped.content_id ASC, grouped.audience_segment ASC, grouped.condition ASC,
+             grouped.measurement_window_hours ASC
   `).all(id, id);
-  return {
-    workspace_id: id,
-    metrics: rows
-  };
+  return { workspace_id: id, metrics: rows };
 }

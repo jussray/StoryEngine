@@ -244,6 +244,43 @@ test('Anthropic reflected error body cannot leak API key into exception or circu
   }
 });
 
+
+test('Anthropic oversized success body fails closed without leaking content or API key', async () => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.ANTHROPIC_API_KEY;
+  const sentinel = 'test-success-key-value';
+  const reflected = `provider-output-${sentinel}-${'x'.repeat(4096)}`;
+  process.env.ANTHROPIC_API_KEY = sentinel;
+  global.fetch = async () => new Response(JSON.stringify({
+    id: 'msg_oversized',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-sonnet-5',
+    content: [{ type: 'text', text: reflected }]
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  try {
+    await assert.rejects(
+      () => completeWithReceipt('safe prompt', {
+        provider: 'anthropic',
+        maxRetries: 0,
+        successBodyMaxBytes: 1024
+      }),
+      error => {
+        assert.equal(error.code, 'llm_provider_response_too_large');
+        assert.equal(String(error.message).includes(sentinel), false);
+        assert.equal(String(error.message).includes('provider-output'), false);
+        return true;
+      }
+    );
+    assert.equal(JSON.stringify(llmRoutingSnapshot()).includes(sentinel), false);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalKey;
+  }
+});
+
 test('story creation records durable tenant membership and legacy null ownership fails closed', () => {
   const db = createTenantDb();
   try {
