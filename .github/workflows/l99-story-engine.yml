@@ -178,6 +178,78 @@ jobs:
           const releaseSha = String(process.env.LIVE_SMOKE_RELEASE_SHA || '').trim().toLowerCase();
           if (!/^[0-9a-f]{40}$/.test(releaseSha)) throw new Error('live smoke release SHA is invalid');
 
+          const safeEnum = value => {
+            const text = String(value || '').trim();
+            return /^[a-z0-9_.-]{1,80}$/i.test(text) ? text : null;
+          };
+
+          const classifyReason = message => {
+            const text = String(message || '').toLowerCase();
+            if (/zero data retention|data retention|\bzdr\b/.test(text)) return 'data_retention';
+            if (/spend(?:ing)? limit|credit balance|usage limit/.test(text)) return 'spending_limit';
+            if (/max[_ -]?tokens/.test(text)) return 'max_tokens';
+            if (/temperature|top[_ -]?p|top[_ -]?k/.test(text)) return 'sampling_parameter';
+            if (/budget[_ -]?tokens|\bthinking\b|\beffort\b/.test(text)) return 'thinking';
+            if (/\bworkspace\b/.test(text)) return 'workspace';
+            if (/\bmodel\b/.test(text)) return 'model';
+            if (/\bmessages?\b/.test(text)) return 'messages';
+            if (/\bsystem\b/.test(text)) return 'system';
+            return null;
+          };
+
+          async function readBoundedDiagnosticText(response, maxBytes = 4096) {
+            const body = response?.body;
+            if (!body || typeof body.getReader !== 'function') return '';
+            const reader = body.getReader();
+            const decoder = new TextDecoder();
+            let bytesRead = 0;
+            let text = '';
+            try {
+              while (bytesRead < maxBytes) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
+                const remaining = maxBytes - bytesRead;
+                const take = Math.min(remaining, value.byteLength);
+                text += decoder.decode(value.subarray(0, take), { stream: true });
+                bytesRead += take;
+                if (take < value.byteLength || bytesRead >= maxBytes) {
+                  await reader.cancel().catch(() => {});
+                  break;
+                }
+              }
+              text += decoder.decode();
+              return text;
+            } catch {
+              return '';
+            } finally {
+              try { reader.releaseLock(); } catch {}
+            }
+          }
+
+          const classifyAnthropicError = raw => {
+            try {
+              const parsed = JSON.parse(raw);
+              return {
+                type: safeEnum(parsed?.error?.type || parsed?.type),
+                reason: classifyReason(parsed?.error?.message)
+              };
+            } catch {
+              return { type: null, reason: null };
+            }
+          };
+
+          let providerDiagnostic = { type: null, reason: null };
+          const nativeFetch = globalThis.fetch;
+          globalThis.fetch = async (url, init) => {
+            const response = await nativeFetch(url, init);
+            if (!response.ok && String(url) === 'https://api.anthropic.com/v1/messages') {
+              const raw = await readBoundedDiagnosticText(response.clone(), 4096);
+              providerDiagnostic = classifyAnthropicError(raw);
+            }
+            return response;
+          };
+
           const base = {
             schema: 'juss/storyengine-anthropic-live-smoke@v1',
             release_sha: releaseSha,
@@ -218,10 +290,12 @@ jobs:
               ...base,
               status: 'failed',
               error_code: errorCode,
-              http_status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null
+              http_status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+              provider_error_type: providerDiagnostic.type,
+              provider_error_reason: providerDiagnostic.reason
             };
             await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
-            console.error(`Anthropic live smoke failed code=${safe.error_code} status=${safe.http_status ?? 'none'}`);
+            console.error(`Anthropic live smoke failed code=${safe.error_code} status=${safe.http_status ?? 'none'} type=${safe.provider_error_type ?? 'unknown'} reason=${safe.provider_error_reason ?? 'unknown'}`);
             process.exitCode = 1;
           }
           NODE

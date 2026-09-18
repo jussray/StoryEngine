@@ -60,6 +60,30 @@ test('live smoke uses the existing client and emits only sanitized provider prov
   assert.doesNotMatch(job, /console\.(log|error)\([^\n]*receipt\.text/);
 });
 
+test('failure diagnostics inspect the same bounded response clone and reduce it to whitelisted enums', () => {
+  const job = jobPrefix(workflow, 'anthropic-live-smoke');
+  assert.ok(job.includes("String(url) === 'https://api.anthropic.com/v1/messages'"));
+  assert.ok(job.includes('readBoundedDiagnosticText(response.clone(), 4096)'));
+  assert.ok(job.includes('provider_error_type: providerDiagnostic.type'));
+  assert.ok(job.includes('provider_error_reason: providerDiagnostic.reason'));
+  for (const reason of [
+    'data_retention',
+    'spending_limit',
+    'max_tokens',
+    'sampling_parameter',
+    'thinking',
+    'workspace',
+    'model',
+    'messages',
+    'system'
+  ]) {
+    assert.ok(job.includes(`'${reason}'`), `missing safe diagnostic reason ${reason}`);
+  }
+  assert.doesNotMatch(job, /provider_error_message/);
+  assert.doesNotMatch(job, /raw_body/);
+  assert.doesNotMatch(job, /error_message/);
+});
+
 test('failure receipt never serializes provider output or exception message', () => {
   const job = jobPrefix(workflow, 'anthropic-live-smoke');
   assert.ok(job.includes("status: 'failed'"));
