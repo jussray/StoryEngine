@@ -127,3 +127,110 @@ jobs:
       - name: Run L99 integration tests
         working-directory: story-engine
         run: npm test
+
+  anthropic-live-smoke:
+    name: Anthropic live smoke
+    needs: test
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production
+      deployment: false
+
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify immutable main head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "${GITHUB_SHA}" "$actual"
+          test "$actual" = "${GITHUB_SHA}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run sanitized Anthropic live smoke
+        working-directory: story-engine
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_WORKSPACE_ID: ${{ secrets.ANTHROPIC_WORKSPACE_ID }}
+          LIVE_SMOKE_RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo 'ANTHROPIC_API_KEY is not available to the trusted-main production smoke job.' >&2
+            exit 1
+          fi
+          mkdir -p test-results
+          node --input-type=module <<'NODE'
+          import { writeFile } from 'node:fs/promises';
+          import { completeWithReceipt } from './lib/llmClient.js';
+
+          const releaseSha = String(process.env.LIVE_SMOKE_RELEASE_SHA || '').trim().toLowerCase();
+          if (!/^[0-9a-f]{40}$/.test(releaseSha)) throw new Error('live smoke release SHA is invalid');
+
+          const base = {
+            schema: 'juss/storyengine-anthropic-live-smoke@v1',
+            release_sha: releaseSha,
+            provider: 'anthropic',
+            observed_at: new Date().toISOString()
+          };
+
+          try {
+            const receipt = await completeWithReceipt('Reply with exactly OK.', {
+              provider: 'anthropic',
+              maxRetries: 0,
+              timeoutMs: 30_000,
+              maxTokens: 8
+            });
+            if (receipt?.provenance?.provider !== 'anthropic') {
+              throw Object.assign(new Error('provider provenance mismatch'), { code: 'provider_provenance_mismatch' });
+            }
+            if (!String(receipt?.text || '').trim()) {
+              throw Object.assign(new Error('provider returned empty text'), { code: 'provider_empty_text' });
+            }
+            const safe = {
+              ...base,
+              status: 'verified',
+              requested_model: receipt.provenance.requested_model || null,
+              response_model: receipt.provenance.response_model || null,
+              response_id: receipt.provenance.response_id || null,
+              api_version: receipt.provenance.api_version || null,
+              workspace_header_configured: Boolean(receipt.provenance.workspace_header_configured),
+              output_nonempty: true
+            };
+            await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
+            console.log(`Anthropic live smoke verified provider=${safe.provider} model=${safe.response_model || safe.requested_model || 'unknown'} release=${safe.release_sha}`);
+          } catch (error) {
+            const rawCode = String(error?.code || 'anthropic_live_smoke_failed').trim();
+            const errorCode = /^[a-z0-9_.-]{1,80}$/i.test(rawCode) ? rawCode : 'anthropic_live_smoke_failed';
+            const status = Number(error?.status || 0);
+            const safe = {
+              ...base,
+              status: 'failed',
+              error_code: errorCode,
+              http_status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null
+            };
+            await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
+            console.error(`Anthropic live smoke failed code=${safe.error_code} status=${safe.http_status ?? 'none'}`);
+            process.exitCode = 1;
+          }
+          NODE
+
+      - name: Upload sanitized Anthropic live receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anthropic-live-smoke-${{ github.run_attempt }}
+          path: story-engine/test-results/anthropic-live-smoke.json
+          if-no-files-found: warn
+          retention-days: 30
