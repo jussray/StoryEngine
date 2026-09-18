@@ -37,6 +37,25 @@ test('startup upgrades a legacy persistent database before creating new indexes'
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE business_metric_observations (
+      observation_id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      audience_segment TEXT NOT NULL,
+      source TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      page_id TEXT,
+      content_id TEXT,
+      metric_name TEXT NOT NULL,
+      metric_value REAL,
+      value_state TEXT NOT NULL CHECK(value_state IN ('observed','missing')),
+      unit TEXT NOT NULL,
+      observed_at INTEGER NOT NULL,
+      imported_at INTEGER NOT NULL,
+      historical INTEGER NOT NULL DEFAULT 0,
+      provenance_json TEXT NOT NULL DEFAULT '{}',
+      raw_row_hash TEXT NOT NULL
+    );
+
     INSERT INTO stories (
       workspace_id, title, genre, pitch, mode, schema_version, created_at, updated_at
     ) VALUES (
@@ -47,6 +66,16 @@ test('startup upgrades a legacy persistent database before creating new indexes'
       workspace_id, chapter_id, entity_type, entity_id, field, old_value, new_value, conflict, resolved, created_at
     ) VALUES (
       'legacy-workspace', 1, 'character', 'char-1', 'name', 'Old', 'New', 0, 0, 1500
+    );
+
+    INSERT INTO business_metric_observations (
+      observation_id, workspace_id, audience_segment, source, account_id, page_id, content_id,
+      metric_name, metric_value, value_state, unit, observed_at, imported_at, historical,
+      provenance_json, raw_row_hash
+    ) VALUES (
+      'metric_legacy', 'legacy-workspace', 'founders', 'metricool:facebook', 'brand-legacy',
+      'page-legacy', 'post-legacy', 'impressions', 11, 'observed', 'count',
+      1789473600000, 1789477200000, 1, '{"connector":"metricool"}', 'legacy-row-hash'
     );
   `);
   legacy.close();
@@ -82,6 +111,28 @@ test('startup upgrades a legacy persistent database before creating new indexes'
     assert.equal(diff?.old_value, 'Old');
     assert.equal(diff?.new_value, 'New');
     assert.equal(diff?.source, 'system');
+
+    const metricColumns = db.prepare('PRAGMA table_info(business_metric_observations)').all().map(row => row.name);
+    for (const column of ['condition', 'published_at', 'measurement_window_hours']) {
+      assert.ok(metricColumns.includes(column), `expected migrated business_metric_observations.${column}`);
+    }
+
+    const metric = db.prepare(`
+      SELECT observation_id, audience_segment, source, account_id, page_id, content_id,
+             metric_name, metric_value, condition, published_at, measurement_window_hours
+      FROM business_metric_observations
+      WHERE observation_id = 'metric_legacy'
+    `).get();
+    assert.equal(metric?.audience_segment, 'founders');
+    assert.equal(metric?.source, 'metricool:facebook');
+    assert.equal(metric?.account_id, 'brand-legacy');
+    assert.equal(metric?.page_id, 'page-legacy');
+    assert.equal(metric?.content_id, 'post-legacy');
+    assert.equal(metric?.metric_name, 'impressions');
+    assert.equal(metric?.metric_value, 11);
+    assert.equal(metric?.condition, 'context');
+    assert.equal(metric?.published_at, null);
+    assert.equal(metric?.measurement_window_hours, null);
 
     db.close();
   } finally {

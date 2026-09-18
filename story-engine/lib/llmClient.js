@@ -35,6 +35,7 @@ const CIRCUIT_FAILURE_THRESHOLD = boundedInteger(process.env.LLM_CIRCUIT_FAILURE
 const CIRCUIT_RESET_MS = boundedInteger(process.env.LLM_CIRCUIT_RESET_MS, 60_000, 1_000, 3_600_000);
 const MAX_TOKENS_CAP = boundedInteger(process.env.LLM_MAX_TOKENS_CAP, 8192, 1, 128_000);
 const ERROR_BODY_MAX_BYTES = boundedInteger(process.env.LLM_ERROR_BODY_MAX_BYTES, 4096, 256, 65_536);
+const SUCCESS_BODY_MAX_BYTES = boundedInteger(process.env.LLM_SUCCESS_BODY_MAX_BYTES, 2_097_152, 1024, 16_777_216);
 
 function pickProvider(options = {}) {
   if (options.provider) return options.provider;
@@ -160,6 +161,23 @@ async function readBoundedResponseText(response, maxBytes = ERROR_BODY_MAX_BYTES
     return '';
   } finally {
     try { reader.releaseLock(); } catch {}
+  }
+}
+
+async function readBoundedJsonResponse(response, label, options = {}) {
+  const maxBytes = boundedInteger(options.successBodyMaxBytes, SUCCESS_BODY_MAX_BYTES, 1024, 16_777_216);
+  const raw = await readBoundedResponseText(response, maxBytes + 1);
+  if (Buffer.byteLength(raw, 'utf8') > maxBytes) {
+    const error = new Error(`${label} response exceeded the configured success-body limit.`);
+    error.code = 'llm_provider_response_too_large';
+    throw error;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const error = new Error(`${label} response was not valid JSON.`);
+    error.code = 'llm_provider_invalid_json';
+    throw error;
   }
 }
 
@@ -305,12 +323,7 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
     body: JSON.stringify(body)
   }, options);
 
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error('Anthropic response was not valid JSON.');
-  }
+  const data = await readBoundedJsonResponse(response, 'Anthropic', options);
   if (data?.type !== 'message' || data?.role !== 'assistant' || !Array.isArray(data.content)) {
     throw new Error('Anthropic response is not a valid Messages API assistant envelope.');
   }
@@ -368,6 +381,7 @@ export function llmRoutingSnapshot() {
     max_retries: DEFAULT_MAX_RETRIES,
     max_tokens_cap: MAX_TOKENS_CAP,
     error_body_max_bytes: ERROR_BODY_MAX_BYTES,
+    success_body_max_bytes: SUCCESS_BODY_MAX_BYTES,
     circuit_failure_threshold: CIRCUIT_FAILURE_THRESHOLD,
     circuit_reset_ms: CIRCUIT_RESET_MS,
     client_started_at: LLM_CLIENT_STARTED_AT,
