@@ -190,7 +190,7 @@ jobs:
               provider: 'anthropic',
               maxRetries: 0,
               timeoutMs: 30_000,
-              maxTokens: 8
+              maxTokens: 1024
             });
             if (receipt?.provenance?.provider !== 'anthropic') {
               throw Object.assign(new Error('provider provenance mismatch'), { code: 'provider_provenance_mismatch' });

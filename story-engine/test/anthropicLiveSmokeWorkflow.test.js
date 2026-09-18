@@ -48,7 +48,7 @@ test('live smoke uses the existing client and emits only sanitized provider prov
   assert.ok(job.includes("provider: 'anthropic'"));
   assert.ok(job.includes('maxRetries: 0'));
   assert.ok(job.includes('timeoutMs: 30_000'));
-  assert.ok(job.includes('maxTokens: 8'));
+  assert.ok(job.includes('maxTokens: 1024'));
   assert.ok(job.includes("schema: 'juss/storyengine-anthropic-live-smoke@v1'"));
   assert.ok(job.includes("status: 'verified'"));
   assert.ok(job.includes('requested_model: receipt.provenance.requested_model || null'));
