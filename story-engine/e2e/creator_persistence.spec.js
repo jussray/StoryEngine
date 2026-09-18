@@ -58,7 +58,7 @@ test('creator can create a real workspace, save a chapter, reload, and reopen pe
   expect(chapters.some(chapter => chapter.title === chapterTitle && chapter.content === chapterBody)).toBe(true);
 
   await page.goto(`/movie.html?workspace_id=${encodeURIComponent(workspaceId)}`);
-  await page.getByRole('button', { name: 'Generate from chapters' }).click();
+  await page.getByRole('button', { name: 'Generate Beats from Chapters' }).click();
   const beat = page.locator('.beat-card').filter({ has: page.locator('.logline') }).first();
   await expect(beat).toBeVisible();
   const logline = `Saved beat ${stamp}: </textarea><img src=x onerror="window.injected=true">`;
