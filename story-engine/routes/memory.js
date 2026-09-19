@@ -12,7 +12,7 @@ import {
   listMemoryDiffs,
   getGenomeContext
 } from '../lib/memoryEngine.js';
-import { canonSnapshot, getCanonAnchor, lockCanonAnchor, setCanonAnchor } from '../lib/canonMemory.js';
+import { canonSnapshot, getCanonAnchor, lockCanonAnchor, setCanonAnchor, unlockCanonAnchor } from '../lib/canonMemory.js';
 import { createCanonEvidence } from '../lib/canonEvidence.js';
 import {
   analyzeStorySource,
@@ -69,6 +69,20 @@ function directCanonLockEvidence(req, { workspace_id, kind, key, value }) {
     key,
     statement: value,
     source_ref: `direct-lock:reviewer:${reviewer}`,
+    source_version: requestId ? `request:${requestId}` : null,
+    authority: 'human'
+  });
+}
+
+function directCanonUnlockEvidence(req, { workspace_id, kind, key, value }) {
+  const reviewer = requireCanonReviewer(req);
+  const requestId = String(req.request_id || '').trim();
+  return createCanonEvidence({
+    workspace_id,
+    kind,
+    key,
+    statement: value,
+    source_ref: `direct-unlock:reviewer:${reviewer}`,
     source_version: requestId ? `request:${requestId}` : null,
     authority: 'human'
   });
@@ -162,10 +176,6 @@ export default function memoryRoutes(router, db) {
       const existingAnchor = getCanonAnchor(db, workspaceId, kind, key);
       const requestedLocked = body.locked === undefined ? undefined : Boolean(body.locked);
 
-      if (existingAnchor?.locked && requestedLocked === false) {
-        throw new Error('Canon unlock requires a dedicated evidence-backed unlock path; implicit creator unlock is not allowed.');
-      }
-
       const evidence = directCanonEvidence(req, {
         workspace_id: workspaceId,
         kind,
@@ -173,6 +183,11 @@ export default function memoryRoutes(router, db) {
         value
       });
       const authorityGrant = issueCanonAuthorityGrant(req, workspaceId);
+      const shouldUnlockExisting = Boolean(existingAnchor?.locked && requestedLocked === false);
+      const unlockEvidence = shouldUnlockExisting
+        ? directCanonUnlockEvidence(req, { workspace_id: workspaceId, kind, key, value: existingAnchor.value })
+        : null;
+      const unlockAuthorityGrant = shouldUnlockExisting ? issueCanonAuthorityGrant(req, workspaceId) : null;
       const shouldLockExisting = Boolean(existingAnchor && !existingAnchor.locked && requestedLocked === true);
       const lockEvidence = shouldLockExisting
         ? directCanonLockEvidence(req, { workspace_id: workspaceId, kind, key, value })
@@ -180,6 +195,16 @@ export default function memoryRoutes(router, db) {
       const lockAuthorityGrant = shouldLockExisting ? issueCanonAuthorityGrant(req, workspaceId) : null;
 
       const commit = db.transaction(() => {
+        if (shouldUnlockExisting) {
+          unlockCanonAnchor(db, {
+            workspace_id: workspaceId,
+            kind,
+            key,
+            evidence: unlockEvidence,
+            authority_grant: unlockAuthorityGrant
+          });
+        }
+
         const updated = setCanonAnchor(db, {
           workspace_id: workspaceId,
           kind,
