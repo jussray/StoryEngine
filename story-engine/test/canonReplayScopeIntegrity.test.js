@@ -84,6 +84,7 @@ test('idempotent evidence replay rejects a live anchor whose persisted scope was
   db.prepare('UPDATE canon_anchors SET workspace_id=? WHERE anchor_id=?')
     .run('ws-corrupted-scope', created.anchor_id);
 
+  // The terminal-ledger integrity guard detects live-anchor scope drift before replay validation.
   assert.throws(
     () => setCanonAnchor(db, {
       workspace_id: workspaceId,
@@ -94,7 +95,7 @@ test('idempotent evidence replay rejects a live anchor whose persisted scope was
       evidence: receipt,
       authority_grant: grant(workspaceId)
     }),
-    /Canon evidence replay rejected: evidence is already bound to a different or superseded mutation\./
+    /Canon ledger integrity violation: latest change for anchor .* does not match live canon state\./
   );
 
   assert.equal(getCanonAnchor(db, workspaceId, kind, key), null);
