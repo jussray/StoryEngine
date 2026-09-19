@@ -22,7 +22,7 @@ function fixtureDb() {
   return db;
 }
 
-test('validated zero-provider job exports one deterministic 30-second MP4 and reuses its receipt', async () => {
+test('validated zero-provider job exports one deterministic 30-second MP4, verifies it with ffprobe, and reuses its receipt', async () => {
   const db = fixtureDb();
   const outputDir = mkdtempSync(join(tmpdir(), 'l99-video-test-'));
   const previousOutput = process.env.L99_VIDEO_OUTPUT_DIR;
@@ -42,11 +42,19 @@ test('validated zero-provider job exports one deterministic 30-second MP4 and re
     assert.equal(first.scene_count, 6);
     assert.equal(first.duration_seconds, 30);
     assert.equal(first.actual_cost_usd, 0);
+    assert.equal(first.receipt.schema_version, '1.1.0');
+    assert.equal(first.receipt.renderer, 'ffmpeg_ffprobe_ken_burns_v2');
     assert.equal(first.receipt.provider_generation, false);
     assert.equal(first.receipt.provider_cost_usd, 0);
     assert.equal(first.receipt.motion, 'ken_burns_zoompan');
     assert.equal(first.receipt.captions.embedded, true);
     assert.equal(first.receipt.voiceover.status, 'provider_not_configured');
+    assert.equal(first.receipt.media_probe.verifier, 'ffprobe');
+    assert.equal(first.receipt.media_probe.verified, true);
+    assert.deepEqual(first.receipt.media_probe.dimensions, { width: 640, height: 360 });
+    assert.ok(first.receipt.media_probe.streams.some(stream => stream.codec_type === 'video'));
+    assert.ok(first.receipt.media_probe.streams.some(stream => stream.codec_type === 'audio'));
+    assert.ok(first.receipt.media_probe.streams.some(stream => stream.codec_type === 'subtitle'));
     assert.equal(first.reused, false);
     assert.ok(first.byte_size > 1000);
     assert.match(first.content_hash, /^[0-9a-f]{64}$/);
@@ -63,7 +71,9 @@ test('validated zero-provider job exports one deterministic 30-second MP4 and re
 
     const exportEvents = db.prepare(`SELECT event_type,payload FROM events WHERE workspace_id=? AND event_type='video.export.completed'`).all('workspace_video_export');
     assert.equal(exportEvents.length, 1);
-    assert.equal(JSON.parse(exportEvents[0].payload).provider_cost_usd, 0);
+    const eventPayload = JSON.parse(exportEvents[0].payload);
+    assert.equal(eventPayload.provider_cost_usd, 0);
+    assert.equal(eventPayload.media_verified, true);
   } finally {
     if (previousOutput === undefined) delete process.env.L99_VIDEO_OUTPUT_DIR;
     else process.env.L99_VIDEO_OUTPUT_DIR = previousOutput;
