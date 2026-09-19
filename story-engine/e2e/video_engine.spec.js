@@ -172,7 +172,30 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   expect(liveActionRaw.blueprint.production_contract.generated_visible_action_shots).toBeGreaterThanOrEqual(3);
   expect(liveActionRaw.blueprint.shots.every(shot => shot.visible_action_required === true)).toBe(true);
   expect(liveActionRaw.blueprint.shots.every(shot => shot.provider_prompt.includes('LIVE ACTION DELIVERY:'))).toBe(true);
-  const liveActionPreview = await validateJob(request, liveActionRaw, 'preview_validated');
+
+  const liveActionEditResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(liveActionRaw.job_id)}/shot-plan`, {
+    headers,
+    data: {
+      shots: liveActionRaw.blueprint.shots.map((shot, index) => ({
+        shot_id: shot.shot_id,
+        command: index === 0 ? '/dollyin founder' : shot.shot_command
+      }))
+    }
+  });
+  expect(liveActionEditResponse.status()).toBe(200);
+  const liveActionEdited = await liveActionEditResponse.json();
+  expect(liveActionEdited.blueprint.shots[0].shot_command).toBe('/dollyin founder');
+  expect(liveActionEdited.blueprint.shots[0].camera_move).toBe('dolly_in');
+  expect(liveActionEdited.blueprint.shots.every(shot => shot.visible_action_required === true)).toBe(true);
+  expect(liveActionEdited.blueprint.shots.every(shot => shot.provider_prompt.includes('LIVE ACTION DELIVERY:'))).toBe(true);
+
+  const liveActionEditedArtifactResponse = await request.get(`/api/video-engine/jobs/${encodeURIComponent(liveActionEdited.job_id)}/html`, { headers });
+  expect(liveActionEditedArtifactResponse.status()).toBe(200);
+  const liveActionEditedArtifactHtml = await liveActionEditedArtifactResponse.text();
+  expect(liveActionEditedArtifactHtml).toContain('data-shot-command="/dollyin founder"');
+  expect(liveActionEditedArtifactHtml).toContain('data-delivery-role="human_anchor"');
+
+  const liveActionPreview = await validateJob(request, liveActionEdited, 'preview_validated');
   expect(liveActionPreview.validation.final_delivery_required).toBe(true);
   expect(liveActionPreview.validation.satisfies_final_delivery).toBe(false);
   expect(liveActionPreview.validation.required_before).toBe('provider_render_and_playable_video_verification');
@@ -183,7 +206,8 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   });
   expect(blockedLiveActionRender.status()).toBe(409);
   await expect(blockedLiveActionRender.json()).resolves.toMatchObject({
-    error: 'Video job must pass Playwright validation before MP4 export.'
+    error: 'Live-action preview passed Playwright; final delivery requires a playable provider-rendered video.',
+    code: 'LIVE_ACTION_PROVIDER_REQUIRED'
   });
 
   const renderResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(cinematicJob.job_id)}/render`, {
