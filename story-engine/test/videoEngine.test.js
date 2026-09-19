@@ -30,10 +30,13 @@ test('render modes and visual styles are separate zero-cost decisions', () => {
     const styleKeys = Object.keys(VIDEO_ENGINE_OPTIONS.visual_styles).filter(style => style !== 'custom');
     assert.ok(styleKeys.length >= 10);
     assert.ok(styleKeys.includes('cinematic_realism'));
+    assert.ok(styleKeys.includes('bright_human_future'));
     assert.ok(styleKeys.includes('hand_drawn_cartoon'));
     assert.ok(styleKeys.includes('watercolor_storybook'));
     assert.ok(styleKeys.includes('clay_stop_motion'));
     assert.ok(styleKeys.includes('anime'));
+    assert.equal(VIDEO_ENGINE_OPTIONS.production_workflow, 'LEEVIZE');
+    assert.equal(VIDEO_ENGINE_OPTIONS.modes.live_action.label, 'Live Action');
 
     for (const mode of Object.keys(VIDEO_ENGINE_OPTIONS.modes)) {
       const style = VIDEO_ENGINE_OPTIONS.visual_styles.cinematic_realism.recommended_modes.includes(mode)
@@ -57,10 +60,51 @@ test('render modes and visual styles are separate zero-cost decisions', () => {
       assert.ok(blueprint.duration_seconds <= 60);
       assert.equal(blueprint.continuity_contract.one_story_brain, true);
       assert.equal(blueprint.continuity_contract.visual_style_is_not_canon, true);
+      assert.equal(blueprint.continuity_contract.concept_is_not_deliverable, true);
       assert.equal(blueprint.character_bible[0].name, 'Mina');
       assert.ok(blueprint.shots[0].must_preserve.some(item => item.includes('Mina')));
       assert.equal(blueprint.shots[0].visual_style, style);
     }
+  } finally {
+    db.close();
+  }
+});
+
+test('live action blueprints are action-first and cannot treat preview proof as final delivery', () => {
+  const db = fixtureDb();
+  try {
+    const blueprint = buildStoryVideoBlueprint(db, {
+      workspace_id: 'workspace_video_test',
+      mode: 'live_action',
+      visual_style: 'bright_human_future',
+      quality: 'hero',
+      aspect_ratio: '9:16',
+      primary_subject: 'founder',
+      product_or_world: 'Founder Control Room',
+      viewer_takeaway: 'AI can help, but the human still decides what is verified.',
+      action_beats: [
+        'The founder opens Founder Control Room on a laptop in daylight.',
+        'The founder reviews proof cards and moves through project status.',
+        'The founder checks a blocked state and refuses to mark it complete.',
+        'The founder makes the final decision and returns to the bright workspace.'
+      ]
+    });
+
+    assert.equal(blueprint.schema_version, '1.3.0');
+    assert.equal(blueprint.production_contract.workflow, 'LEEVIZE');
+    assert.equal(blueprint.production_contract.delivery_target, 'finished_playable_live_action');
+    assert.equal(blueprint.production_contract.preview_can_satisfy_delivery, false);
+    assert.equal(blueprint.production_contract.final_delivery_status, 'requires_playable_provider_video');
+    assert.equal(blueprint.production_contract.requested_action_beat_count, 4);
+    assert.ok(blueprint.production_contract.generated_visible_action_shots >= 3);
+    assert.equal(blueprint.cost_plan.strategy, 'deterministic_preview_then_external_live_action');
+    assert.equal(blueprint.cost_plan.provider_generation_enabled, false);
+    assert.equal(blueprint.continuity_contract.final_requires_playable_video_evidence, true);
+    assert.equal(blueprint.preview_theme.bg, '#eef7ff');
+    assert.equal(blueprint.preview_theme.text, '#102a56');
+    assert.ok(blueprint.shots.every(shot => shot.visible_action_required === true));
+    assert.ok(blueprint.shots.every(shot => shot.provider_prompt.includes('LIVE ACTION DELIVERY:')));
+    assert.ok(blueprint.shots.every(shot => shot.must_preserve.some(item => item.includes('visibly present and doing the action'))));
   } finally {
     db.close();
   }
@@ -111,6 +155,7 @@ test('video job emits a reusable non-anime artifact and Control Room style evide
     assert.equal(overview.status, 'awaiting_validation');
     assert.equal(overview.total_jobs, 1);
     assert.equal(overview.ready_for_validation_count, 1);
+    assert.equal(overview.preview_validated_count, 0);
     assert.equal(overview.total_estimated_cost_usd, 0);
     assert.equal(overview.style_count, 1);
     assert.ok(overview.available_style_count >= 10);

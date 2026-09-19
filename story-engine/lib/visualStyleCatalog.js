@@ -9,6 +9,13 @@ export const VIDEO_RENDER_MODES = Object.freeze({
     description: 'Layered browser animatic with camera motion, typography, and readable story cards.',
     negative: ['no provider dependency', 'no identity drift']
   },
+  live_action: {
+    label: 'Live Action',
+    status: 'preview_ready_final_provider_required',
+    renderer: 'external_live_action_provider',
+    description: 'Action-first human or character footage. The deterministic preview proves the plan only; final delivery requires a playable rendered video.',
+    negative: ['no concept-only completion', 'no slideshow-only delivery', 'no static dashboard montage', 'no generic hacker visuals', 'no fake product interaction']
+  },
   cinematic_3d: {
     label: 'Cinematic 3D',
     status: 'blueprint_ready',
@@ -40,8 +47,18 @@ export const VIDEO_VISUAL_STYLES = Object.freeze({
     language: 'cinematic realism, natural performance, practical camera grammar, filmic contrast',
     palette: 'natural skin tones, controlled contrast, motivated lighting',
     negative: ['no plastic skin', 'no uncanny faces', 'no glossy game-cutscene look'],
-    recommended_modes: ['cinematic_3d', 'motion_book'],
+    recommended_modes: ['live_action', 'cinematic_3d', 'motion_book'],
     preview_theme: { bg: '#0b1118', panel: '#18212b', accent: '#d2a66f' }
+  },
+  bright_human_future: {
+    label: 'Bright Human Future',
+    family: 'live_action',
+    description: 'Bright, airy, optimistic live action with people visibly doing the work in readable real-world spaces.',
+    language: 'bright human-centered live action, daylight through large windows, natural performance, over-the-shoulder interaction, clean product-use coverage, generous breathing room',
+    palette: 'white, soft sky blue, electric blue, soft violet, warm daylight, natural skin tones',
+    negative: ['no cyberpunk darkness', 'no gloomy server rooms', 'no empty dashboard-only shots', 'no unreadable interface text', 'no generic stock-office filler'],
+    recommended_modes: ['live_action', 'motion_book'],
+    preview_theme: { bg: '#eef7ff', panel: '#ffffff', accent: '#315dff', text: '#102a56', muted: '#58708f', line: '#b8d1ec' }
   },
   family_3d: {
     label: 'Stylized Family 3D',
@@ -160,7 +177,7 @@ export const VIDEO_VISUAL_STYLES = Object.freeze({
     language: 'creator-defined art direction',
     palette: 'creator-defined',
     negative: ['do not violate locked character identity', 'do not change canon'],
-    recommended_modes: ['motion_book', 'cinematic_3d', 'animation_2d', 'stop_motion'],
+    recommended_modes: ['live_action', 'motion_book', 'cinematic_3d', 'animation_2d', 'stop_motion'],
     preview_theme: { bg: '#101014', panel: '#1c1c22', accent: '#a2a2b0' }
   }
 });
@@ -172,6 +189,7 @@ export const LEGACY_VIDEO_MODE_ALIASES = Object.freeze({
 
 const DEFAULT_STYLE_BY_MODE = Object.freeze({
   motion_book: 'soft_cinematic_bookish',
+  live_action: 'bright_human_future',
   cinematic_3d: 'cinematic_realism',
   animation_2d: 'hand_drawn_cartoon',
   stop_motion: 'clay_stop_motion'

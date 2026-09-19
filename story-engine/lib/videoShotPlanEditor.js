@@ -17,6 +17,8 @@ const COMMAND_TEMPLATES = Object.freeze([
   '/close subject'
 ]);
 
+const LIVE_ACTION_MARKER = '\nLIVE ACTION DELIVERY:';
+
 function clean(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
@@ -39,9 +41,17 @@ function hasCompletedExport(db, jobId) {
   return Boolean(db.prepare("SELECT 1 FROM story_video_exports WHERE job_id=? AND status='complete' LIMIT 1").get(jobId));
 }
 
+function liveActionDeliverySuffix(shot) {
+  if (shot?.visible_action_required !== true) return '';
+  const prompt = String(shot?.provider_prompt || '');
+  const markerIndex = prompt.indexOf(LIVE_ACTION_MARKER);
+  if (markerIndex < 0) throw new Error(`Live-action shot ${shot?.shot_id || '(unknown)'} is missing its delivery contract.`);
+  return prompt.slice(markerIndex);
+}
+
 function articleMarkup(shot, index) {
   const previewMove = shot.preview_camera_move || shot.shot_direction?.preview_camera_move || shot.camera_move;
-  return `<article class="shot ${index === 0 ? 'active' : ''}" data-testid="video-shot" data-duration="${shot.duration_seconds}" data-shot-command="${html(shot.shot_command || '')}"><div class="camera ${html(previewMove)}"><small>${html(shot.shot_command || shot.shot_type)} · ${html(shot.camera_move)}</small><h2>${html(shot.source_chapter_title)}</h2><p>${html(shot.narration)}</p><footer>${html(shot.emotion)} · ${html(shot.intensity)} · ${shot.duration_seconds}s</footer></div></article>`;
+  return `<article class="shot ${index === 0 ? 'active' : ''}" data-testid="video-shot" data-duration="${shot.duration_seconds}" data-shot-command="${html(shot.shot_command || '')}" data-delivery-role="${html(shot.delivery_role || 'story_beat')}"><div class="camera ${html(previewMove)}"><small>${html(shot.shot_command || shot.shot_type)} · ${html(shot.camera_move)}</small><h2>${html(shot.source_chapter_title)}</h2><p>${html(shot.narration)}</p><footer>${html(shot.emotion)} · ${html(shot.intensity)} · ${shot.duration_seconds}s</footer></div></article>`;
 }
 
 function rebuildArtifactHtml(sourceHtml, shots) {
@@ -66,6 +76,7 @@ function compileEditedShot(original, requested) {
     must_preserve: original.must_preserve,
     negative_constraints: original.negative_constraints
   });
+  const deliverySuffix = liveActionDeliverySuffix(original);
   return {
     ...original,
     shot_command: direction.command,
@@ -73,7 +84,7 @@ function compileEditedShot(original, requested) {
     camera_move: direction.camera_move,
     preview_camera_move: direction.preview_camera_move,
     shot_direction: direction,
-    provider_prompt: direction.provider_prompt
+    provider_prompt: `${direction.provider_prompt}${deliverySuffix}`
   };
 }
 
