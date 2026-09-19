@@ -157,7 +157,7 @@ function makeShot(index, chapter, excerpt, look, characterNames, duration, produ
     provider_generation: false,
     estimated_cost_usd: 0,
     subject_state: `${shotDirection.subject} remains bound to the locked character and product canon for this beat.`,
-    environment_state: `${chapter?.title || story?.title || 'Story world'} preserves established geography, lighting logic, and visible product state.`
+    environment_state: `${chapter?.title || 'Story world'} preserves established geography, lighting logic, and visible product state.`
   };
 }
 
