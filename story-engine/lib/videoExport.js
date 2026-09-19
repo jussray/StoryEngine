@@ -19,7 +19,7 @@ import { getStoryVideoJob } from './videoEngine.js';
 import { log } from '../models/eventModel.js';
 
 const EXPORT_SCHEMA_VERSION = '1.2.0';
-const RENDERER_VERSION = 'ffmpeg_ffprobe_ken_burns_v3';
+const RENDERER_VERSION = 'ffmpeg_ffprobe_ken_burns_v4';
 const DEFAULT_SCENE_COUNT = 6;
 const DEFAULT_DURATION_SECONDS = 30;
 const DEFAULT_FPS = 30;
@@ -203,13 +203,13 @@ function deterministicFramePpm(blueprint, scene, width = DEFAULT_WIDTH, height =
   const panel = parseHexColor(theme.panel, '#15121d');
   const pixels = Buffer.alloc(width * height * 3);
   const seed = createHash('sha256')
-    .update(`${visualBibleHash(blueprint)}:${scene.scene_index}:${scene.source_shot_id || ''}`)
+    .update(`${visualBibleHash(blueprint)}:shared-continuity-geometry`)
     .digest();
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const depth = y / Math.max(1, height - 1);
-      const shimmer = ((x + (scene.scene_index * 29)) % 97) / 97;
+      const shimmer = (x % 97) / 97;
       const rgb = [0, 1, 2].map(channel => Math.max(0, Math.min(255,
         Math.round((bg[channel] * (1 - depth * 0.35)) + (panel[channel] * depth * 0.35) + (accent[channel] * shimmer * 0.05))
       )));
@@ -225,7 +225,7 @@ function deterministicFramePpm(blueprint, scene, width = DEFAULT_WIDTH, height =
   fillRect(pixels, width, height, 0, horizon, width, height, panel);
   const characterCount = Math.max(1, Math.min(3, scene.characters.length || blueprint.character_bible?.length || 1));
   for (let index = 0; index < characterCount; index += 1) {
-    const x = Math.round(width * (0.25 + (index * 0.22)) + ((scene.scene_index % 3) - 1) * 5);
+    const x = Math.round(width * (0.25 + (index * 0.22)));
     const bodyTop = Math.round(height * 0.46);
     const bodyBottom = Math.round(height * 0.76);
     const bodyWidth = Math.round(width * 0.055);
