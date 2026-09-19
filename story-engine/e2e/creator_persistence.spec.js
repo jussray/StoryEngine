@@ -78,3 +78,29 @@ test('creator can create a real workspace, save a chapter, reload, and reopen pe
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: test.info().outputPath('saved-beat-mobile.png') });
 });
+
+test('movie release-gate failures render hostile error text inert', async ({ page }) => {
+  const workspaceId = 'release-gate-xss-proof';
+  await page.route(`**/api/movie/beats/${workspaceId}`, async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+  await page.route(`**/api/movie/beats/generate/${workspaceId}`, async route => {
+    await route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: '<img src=x onerror="window.injected=true">',
+        gate: { blockers: ['<svg onload="window.injected=true"></svg>'] }
+      })
+    });
+  });
+
+  await page.goto(`/movie.html?workspace_id=${workspaceId}`);
+  await page.getByRole('button', { name: 'Generate Beats from Chapters' }).click();
+
+  await expect(page.getByText('<img src=x onerror="window.injected=true">', { exact: true })).toBeVisible();
+  await expect(page.getByText('<svg onload="window.injected=true"></svg>', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.injected)).toBeUndefined();
+  await expect(page.locator('#beats img')).toHaveCount(0);
+  await expect(page.locator('#beats svg')).toHaveCount(0);
+});
