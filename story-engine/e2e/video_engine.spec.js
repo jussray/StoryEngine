@@ -16,7 +16,8 @@ async function createJob(request, workspaceId, look) {
       mode: look.mode,
       visual_style: look.visual_style,
       quality: 'draft',
-      aspect_ratio: look.aspect_ratio
+      aspect_ratio: look.aspect_ratio,
+      ...(look.extra || {})
     }
   });
   expect(jobResponse.status()).toBe(201);
@@ -30,14 +31,19 @@ async function createJob(request, workspaceId, look) {
   return job;
 }
 
-async function validateJob(request, job) {
+async function validateJob(request, job, expectedStatus = 'validated') {
   const artifactResponse = await request.get(`/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/html`, { headers });
   expect(artifactResponse.ok()).toBe(true);
   const artifactHtml = await artifactResponse.text();
   expect(artifactHtml).toContain('data-testid="l99-video-artifact"');
   expect(artifactHtml).toContain(`data-target-mode="${job.blueprint.target_mode}"`);
   expect(artifactHtml).toContain(`data-visual-style="${job.blueprint.visual_style}"`);
-  expect(artifactHtml).toContain('Provider cost: $0.00');
+  expect(artifactHtml).toContain(`data-delivery-target="${job.blueprint.production_contract.delivery_target}"`);
+  if (job.blueprint.production_contract.preview_can_satisfy_delivery === false) {
+    expect(artifactHtml).toContain('Final provider-rendered video required');
+  } else {
+    expect(artifactHtml).toContain('Provider cost: $0.00');
+  }
 
   const validationResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/validate`, {
     headers,
@@ -45,11 +51,12 @@ async function validateJob(request, job) {
   });
   expect(validationResponse.status()).toBe(200);
   const validated = await validationResponse.json();
-  expect(validated.status).toBe('validated');
+  expect(validated.status).toBe(expectedStatus);
   expect(validated.validation.validator).toBe('playwright_story_video_gate');
   expect(validated.validation.playwright.passed).toBe(true);
   expect(validated.validation.structural.zero_provider_cost).toBe(true);
   expect(validated.validation.structural.has_visual_style_marker).toBe(true);
+  expect(validated.validation.structural.has_delivery_target_marker).toBe(true);
   return validated;
 }
 
@@ -61,7 +68,10 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   const optionsResponse = await request.get('/api/video-engine/options', { headers });
   expect(optionsResponse.ok()).toBe(true);
   const options = await optionsResponse.json();
-  expect(Object.keys(options.visual_styles).length).toBeGreaterThanOrEqual(10);
+  expect(Object.keys(options.visual_styles).length).toBeGreaterThanOrEqual(11);
+  expect(options.production_workflow).toBe('LEEVIZE');
+  expect(options.modes.live_action.label).toBe('Live Action');
+  expect(options.visual_styles.bright_human_future.label).toBe('Bright Human Future');
   expect(options.visual_styles.cinematic_realism.label).toBe('Cinematic Realism');
   expect(options.visual_styles.hand_drawn_cartoon.label).toBe('Hand-Drawn Cartoon');
   expect(options.visual_styles.watercolor_storybook.label).toBe('Watercolor Storybook');
@@ -140,6 +150,42 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
     aspect_ratio: '9:16'
   });
 
+  const liveActionRaw = await createJob(request, workspaceId, {
+    mode: 'live_action',
+    visual_style: 'bright_human_future',
+    aspect_ratio: '9:16',
+    extra: {
+      primary_subject: 'founder',
+      product_or_world: 'Founder Control Room',
+      viewer_takeaway: 'AI can help, but the human still decides what is verified.',
+      action_beats: [
+        'The founder opens Founder Control Room on a laptop in a bright workspace.',
+        'The founder reviews project proof and status cards over the shoulder.',
+        'The founder checks a blocked state and refuses to mark it complete.',
+        'The founder makes the final decision and returns to the wider bright workspace.'
+      ]
+    }
+  });
+  expect(liveActionRaw.blueprint.production_contract.workflow).toBe('LEEVIZE');
+  expect(liveActionRaw.blueprint.production_contract.delivery_target).toBe('finished_playable_live_action');
+  expect(liveActionRaw.blueprint.production_contract.preview_can_satisfy_delivery).toBe(false);
+  expect(liveActionRaw.blueprint.production_contract.generated_visible_action_shots).toBeGreaterThanOrEqual(3);
+  expect(liveActionRaw.blueprint.shots.every(shot => shot.visible_action_required === true)).toBe(true);
+  expect(liveActionRaw.blueprint.shots.every(shot => shot.provider_prompt.includes('LIVE ACTION DELIVERY:'))).toBe(true);
+  const liveActionPreview = await validateJob(request, liveActionRaw, 'preview_validated');
+  expect(liveActionPreview.validation.final_delivery_required).toBe(true);
+  expect(liveActionPreview.validation.satisfies_final_delivery).toBe(false);
+  expect(liveActionPreview.validation.required_before).toBe('provider_render_and_playable_video_verification');
+
+  const blockedLiveActionRender = await request.post(`/api/video-engine/jobs/${encodeURIComponent(liveActionPreview.job_id)}/render`, {
+    headers,
+    data: { scene_count: 4, duration_seconds: 20, fps: 24, width: 320, height: 180 }
+  });
+  expect(blockedLiveActionRender.status()).toBe(409);
+  await expect(blockedLiveActionRender.json()).resolves.toMatchObject({
+    error: 'Video job must pass Playwright validation before MP4 export.'
+  });
+
   const renderResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(cinematicJob.job_id)}/render`, {
     headers,
     data: { scene_count: 6, duration_seconds: 30, fps: 24, width: 320, height: 180 }
@@ -188,7 +234,7 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   expect(listResponse.status()).toBe(200);
   const listedJobs = await listResponse.json();
   expect(Array.isArray(listedJobs)).toBe(true);
-  expect(listedJobs.length).toBeGreaterThanOrEqual(2);
+  expect(listedJobs.length).toBeGreaterThanOrEqual(3);
 
   const forbiddenListResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, {
     headers: scopedHeaders
@@ -202,11 +248,12 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   await establishBrowserSession(page);
   await page.goto('/control_room.html');
   await expect(page.getByTestId('video-engine-section')).toBeVisible();
-  await expect(page.getByTestId('video-engine-machine-status')).toContainText(/verified|awaiting_validation/);
+  await expect(page.getByTestId('video-engine-machine-status')).toContainText(/verified|awaiting_validation|delivery_required/);
   await expect(page.getByTestId('video-engine-validated')).not.toHaveText('0');
-  await expect(page.getByTestId('video-engine-visual-styles')).toContainText('2/');
+  await expect(page.getByTestId('video-engine-visual-styles')).toContainText('3/');
   await expect(page.getByTestId('video-engine-job').filter({ hasText: 'cinematic_realism' }).first()).toContainText(workspaceId);
   await expect(page.getByTestId('video-engine-job').filter({ hasText: 'watercolor_storybook' }).first()).toContainText(workspaceId);
+  await expect(page.getByTestId('video-engine-job').filter({ hasText: 'bright_human_future' }).first()).toContainText(workspaceId);
 
   await page.goto(`/video_studio.html?workspace_id=${encodeURIComponent(workspaceId)}`);
   await expect(page).toHaveTitle('L99 Story Video Studio');
