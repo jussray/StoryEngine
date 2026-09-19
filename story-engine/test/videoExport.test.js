@@ -48,7 +48,7 @@ test('validated three-shot microsequence exports one deterministic MP4 with boun
     assert.equal(first.duration_seconds, 30);
     assert.equal(first.actual_cost_usd, 0);
     assert.equal(first.receipt.schema_version, '1.2.0');
-    assert.equal(first.receipt.renderer, 'ffmpeg_ffprobe_ken_burns_v3');
+    assert.equal(first.receipt.renderer, 'ffmpeg_ffprobe_ken_burns_v4');
     assert.equal(first.receipt.provider_generation, false);
     assert.equal(first.receipt.provider_cost_usd, 0);
     assert.equal(first.receipt.motion, 'ken_burns_zoompan');
