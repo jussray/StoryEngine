@@ -95,7 +95,7 @@ export default function videoEngineRoutes(router, db) {
       if (!job) return json(res, 404, { error: 'Video job not found.' });
       if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
       const validated = await validateStoryVideoJob(db, req.params.job_id);
-      json(res, validated.status === 'validated' ? 200 : 422, validated);
+      json(res, validated.validation?.passed === true ? 200 : 422, validated);
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
