@@ -87,6 +87,7 @@ function productionContextFor(input, story, characterNames, look) {
     visible_interaction_required: liveAction,
     sound_off_understandable_required: liveAction,
     preview_can_satisfy_delivery: !liveAction,
+    playable_video_required: liveAction,
     final_delivery_status: liveAction ? 'requires_playable_provider_video' : 'preview_export_allowed'
   };
 }
