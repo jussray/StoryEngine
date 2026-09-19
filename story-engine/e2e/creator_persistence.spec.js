@@ -81,6 +81,7 @@ test('creator can create a real workspace, save a chapter, reload, and reopen pe
 
 test('movie release-gate failures render hostile error text inert', async ({ page }) => {
   const workspaceId = 'release-gate-xss-proof';
+  await establishBrowserSession(page, TENANT_CREATOR_BOOTSTRAP_KEY);
   await page.route(`**/api/movie/beats/${workspaceId}`, async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
