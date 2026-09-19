@@ -7,9 +7,42 @@ CREATE TABLE IF NOT EXISTS stories (
   genre TEXT,
   pitch TEXT,
   mode TEXT,
+  tenant_id TEXT,
+  created_by_actor_id TEXT,
   schema_version TEXT NOT NULL DEFAULT '1.0.0',
   created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+);
+
+CREATE TABLE IF NOT EXISTS workspace_memberships (
+  workspace_id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'creator',
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, tenant_id, actor_id)
+);
+
+CREATE TABLE IF NOT EXISTS business_metric_observations (
+  observation_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  audience_segment TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  page_id TEXT,
+  content_id TEXT,
+  condition TEXT NOT NULL DEFAULT 'context' CHECK(condition IN ('context','test','comparison')),
+  published_at INTEGER,
+  measurement_window_hours REAL CHECK(measurement_window_hours IS NULL OR measurement_window_hours > 0),
+  metric_name TEXT NOT NULL,
+  metric_value REAL,
+  value_state TEXT NOT NULL CHECK(value_state IN ('observed','missing')),
+  unit TEXT NOT NULL,
+  observed_at INTEGER NOT NULL,
+  imported_at INTEGER NOT NULL,
+  historical INTEGER NOT NULL DEFAULT 0,
+  provenance_json TEXT NOT NULL DEFAULT '{}',
+  raw_row_hash TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS outlines (
@@ -385,6 +418,10 @@ CREATE TABLE IF NOT EXISTS compacted_event_episodes (
   UNIQUE(correlation_id, first_event_at, last_event_at)
 );
 
+CREATE INDEX IF NOT EXISTS idx_workspace_memberships_actor ON workspace_memberships(tenant_id, actor_id, workspace_id);
+CREATE INDEX IF NOT EXISTS idx_stories_tenant ON stories(tenant_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_business_metrics_workspace_time ON business_metric_observations(workspace_id, observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_business_metrics_source ON business_metric_observations(source, account_id, page_id, observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_events_mode_created ON events(mode, created_at);

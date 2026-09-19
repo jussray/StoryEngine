@@ -7,6 +7,28 @@ async function mountBeat(page) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
+        body: JSON.stringify([{ id: 'beat-1', act: 1, beat: 'Opening image', logline: 'Initial line' }]),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route('**/api/movie/beats/beat-1', async route => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+  await establishBrowserSession(page);
+  await page.goto('/movie.html?workspace_id=motion-proof');
+  const beat = page.locator('.beat-card').first();
+  await expect(beat).toBeVisible();
+  return beat;
+}
+
+async function loadEmptyRuntime(page) {
+  await page.route('**/api/movie/beats/motion-proof', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
         body: JSON.stringify([]),
       });
       return;
@@ -15,16 +37,6 @@ async function mountBeat(page) {
   });
   await establishBrowserSession(page);
   await page.goto('/movie.html?workspace_id=motion-proof');
-  await expect(page.locator('#beats')).toContainText('No beats yet. Generate from chapters.');
-  await page.evaluate(() => {
-    const beats = document.getElementById('beats');
-    const card = document.createElement('div');
-    card.className = 'beat-card';
-    card.dataset.testid = 'motion-proof-beat';
-    card.innerHTML = '<button class="save-beat" data-save-state="saved">Saved ✓</button>';
-    beats.replaceChildren(card);
-  });
-  return page.locator('[data-testid="motion-proof-beat"]');
 }
 
 async function loadRuntimeBeat(page, putStatus) {
@@ -47,6 +59,11 @@ async function loadRuntimeBeat(page, putStatus) {
   return page.locator('.save-beat');
 }
 
+test('Movie Mode renders bounded empty state before generated beats', async ({ page }) => {
+  await loadEmptyRuntime(page);
+  await expect(page.locator('#beats')).toContainText('No beats yet. Generate from chapters.');
+});
+
 test('Movie Mode uses bounded narrative motion on desktop', async ({ page }) => {
   const beat = await mountBeat(page);
   const motion = await beat.evaluate(node => {
@@ -57,6 +74,8 @@ test('Movie Mode uses bounded narrative motion on desktop', async ({ page }) => 
   expect(motion.duration).toBe('0.24s');
 
   const save = beat.locator('.save-beat');
+  await save.click();
+  await expect(save).toHaveAttribute('data-save-state', 'saved');
   const saveMotion = await save.evaluate(node => {
     const style = getComputedStyle(node);
     return { name: style.animationName, duration: style.animationDuration };
@@ -96,7 +115,10 @@ test('Movie Mode collapses animation when reduced motion is requested', async ({
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const beat = await mountBeat(page);
   const duration = await beat.evaluate(node => getComputedStyle(node).animationDuration);
-  const saveDuration = await beat.locator('.save-beat').evaluate(node => getComputedStyle(node).animationDuration);
+  const save = beat.locator('.save-beat');
+  await save.click();
+  await expect(save).toHaveAttribute('data-save-state', 'saved');
+  const saveDuration = await save.evaluate(node => getComputedStyle(node).animationDuration);
   expect(duration).toBe('0.001s');
   expect(saveDuration).toBe('0.001s');
 });

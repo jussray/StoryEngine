@@ -96,11 +96,20 @@ def verify_cookie_contract(root: Path) -> list[str]:
     browser_auth = (root / BROWSER_AUTH_PATH).read_text(encoding="utf-8", errors="replace")
     if "document.cookie" in browser_auth:
         errors.append(f"browser auth touches document.cookie: {BROWSER_AUTH_PATH}")
-    for required in ("sessionStorage", "x-api-key", "/api/auth/session", "clearBootstrapKey"):
+    for required in (
+        "x-api-key",
+        "/api/auth/session",
+        "purgeLegacyBootstrapKey",
+        "HttpOnly SameSite session cookie",
+    ):
         if required not in browser_auth:
             errors.append(f"browser auth missing bootstrap/session marker: {required}")
     if "headers.set('x-api-key'" in browser_auth or 'headers.set("x-api-key"' in browser_auth:
         errors.append("browser auth must not inject API keys into ordinary application fetches")
+    if ".setItem(" in browser_auth:
+        errors.append("browser auth must not persist bootstrap credentials in web storage")
+    if "removeItem(LEGACY_STORAGE_KEY)" not in browser_auth:
+        errors.append("browser auth must purge legacy persisted bootstrap credentials")
 
     # The auth bootstrap client is the only browser asset allowed to know the
     # transitional explicit credential exists. All ordinary presentation code

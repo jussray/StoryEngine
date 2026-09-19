@@ -392,12 +392,15 @@ function conversionPlan(blueprint, targetMedium) {
   };
 }
 
-function createConvertedWorkspace(db, blueprint, plan, targetMedium) {
+function createConvertedWorkspace(db, blueprint, plan, targetMedium, ownership) {
   const targetTitle = `${blueprint.title} — ${targetMedium.replaceAll('_', ' ')}`;
   const targetWorkspaceId = Story.create(db, {
     title: targetTitle,
     genre: blueprint.story_kind,
-    pitch: `Adaptation of ${blueprint.title}: ${blueprint.pitch || blueprint.conversion_rules?.preserve?.join(', ')}`
+    pitch: `Adaptation of ${blueprint.title}: ${blueprint.pitch || blueprint.conversion_rules?.preserve?.join(', ')}`,
+    tenant_id: ownership.tenant_id,
+    actor_id: ownership.actor_id,
+    role: ownership.role || 'creator'
   });
 
   upsertCreativeProfile(db, targetWorkspaceId, {
@@ -445,6 +448,11 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
   ensureBlueprintSchema(db);
   const target = String(targetMedium || '').toLowerCase();
   if (!BLUEPRINT_TARGETS.includes(target)) throw new Error(`Unsupported blueprint target: ${target}.`);
+  const sourceStory = Story.get(db, sourceWorkspaceId);
+  if (!sourceStory) throw new Error('Source workspace not found.');
+  if (!sourceStory.tenant_id || !sourceStory.created_by_actor_id) {
+    throw new Error('Source workspace ownership must be migrated before conversion.');
+  }
   const row = getStoryBlueprint(db, sourceWorkspaceId) || buildStoryBlueprint(db, sourceWorkspaceId);
   if (!row.validation.passed || !row.blueprint.seed_gate?.conversion_ready) {
     throw new Error('Seed is not conversion-ready. Required order: Book → Lindymode Validation → OODA → Redteam Seed Check → Convert.');
@@ -453,7 +461,11 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
   const option = (blueprint.continuation_options || []).find(item => item.target_medium === target);
   if (!option) throw new Error(`Target ${target} is not unlocked for this seed.`);
   const plan = conversionPlan(blueprint, target);
-  const targetWorkspaceId = createConvertedWorkspace(db, blueprint, plan, target);
+  const targetWorkspaceId = createConvertedWorkspace(db, blueprint, plan, target, {
+    tenant_id: sourceStory.tenant_id,
+    actor_id: sourceStory.created_by_actor_id,
+    role: 'creator'
+  });
   const conversionId = `conversion_${randomUUID()}`;
   const now = Date.now();
   const validation = {
@@ -468,7 +480,8 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
       { check: 'ooda_seed_cleared', passed: blueprint.seed_gate.ooda_decision.passed },
       { check: 'redteam_seed_checked', passed: blueprint.seed_gate.redteam_seed_check.passed },
       { check: 'canon_preservation_rules_attached', passed: true },
-      { check: 'child_development_profile_preserved', passed: Boolean(blueprint.developmental_profile) }
+      { check: 'child_development_profile_preserved', passed: Boolean(blueprint.developmental_profile) },
+      { check: 'source_ownership_preserved', passed: true }
     ]
   };
 

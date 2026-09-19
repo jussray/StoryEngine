@@ -13,6 +13,7 @@ import { setOperatorAssistDefault } from '../lib/assistMode.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+const TEST_IDENTITY = Object.freeze({ tenant_id: 'tenant-test', actor_id: 'actor-test', role: 'creator' });
 
 function createDb() {
   const db = new DatabaseSync(':memory:');
@@ -27,6 +28,7 @@ function storyInput(overrides = {}) {
     audience: 'middle_grade',
     story_kind: 'fantasy',
     emotional_effect: 'wonder',
+    ...TEST_IDENTITY,
     ...overrides
   };
 }
@@ -55,6 +57,7 @@ test('default Writer authority is resolved before any Ghost or runtime work star
   assert.equal(run.assist_profile.permissions.may_draft_without_request, false);
   assert.equal(run.assist_profile.permissions.may_run_full_pipeline, false);
   assert.ok(db.prepare('SELECT * FROM creative_profiles WHERE workspace_id=?').get(run.workspace_id));
+  assert.equal(db.prepare('SELECT tenant_id FROM stories WHERE workspace_id=?').get(run.workspace_id).tenant_id, TEST_IDENTITY.tenant_id);
   assertNoProviderPipelineWork(db, run);
   db.close();
 });

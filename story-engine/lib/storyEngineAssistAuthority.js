@@ -55,7 +55,10 @@ export async function startHumanLedStoryEngineRun(db, input = {}, resolvedMode =
   const workspaceId = Story.create(db, {
     title: intent.title,
     genre: intent.story_kind,
-    pitch: intent.story_vision
+    pitch: intent.story_vision,
+    tenant_id: input.tenant_id,
+    actor_id: input.actor_id,
+    role: input.role || 'creator'
   });
   const now = Date.now();
   const status = mode === 'writer' ? 'writer_active' : 'co_writer_ready';

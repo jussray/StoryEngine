@@ -18,6 +18,7 @@ import { writeRunSummary, getRunSummary } from '../lib/runSummary.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
+const TEST_IDENTITY = Object.freeze({ tenant_id: 'tenant-test', actor_id: 'actor-test', role: 'creator' });
 
 function createDb() {
   const db = new DatabaseSync(':memory:');
@@ -52,7 +53,8 @@ test('one Story Engine request creates workspace, profile, Ghost plan, Lindymode
     audience: 'middle_grade',
     story_kind: 'fantasy',
     emotional_effect: 'wonder',
-    estimated_cost: 0
+    estimated_cost: 0,
+    ...TEST_IDENTITY
   });
 
   assert.equal(run.status, 'runtime_queued');
@@ -65,6 +67,9 @@ test('one Story Engine request creates workspace, profile, Ghost plan, Lindymode
   assert.ok(db.prepare('SELECT * FROM creative_profiles WHERE workspace_id=?').get(run.workspace_id));
   assert.ok(db.prepare('SELECT * FROM lindymode_state WHERE workspace_id=?').get(run.workspace_id));
   assert.ok(db.prepare('SELECT * FROM runtime_dispatch_queue WHERE dispatch_id=?').get(run.dispatch_id));
+  const story = db.prepare('SELECT tenant_id, created_by_actor_id FROM stories WHERE workspace_id=?').get(run.workspace_id);
+  assert.equal(story.tenant_id, TEST_IDENTITY.tenant_id);
+  assert.equal(story.created_by_actor_id, TEST_IDENTITY.actor_id);
 
   const brain = storyEngineBrainSnapshot(db);
   assert.equal(brain.active_count, 1);
@@ -88,7 +93,8 @@ test('paid Story Engine work pauses for human operator approval', async () => {
     audience: 'eli10',
     story_kind: 'educational',
     emotional_effect: 'wonder',
-    estimated_cost: 0.25
+    estimated_cost: 0.25,
+    ...TEST_IDENTITY
   });
   assert.equal(blocked.status, 'awaiting_approval');
   assert.equal(blocked.current_stage, 'redteam_pre_runtime');
@@ -109,7 +115,8 @@ test('run retrieval exposes the full operating-system trace', async () => {
     audience: 'teen',
     story_kind: 'mystery',
     emotional_effect: 'excitement',
-    estimated_cost: 0
+    estimated_cost: 0,
+    ...TEST_IDENTITY
   });
   const run = await getStoryEngineRun(db, started.run_id, { resume: false });
   const stages = run.stages.map(stage => stage.stage);
@@ -129,7 +136,8 @@ test('Control Room historian writes a searchable permanent run summary', async (
     audience: 'eli10',
     story_kind: 'adventure',
     emotional_effect: 'hope',
-    estimated_cost: 0
+    estimated_cost: 0,
+    ...TEST_IDENTITY
   });
 
   db.prepare(`

@@ -345,11 +345,61 @@ export function enforceOperatorApiBoundary(req, res, next) {
   return requireRole('administrator')(req, res, next);
 }
 
+function workspaceMembershipAllows(req, workspaceId) {
+  if (!req.db || !req.auth?.tenant_id || !req.auth?.actor_id) return false;
+  try {
+    return Boolean(req.db.prepare(`
+      SELECT 1 AS allowed FROM workspace_memberships
+      WHERE workspace_id = ? AND tenant_id = ? AND actor_id = ?
+      LIMIT 1
+    `).get(workspaceId, req.auth.tenant_id, req.auth.actor_id));
+  } catch {
+    return false;
+  }
+}
+
+function workspaceTenant(req, workspaceId) {
+  if (!req.db) return null;
+  try {
+    const row = req.db.prepare('SELECT tenant_id FROM stories WHERE workspace_id = ?').get(workspaceId);
+    return row ? { exists: true, tenant_id: row.tenant_id || null } : null;
+  } catch {
+    return null;
+  }
+}
+
 export function assertWorkspaceAccess(req, workspaceId) {
   const normalized = String(workspaceId || '').trim();
   if (!normalized) return true;
-  const allowed = req.auth?.workspace_ids || [];
-  return allowed.includes('*') || allowed.includes(normalized);
+
+  const identity = req.auth || {};
+  const allowed = Array.isArray(identity.workspace_ids)
+    ? [...new Set(identity.workspace_ids.map(String).filter(Boolean))]
+    : [];
+  const wildcard = allowed.includes('*');
+  const explicitlyAllowed = allowed.includes(normalized);
+  const scopeConfigured = allowed.length > 0;
+  const owner = workspaceTenant(req, normalized);
+
+  if (owner?.exists && owner.tenant_id && owner.tenant_id !== identity.tenant_id) return false;
+
+  // Explicit non-wildcard workspace scope is a hard authority ceiling. A durable
+  // membership can validate access inside it, but cannot widen the credential.
+  if (scopeConfigured && !wildcard && !explicitlyAllowed) return false;
+
+  const member = workspaceMembershipAllows(req, normalized);
+  if (owner?.exists && !owner.tenant_id) return member;
+  if (member) return true;
+  if (owner?.exists) return (wildcard || explicitlyAllowed) && owner.tenant_id === identity.tenant_id;
+
+  // Pure helper/unit callers may not attach a database. Preserve explicit scope
+  // there; the real server always attaches req.db before workspace authorization.
+  if (!req.db && explicitlyAllowed) return true;
+
+  // Preserve the historical administrator wildcard behavior for not-yet-created
+  // workspace identifiers without letting a scoped credential escape its list.
+  if (wildcard) return identity.role === 'administrator';
+  return false;
 }
 
 export function requireWorkspaceAccess(req, res, workspaceId) {

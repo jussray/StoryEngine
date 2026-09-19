@@ -31,7 +31,20 @@ db.exec('PRAGMA temp_store = MEMORY;');
 db.exec('PRAGMA wal_autocheckpoint = 1000;');
 
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
-db.exec(schema);
+const schemaIndexMarker = '\nCREATE INDEX IF NOT EXISTS ';
+const firstIndexOffset = schema.indexOf(schemaIndexMarker);
+
+if (firstIndexOffset < 0) {
+  throw new Error('Schema migration boundary missing: expected CREATE INDEX section.');
+}
+
+// Existing production databases can predate additive columns referenced by
+// current indexes. CREATE TABLE IF NOT EXISTS does not change an old table's
+// shape, so execute table DDL first, apply additive migrations, then indexes.
+// This keeps upgrades in place and never requires replacing persistent data.
+const schemaTables = schema.slice(0, firstIndexOffset);
+const schemaIndexes = schema.slice(firstIndexOffset);
+db.exec(schemaTables);
 
 function ensureColumn(table, column, definition) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -44,6 +57,13 @@ ensureColumn('memory_diffs', 'diff_id', 'TEXT');
 ensureColumn('memory_diffs', 'resolution', 'TEXT');
 ensureColumn('memory_diffs', 'source', "TEXT NOT NULL DEFAULT 'system'");
 ensureColumn('memory_diffs', 'resolved_at', 'INTEGER');
+ensureColumn('stories', 'tenant_id', 'TEXT');
+ensureColumn('stories', 'created_by_actor_id', 'TEXT');
+ensureColumn('business_metric_observations', 'condition', "TEXT NOT NULL DEFAULT 'context' CHECK(condition IN ('context','test','comparison'))");
+ensureColumn('business_metric_observations', 'published_at', 'INTEGER');
+ensureColumn('business_metric_observations', 'measurement_window_hours', 'REAL CHECK(measurement_window_hours IS NULL OR measurement_window_hours > 0)');
+
+db.exec(schemaIndexes);
 
 db.exec(`
   DELETE FROM memory_diffs
@@ -62,6 +82,49 @@ db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_content_hash_once
     ON memory_diffs(workspace_id, chapter_id, field, new_value)
     WHERE field = 'content_hash';
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS workspace_memberships (
+    workspace_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'creator',
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, tenant_id, actor_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_workspace_memberships_actor
+    ON workspace_memberships(tenant_id, actor_id, workspace_id);
+  CREATE INDEX IF NOT EXISTS idx_stories_tenant
+    ON stories(tenant_id, updated_at DESC);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS business_metric_observations (
+    observation_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    audience_segment TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    page_id TEXT,
+    content_id TEXT,
+    condition TEXT NOT NULL DEFAULT 'context' CHECK(condition IN ('context','test','comparison')),
+    published_at INTEGER,
+    measurement_window_hours REAL CHECK(measurement_window_hours IS NULL OR measurement_window_hours > 0),
+    metric_name TEXT NOT NULL,
+    metric_value REAL,
+    value_state TEXT NOT NULL CHECK(value_state IN ('observed','missing')),
+    unit TEXT NOT NULL,
+    observed_at INTEGER NOT NULL,
+    imported_at INTEGER NOT NULL,
+    historical INTEGER NOT NULL DEFAULT 0,
+    provenance_json TEXT NOT NULL DEFAULT '{}',
+    raw_row_hash TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_business_metrics_workspace_time
+    ON business_metric_observations(workspace_id, observed_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_business_metrics_source
+    ON business_metric_observations(source, account_id, page_id, observed_at DESC);
 `);
 
 db.exec(`

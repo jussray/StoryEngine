@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { establishBrowserSession } from './session.js';
 
-test('front door hands the exact run identity to the Story Engine', async ({ page }) => {
+test('front door hands the exact run identity to the Story Engine without persisting bootstrap credentials', async ({ page }) => {
   const run = {
     run_id: 'run-proof-123',
     workspace_id: 'workspace-proof-456',
@@ -50,6 +50,19 @@ test('front door hands the exact run identity to the Story Engine', async ({ pag
   });
 
   await page.goto('/front_door.html');
+
+  // Prove an upgrade from an older browser state cannot leave the bootstrap key
+  // behind. The current client must purge both browser storage mechanisms on load.
+  await page.evaluate(() => {
+    sessionStorage.setItem('l99_api_key', 'legacy-session-secret');
+    localStorage.setItem('l99_api_key', 'legacy-local-secret');
+  });
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => ({
+    session: sessionStorage.getItem('l99_api_key'),
+    local: localStorage.getItem('l99_api_key')
+  }))).toEqual({ session: null, local: null });
+
   await page.locator('#vision').fill('A child discovers a sleeping moon beneath her neighborhood.');
   await page.getByRole('button', { name: 'Begin' }).click();
 

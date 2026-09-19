@@ -1,0 +1,25 @@
+{
+  "schema": "juss/ai-crawler-contract@v1",
+  "project": "StoryEngine",
+  "canonical_source": "https://github.com/jussray/StoryEngine",
+  "production_origin": "https://story-engine-production-1e6b.up.railway.app",
+  "policy": {
+    "search_discovery": "allow-bounded-public-surface",
+    "user_directed_retrieval": "allow-bounded-public-surface",
+    "model_training": "deny-by-default",
+    "bulk_dataset_collection": "deny-by-default"
+  },
+  "public_paths": [
+    "/robots.txt",
+    "/llms.txt",
+    "/crawlers.json",
+    "/guardrails",
+    "/guardrails.json",
+    "/runtime-identity"
+  ],
+  "attribution": {
+    "preferred": "link-to-canonical-source"
+  },
+  "authority": "read-only-public-surface",
+  "security": "crawler metadata is not authentication or authorization"
+}

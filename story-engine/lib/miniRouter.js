@@ -1,5 +1,5 @@
 // lib/miniRouter.js — lightweight express-like router
-// Supports middleware, GET/POST/PUT/DELETE, :params, JSON parsing, and body limits.
+// Supports middleware, route handler chains, GET/POST/PUT/DELETE, :params, JSON/CSV parsing, and body limits.
 
 const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
 
@@ -19,9 +19,12 @@ export function createRouter(options = {}) {
   const middleware = [];
   const maxBodyBytes = normalizeLimit(options.maxBodyBytes);
 
-  function addRoute(method, path, handler) {
+  function addRoute(method, path, ...handlers) {
+    if (!handlers.length || handlers.some(handler => typeof handler !== 'function')) {
+      throw new TypeError('route handlers must be functions.');
+    }
     const pattern = path.replace(/:([a-zA-Z_]+)/g, '(?<$1>[^/]+)');
-    routes.push({ method, regex: new RegExp(`^${pattern}$`), handler });
+    routes.push({ method, regex: new RegExp(`^${pattern}$`), handlers });
   }
 
   function use(prefix, handler) {
@@ -35,38 +38,41 @@ export function createRouter(options = {}) {
     middleware.push({ prefix, handler });
   }
 
-  function runMiddleware(req, res, pathname, done) {
-    const stack = middleware.filter(item => matchesPrefix(pathname, item.prefix));
+  function runStack(stack, req, res, done) {
     let index = -1;
-
     const next = error => {
       if (error) {
         if (!res.writableEnded) json(res, 500, { error: 'middleware_error', message: error.message });
         return;
       }
       index += 1;
-      const item = stack[index];
-      if (!item) return done();
+      const handler = stack[index];
+      if (!handler) return done?.();
       try {
-        const result = item.handler(req, res, next);
-        if (result && typeof result.then === 'function') {
-          result.catch(next);
-        }
+        const result = handler(req, res, next);
+        if (result && typeof result.then === 'function') result.catch(next);
       } catch (caught) {
         next(caught);
       }
     };
-
     next();
+  }
+
+  function runMiddleware(req, res, pathname, done) {
+    const stack = middleware
+      .filter(item => matchesPrefix(pathname, item.prefix))
+      .map(item => item.handler);
+    runStack(stack, req, res, done);
+  }
+
+  function runRoute(req, res, route) {
+    runStack(route.handlers, req, res);
   }
 
   function parseBody(req, res, route) {
     const declaredLength = Number(req.headers?.['content-length'] || 0);
     if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
-      json(res, 413, {
-        error: 'body_too_large',
-        max_bytes: maxBodyBytes
-      });
+      json(res, 413, { error: 'body_too_large', max_bytes: maxBodyBytes });
       req.resume?.();
       return;
     }
@@ -78,10 +84,7 @@ export function createRouter(options = {}) {
     const failTooLarge = () => {
       if (finished) return;
       finished = true;
-      json(res, 413, {
-        error: 'body_too_large',
-        max_bytes: maxBodyBytes
-      });
+      json(res, 413, { error: 'body_too_large', max_bytes: maxBodyBytes });
       req.removeListener('data', onData);
       req.removeListener('end', onEnd);
       req.resume?.();
@@ -98,9 +101,15 @@ export function createRouter(options = {}) {
     const onEnd = () => {
       if (finished) return;
       finished = true;
-      const raw = Buffer.concat(chunks).toString('utf8');
+      const rawBuffer = Buffer.concat(chunks);
+      const raw = rawBuffer.toString('utf8');
+      req.rawBody = rawBuffer;
+      const contentType = String(req.headers?.['content-type'] || '').split(';', 1)[0].trim().toLowerCase();
+
       if (!raw.trim()) {
         req.body = {};
+      } else if (contentType === 'text/csv' || contentType === 'text/plain') {
+        req.body = raw;
       } else {
         try {
           req.body = JSON.parse(raw);
@@ -108,7 +117,7 @@ export function createRouter(options = {}) {
           return json(res, 400, { error: 'invalid_json' });
         }
       }
-      route.handler(req, res);
+      runRoute(req, res, route);
     };
 
     req.on('data', onData);
@@ -126,11 +135,7 @@ export function createRouter(options = {}) {
     const pathname = url.pathname;
     const method = req.method.toUpperCase();
 
-    const route = routes.find(candidate => {
-      if (candidate.method !== method) return false;
-      return pathname.match(candidate.regex);
-    });
-
+    const route = routes.find(candidate => candidate.method === method && pathname.match(candidate.regex));
     if (!route) return json(res, 404, { error: 'Not found' });
 
     const match = pathname.match(route.regex);
@@ -139,20 +144,17 @@ export function createRouter(options = {}) {
 
     runMiddleware(req, res, pathname, () => {
       if (res.writableEnded) return;
-      if (method === 'POST' || method === 'PUT') {
-        parseBody(req, res, route);
-      } else {
-        route.handler(req, res);
-      }
+      if (method === 'POST' || method === 'PUT') parseBody(req, res, route);
+      else runRoute(req, res, route);
     });
   }
 
   return {
     use,
-    get: (path, handler) => addRoute('GET', path, handler),
-    post: (path, handler) => addRoute('POST', path, handler),
-    put: (path, handler) => addRoute('PUT', path, handler),
-    delete: (path, handler) => addRoute('DELETE', path, handler),
+    get: (path, ...handlers) => addRoute('GET', path, ...handlers),
+    post: (path, ...handlers) => addRoute('POST', path, ...handlers),
+    put: (path, ...handlers) => addRoute('PUT', path, ...handlers),
+    delete: (path, ...handlers) => addRoute('DELETE', path, ...handlers),
     handle
   };
 }

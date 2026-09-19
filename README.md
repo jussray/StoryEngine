@@ -38,7 +38,7 @@ Internal `l99_*` runtime names, event types, APIs, telemetry, and operational ar
 
 A repository-wide code audit is in progress. The runtime and promotion-gate foundations are substantial, but the system is not yet verified as production-safe.
 
-Known release blockers include cryptographic Stripe webhook verification, replacing browser-readable API-key persistence with a hardened authentication/session design, tightening the browser Content Security Policy, proving workspace authorization on every read and mutation path, and rebuilding stale feature branches on current `main` before merge. A present header is not proof of a valid Stripe signature, and passing isolated tests is not a production-readiness claim.
+Current code implements cryptographic Stripe webhook signature verification and replaces legacy browser-readable API-key persistence with an in-memory bootstrap exchange for a server-issued HttpOnly SameSite session cookie. Those implementation facts do not prove live Stripe delivery or complete production authorization. Remaining release blockers include tightening the browser Content Security Policy, proving workspace authorization on every read and mutation path, attaching immutable exact-head evidence to the canonical capability contract, and proving live provider/runtime outcomes. A valid local signature test is not a live Stripe receipt, and passing isolated tests is not a production-readiness claim.
 
 ## AI operating contracts
 

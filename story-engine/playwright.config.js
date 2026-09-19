@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const playwrightRuntimeId = `${process.pid}-${Date.now()}`;
+const playwrightExpectedHeadSha = process.env.EXPECTED_HEAD_SHA || 'b'.repeat(40);
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -21,6 +24,11 @@ export default defineConfig({
       ...process.env,
       PORT: '3000',
       NODE_ENV: 'test',
+      EXPECTED_HEAD_SHA: playwrightExpectedHeadSha,
+      // Browser proof must never depend on or mutate tracked repository SQLite/WAL
+      // state. Production still requires its provider-mounted persistent path.
+      L99_DB_PATH: process.env.L99_DB_PATH || `/tmp/l99-playwright-${playwrightRuntimeId}.db`,
+      L99_VIDEO_OUTPUT_DIR: process.env.L99_VIDEO_OUTPUT_DIR || `/tmp/l99-playwright-video-${playwrightRuntimeId}`,
       API_KEY: process.env.API_KEY || 'playwright-test-key',
       L99_API_KEYS_JSON: process.env.L99_API_KEYS_JSON || JSON.stringify([
         {
@@ -38,6 +46,34 @@ export default defineConfig({
           role: 'creator',
           principal_type: 'human',
           workspace_ids: ['playwright-allowed-workspace']
+        },
+        {
+          key: 'playwright-tenant-creator-key',
+          actor_id: 'playwright-tenant-creator',
+          tenant_id: 'playwright',
+          role: 'creator',
+          workspace_ids: []
+        },
+        {
+          key: 'playwright-other-admin-key',
+          actor_id: 'playwright-other-admin-actor',
+          tenant_id: 'other-internal-service',
+          role: 'administrator',
+          workspace_ids: ['*']
+        },
+        {
+          key: 'playwright-other-fcr-admin-key',
+          actor_id: 'other-fcr-admin',
+          tenant_id: 'founder-control-room',
+          role: 'administrator',
+          workspace_ids: ['*']
+        },
+        {
+          key: 'playwright-admin-key',
+          actor_id: 'fcr-storyengine-control-room',
+          tenant_id: 'founder-control-room',
+          role: 'administrator',
+          workspace_ids: ['*']
         }
       ]),
       SOURCE_CANON_PROVIDER: process.env.SOURCE_CANON_PROVIDER || 'local',

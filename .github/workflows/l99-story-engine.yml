@@ -16,6 +16,7 @@ on:
       - '.github/workflows/l99-story-engine.yml'
       - '.github/workflows/story-engine-production-signal.yml'
       - '.github/workflows/story-engine-production-proof.yml'
+      - '.gitignore'
   pull_request:
     paths:
       - 'story-engine/**'
@@ -29,6 +30,7 @@ on:
       - '.github/workflows/l99-story-engine.yml'
       - '.github/workflows/story-engine-production-signal.yml'
       - '.github/workflows/story-engine-production-proof.yml'
+      - '.gitignore'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -76,6 +78,233 @@ jobs:
           fi
           ffmpeg -version | head -n 1
 
+      - name: Inspect exact Docker carrier for runtime capability and leakage
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="storyengine-package-audit:${EXPECTED_HEAD_SHA}"
+          docker build --tag "$image" story-engine
+
+          docker run --rm --entrypoint node "$image" --input-type=module -e "
+            const { chromium } = await import('playwright');
+            const browser = await chromium.launch({ headless: true });
+            try {
+              const page = await browser.newPage();
+              await page.setContent('<main data-testid=\"runtime-browser-probe\">browser-ok</main>');
+              const value = await page.locator('[data-testid=\"runtime-browser-probe\"]').textContent();
+              if (value !== 'browser-ok') throw new Error('production Playwright browser probe failed');
+            } finally {
+              await browser.close();
+            }
+          "
+
+          cid="$(docker create "$image")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          rm -rf /tmp/storyengine-package-audit
+          mkdir -p /tmp/storyengine-package-audit
+          docker export "$cid" | tar -x -C /tmp/storyengine-package-audit app
+          find /tmp/storyengine-package-audit/app -type f -printf '%P\n' | sort > /tmp/storyengine-package-files.txt
+          grep -v '^node_modules/' /tmp/storyengine-package-files.txt > /tmp/storyengine-source-files.txt || true
+          cat /tmp/storyengine-source-files.txt
+
+          if grep -E '(^|/)\.git(/|$)|(^|/)(test|e2e|playwright-report|test-results|blob-report|coverage)(/|$)|(^|/)playwright[^/]*\.js$|(^|/)[^/]+\.(db|sqlite|sqlite3)(-wal|-shm)?$|(^|/)[^/]+\.(pem|key)$' /tmp/storyengine-source-files.txt; then
+            echo 'Forbidden runtime, test, proof, VCS, or private-key artifact found in packaged application source.' >&2
+            exit 1
+          fi
+
+          env_hits="$(grep -E '(^|/)\.env($|\.)' /tmp/storyengine-source-files.txt | grep -v -E '(^|/)\.env\.example$' || true)"
+          if [ -n "$env_hits" ]; then
+            printf '%s\n' "$env_hits" >&2
+            echo 'Forbidden environment file found in packaged application source.' >&2
+            exit 1
+          fi
+
+          if grep -RIlE --exclude-dir=node_modules --exclude='.env.example' '(-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,})' /tmp/storyengine-package-audit/app; then
+            echo 'Credential-shaped material found in packaged application source.' >&2
+            exit 1
+          fi
+
       - name: Run L99 integration tests
         working-directory: story-engine
         run: npm test
+
+  anthropic-live-smoke:
+    name: Anthropic live smoke
+    needs: test
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production
+      deployment: false
+
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify immutable main head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "${GITHUB_SHA}" "$actual"
+          test "$actual" = "${GITHUB_SHA}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run sanitized Anthropic live smoke
+        working-directory: story-engine
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_WORKSPACE_ID: ${{ secrets.ANTHROPIC_WORKSPACE_ID }}
+          LIVE_SMOKE_RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo 'ANTHROPIC_API_KEY is not available to the trusted-main production smoke job.' >&2
+            exit 1
+          fi
+          mkdir -p test-results
+          node --input-type=module <<'NODE'
+          import { writeFile } from 'node:fs/promises';
+          import { completeWithReceipt } from './lib/llmClient.js';
+
+          const releaseSha = String(process.env.LIVE_SMOKE_RELEASE_SHA || '').trim().toLowerCase();
+          if (!/^[0-9a-f]{40}$/.test(releaseSha)) throw new Error('live smoke release SHA is invalid');
+
+          const safeEnum = value => {
+            const text = String(value || '').trim();
+            return /^[a-z0-9_.-]{1,80}$/i.test(text) ? text : null;
+          };
+
+          const classifyReason = message => {
+            const text = String(message || '').toLowerCase();
+            if (/zero data retention|data retention|\bzdr\b/.test(text)) return 'data_retention';
+            if (/spend(?:ing)? limit|credit balance|usage limit/.test(text)) return 'spending_limit';
+            if (/max[_ -]?tokens/.test(text)) return 'max_tokens';
+            if (/temperature|top[_ -]?p|top[_ -]?k/.test(text)) return 'sampling_parameter';
+            if (/budget[_ -]?tokens|\bthinking\b|\beffort\b/.test(text)) return 'thinking';
+            if (/\bworkspace\b/.test(text)) return 'workspace';
+            if (/\bmodel\b/.test(text)) return 'model';
+            if (/\bmessages?\b/.test(text)) return 'messages';
+            if (/\bsystem\b/.test(text)) return 'system';
+            return null;
+          };
+
+          async function readBoundedDiagnosticText(response, maxBytes = 4096) {
+            const body = response?.body;
+            if (!body || typeof body.getReader !== 'function') return '';
+            const reader = body.getReader();
+            const decoder = new TextDecoder();
+            let bytesRead = 0;
+            let text = '';
+            try {
+              while (bytesRead < maxBytes) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
+                const remaining = maxBytes - bytesRead;
+                const take = Math.min(remaining, value.byteLength);
+                text += decoder.decode(value.subarray(0, take), { stream: true });
+                bytesRead += take;
+                if (take < value.byteLength || bytesRead >= maxBytes) {
+                  await reader.cancel().catch(() => {});
+                  break;
+                }
+              }
+              text += decoder.decode();
+              return text;
+            } catch {
+              return '';
+            } finally {
+              try { reader.releaseLock(); } catch {}
+            }
+          }
+
+          const classifyAnthropicError = raw => {
+            try {
+              const parsed = JSON.parse(raw);
+              return {
+                type: safeEnum(parsed?.error?.type || parsed?.type),
+                reason: classifyReason(parsed?.error?.message)
+              };
+            } catch {
+              return { type: null, reason: null };
+            }
+          };
+
+          let providerDiagnostic = { type: null, reason: null };
+          const nativeFetch = globalThis.fetch;
+          globalThis.fetch = async (url, init) => {
+            const response = await nativeFetch(url, init);
+            if (!response.ok && String(url) === 'https://api.anthropic.com/v1/messages') {
+              const raw = await readBoundedDiagnosticText(response.clone(), 4096);
+              providerDiagnostic = classifyAnthropicError(raw);
+            }
+            return response;
+          };
+
+          const base = {
+            schema: 'juss/storyengine-anthropic-live-smoke@v1',
+            release_sha: releaseSha,
+            provider: 'anthropic',
+            observed_at: new Date().toISOString()
+          };
+
+          try {
+            const receipt = await completeWithReceipt('Reply with exactly OK.', {
+              provider: 'anthropic',
+              maxRetries: 0,
+              timeoutMs: 30_000,
+              maxTokens: 1024
+            });
+            if (receipt?.provenance?.provider !== 'anthropic') {
+              throw Object.assign(new Error('provider provenance mismatch'), { code: 'provider_provenance_mismatch' });
+            }
+            if (!String(receipt?.text || '').trim()) {
+              throw Object.assign(new Error('provider returned empty text'), { code: 'provider_empty_text' });
+            }
+            const safe = {
+              ...base,
+              status: 'verified',
+              requested_model: receipt.provenance.requested_model || null,
+              response_model: receipt.provenance.response_model || null,
+              response_id: receipt.provenance.response_id || null,
+              api_version: receipt.provenance.api_version || null,
+              workspace_header_configured: Boolean(receipt.provenance.workspace_header_configured),
+              output_nonempty: true
+            };
+            await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
+            console.log(`Anthropic live smoke verified provider=${safe.provider} model=${safe.response_model || safe.requested_model || 'unknown'} release=${safe.release_sha}`);
+          } catch (error) {
+            const rawCode = String(error?.code || 'anthropic_live_smoke_failed').trim();
+            const errorCode = /^[a-z0-9_.-]{1,80}$/i.test(rawCode) ? rawCode : 'anthropic_live_smoke_failed';
+            const status = Number(error?.status || 0);
+            const safe = {
+              ...base,
+              status: 'failed',
+              error_code: errorCode,
+              http_status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+              provider_error_type: providerDiagnostic.type,
+              provider_error_reason: providerDiagnostic.reason
+            };
+            await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
+            console.error(`Anthropic live smoke failed code=${safe.error_code} status=${safe.http_status ?? 'none'} type=${safe.provider_error_type ?? 'unknown'} reason=${safe.provider_error_reason ?? 'unknown'}`);
+            process.exitCode = 1;
+          }
+          NODE
+
+      - name: Upload sanitized Anthropic live receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anthropic-live-smoke-${{ github.run_attempt }}
+          path: story-engine/test-results/anthropic-live-smoke.json
+          if-no-files-found: warn
+          retention-days: 30

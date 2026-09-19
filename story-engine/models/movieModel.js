@@ -19,9 +19,6 @@ export function generateBeats(db, workspace_id) {
 
   if (!chapters.length) return [];
 
-  // Delete existing beats for this workspace
-  db.prepare('DELETE FROM movie_beats WHERE workspace_id = ?').run(workspace_id);
-
   const total = chapters.length;
   const now = Date.now();
 
@@ -31,6 +28,8 @@ export function generateBeats(db, workspace_id) {
   `);
 
   const insertAll = db.transaction((chs) => {
+    // Preserve existing edits if any replacement insert fails.
+    db.prepare('DELETE FROM movie_beats WHERE workspace_id = ?').run(workspace_id);
     chs.forEach((ch, i) => {
       const act = i < total * 0.25 ? 'I' : i < total * 0.75 ? 'II' : 'III';
       const beat = `Beat ${i + 1}: ${ch.title}`;

@@ -13,20 +13,29 @@ const DEFAULT_TASK_PROVIDERS = Object.freeze({
 });
 
 const DEFAULT_MODELS = Object.freeze({
-  anthropic: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
-  anthropic_fast: process.env.ANTHROPIC_FAST_MODEL || 'claude-haiku-3-5',
-  anthropic_deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-opus-4',
+  anthropic: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',
+  anthropic_fast: process.env.ANTHROPIC_FAST_MODEL || 'claude-haiku-4-5-20251001',
+  anthropic_deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-opus-5',
   openai: process.env.OPENAI_MODEL || 'gpt-4o-mini',
   openrouter: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
 });
 
 const LLM_CLIENT_STARTED_AT = Date.now();
 const providerState = new Map();
-const DEFAULT_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60_000);
-const DEFAULT_MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 2);
-const CIRCUIT_FAILURE_THRESHOLD = Number(process.env.LLM_CIRCUIT_FAILURE_THRESHOLD || 5);
-const CIRCUIT_RESET_MS = Number(process.env.LLM_CIRCUIT_RESET_MS || 60_000);
-const MAX_TOKENS_CAP = Number(process.env.LLM_MAX_TOKENS_CAP || 8192);
+
+function boundedInteger(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
+}
+
+const DEFAULT_TIMEOUT_MS = boundedInteger(process.env.LLM_TIMEOUT_MS, 60_000, 1_000, 300_000);
+const DEFAULT_MAX_RETRIES = boundedInteger(process.env.LLM_MAX_RETRIES, 2, 0, 10);
+const CIRCUIT_FAILURE_THRESHOLD = boundedInteger(process.env.LLM_CIRCUIT_FAILURE_THRESHOLD, 5, 1, 100);
+const CIRCUIT_RESET_MS = boundedInteger(process.env.LLM_CIRCUIT_RESET_MS, 60_000, 1_000, 3_600_000);
+const MAX_TOKENS_CAP = boundedInteger(process.env.LLM_MAX_TOKENS_CAP, 8192, 1, 128_000);
+const ERROR_BODY_MAX_BYTES = boundedInteger(process.env.LLM_ERROR_BODY_MAX_BYTES, 4096, 256, 65_536);
+const SUCCESS_BODY_MAX_BYTES = boundedInteger(process.env.LLM_SUCCESS_BODY_MAX_BYTES, 2_097_152, 1024, 16_777_216);
 
 function pickProvider(options = {}) {
   if (options.provider) return options.provider;
@@ -41,10 +50,23 @@ function pickModel(provider, options = {}) {
   return DEFAULT_MODELS[provider] || DEFAULT_MODELS.openai;
 }
 
-function boundedMaxTokens(options = {}) {
+function boundedMaxTokens(options = {}, model = '') {
   const requested = Number(options.maxTokens || 4096);
-  if (!Number.isFinite(requested) || requested < 1) return 4096;
-  return Math.min(Math.floor(requested), MAX_TOKENS_CAP);
+  const normalized = !Number.isFinite(requested) || requested < 1 ? 4096 : Math.floor(requested);
+  const modelCap = String(model).startsWith('claude-haiku-4-5') ? 64_000 : MAX_TOKENS_CAP;
+  return Math.min(normalized, modelCap, MAX_TOKENS_CAP);
+}
+
+function supportsAnthropicTemperature(model) {
+  const normalized = String(model || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.startsWith('claude-sonnet-5')) return false;
+  if (normalized.startsWith('claude-opus-5')) return false;
+  if (normalized.startsWith('claude-fable-5')) return false;
+  if (normalized.startsWith('claude-mythos-5')) return false;
+  if (normalized.startsWith('claude-opus-4-7')) return false;
+  if (normalized.startsWith('claude-opus-4-8')) return false;
+  return true;
 }
 
 function headers(extra = {}) {
@@ -52,7 +74,16 @@ function headers(extra = {}) {
 }
 
 function stateFor(provider) {
-  if (!providerState.has(provider)) providerState.set(provider, { failures: 0, opened_at: null, last_error: null, calls: 0, successes: 0, created_at: Date.now() });
+  if (!providerState.has(provider)) {
+    providerState.set(provider, {
+      failures: 0,
+      opened_at: null,
+      last_error: null,
+      calls: 0,
+      successes: 0,
+      created_at: Date.now()
+    });
+  }
   return providerState.get(provider);
 }
 
@@ -69,6 +100,14 @@ function assertCircuitClosed(provider) {
   throw error;
 }
 
+function safeFailureSummary(provider, error) {
+  const status = Number(error?.status || 0);
+  if (status) return `${provider} HTTP ${status}`;
+  if (error?.code === 'llm_timeout' || error?.name === 'AbortError') return `${provider} timeout`;
+  if (error?.code === 'llm_circuit_open') return `${provider} circuit_open`;
+  return `${provider} request_failed`;
+}
+
 function noteSuccess(provider) {
   const state = stateFor(provider);
   state.calls += 1;
@@ -82,7 +121,7 @@ function noteFailure(provider, error) {
   const state = stateFor(provider);
   state.calls += 1;
   state.failures += 1;
-  state.last_error = String(error?.message || error).slice(0, 300);
+  state.last_error = safeFailureSummary(provider, error);
   if (state.failures >= CIRCUIT_FAILURE_THRESHOLD) state.opened_at = Date.now();
 }
 
@@ -94,37 +133,123 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchWithPolicy(provider, url, init, options = {}) {
+async function readBoundedResponseText(response, maxBytes = ERROR_BODY_MAX_BYTES) {
+  const body = response?.body;
+  if (!body || typeof body.getReader !== 'function') return '';
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = '';
+
+  try {
+    while (bytesRead < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
+      const remaining = maxBytes - bytesRead;
+      const take = Math.min(remaining, value.byteLength);
+      text += decoder.decode(value.subarray(0, take), { stream: true });
+      bytesRead += take;
+      if (take < value.byteLength || bytesRead >= maxBytes) {
+        await reader.cancel().catch(() => {});
+        break;
+      }
+    }
+    text += decoder.decode();
+    return text;
+  } catch {
+    return '';
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+}
+
+async function readBoundedJsonResponse(response, label, options = {}) {
+  const maxBytes = boundedInteger(options.successBodyMaxBytes, SUCCESS_BODY_MAX_BYTES, 1024, 16_777_216);
+  const raw = await readBoundedResponseText(response, maxBytes + 1);
+  if (Buffer.byteLength(raw, 'utf8') > maxBytes) {
+    const error = new Error(`${label} response exceeded the configured success-body limit.`);
+    error.code = 'llm_provider_response_too_large';
+    throw error;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const error = new Error(`${label} response was not valid JSON.`);
+    error.code = 'llm_provider_invalid_json';
+    throw error;
+  }
+}
+
+function safeProviderErrorType(rawBody) {
+  if (!rawBody) return null;
+  try {
+    const parsed = JSON.parse(rawBody);
+    const type = String(parsed?.error?.type || parsed?.type || '').trim();
+    return new Set(['invalid_request_error', 'authentication_error', 'permission_error',
+      'not_found_error', 'request_too_large', 'rate_limit_error', 'api_error',
+      'overloaded_error']).has(type) ? type : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeFetchError(provider, error) {
+  if (error?.code === 'llm_provider_http_error') return error;
+  if (['llm_provider_response_too_large', 'llm_provider_invalid_json'].includes(error?.code)) return error;
+  if (error?.code === 'llm_timeout' || error?.name === 'AbortError') {
+    const timeout = new Error(`LLM provider request timed out for ${provider}.`);
+    timeout.name = 'AbortError';
+    timeout.code = 'llm_timeout';
+    return timeout;
+  }
+  const safe = new Error(`LLM provider request failed for ${provider}.`);
+  safe.code = 'llm_provider_request_failed';
+  return safe;
+}
+
+async function fetchWithPolicy(provider, url, init, options = {}, consume = response => response) {
   assertCircuitClosed(provider);
-  const retries = Math.max(0, Number(options.maxRetries ?? DEFAULT_MAX_RETRIES));
-  const timeoutMs = Math.max(1000, Number(options.timeoutMs || DEFAULT_TIMEOUT_MS));
+  const retries = boundedInteger(options.maxRetries, DEFAULT_MAX_RETRIES, 0, 10);
+  const timeoutMs = boundedInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS, 1_000, 300_000);
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error(`LLM request timed out after ${timeoutMs}ms.`)), timeoutMs);
+    const timer = setTimeout(() => {
+      const timeout = new Error(`LLM request timed out after ${timeoutMs}ms.`);
+      timeout.code = 'llm_timeout';
+      controller.abort(timeout);
+    }, timeoutMs);
+
     try {
-      const response = await fetch(url, { ...init, signal: controller.signal });
+      const response = await fetch(url, { ...init, redirect: 'error', signal: controller.signal });
       if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        const error = new Error(`LLM provider request failed with status ${response.status}: ${body.slice(0, 160)}`);
+        const rawBody = await readBoundedResponseText(response);
+        const errorType = safeProviderErrorType(rawBody);
+        const error = new Error(`LLM provider request failed with status ${response.status}${errorType ? ` (${errorType})` : ''}.`);
         error.status = response.status;
+        error.code = 'llm_provider_http_error';
         if (!retryableStatus(response.status) || attempt === retries) throw error;
         lastError = error;
       } else {
+        // Keep the abort deadline active until the body has been consumed.
+        const result = await consume(response);
         noteSuccess(provider);
-        return response;
+        return result;
       }
     } catch (error) {
-      lastError = error;
-      const retryable = error?.name === 'AbortError' || retryableStatus(Number(error?.status || 0)) || !error?.status;
+      const safeError = safeFetchError(provider, controller.signal.aborted ? controller.signal.reason : error);
+      lastError = safeError;
+      const retryable = safeError?.name === 'AbortError' || safeError?.code === 'llm_timeout' || retryableStatus(Number(safeError?.status || 0)) || !safeError?.status;
       if (!retryable || attempt === retries) {
-        noteFailure(provider, error);
-        throw error;
+        noteFailure(provider, safeError);
+        throw safeError;
       }
     } finally {
       clearTimeout(timer);
     }
+
     const backoff = Math.min(5000, 250 * 2 ** attempt) + Math.floor(Math.random() * 150);
     await delay(backoff);
   }
@@ -133,19 +258,20 @@ async function fetchWithPolicy(provider, url, init, options = {}) {
   throw lastError || new Error(`LLM provider request failed for ${provider}.`);
 }
 
-async function completeOpenAI(prompt, options = {}) {
+async function completeOpenAIWithReceipt(prompt, options = {}) {
   const useOpenRouter = options.provider === 'openrouter' || process.env.LLM_BASE_URL || process.env.OPENROUTER_API_KEY;
   const provider = useOpenRouter ? 'openrouter' : 'openai';
   const apiKey = useOpenRouter ? process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY : process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error(useOpenRouter ? 'OPENROUTER_API_KEY or OPENAI_API_KEY is required.' : 'OPENAI_API_KEY is required.');
 
   const baseUrl = process.env.LLM_BASE_URL || (useOpenRouter ? 'https://openrouter.ai/api/v1' : 'https://api.openai.com/v1');
+  const model = pickModel(provider, options);
   const response = await fetchWithPolicy(provider, `${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: headers({ Authorization: `Bearer ${apiKey}` }),
     body: JSON.stringify({
-      model: pickModel(provider, options),
-      max_tokens: boundedMaxTokens(options),
+      model,
+      max_tokens: boundedMaxTokens(options, model),
       temperature: options.temperature ?? 0.2,
       response_format: options.json ? { type: 'json_object' } : undefined,
       messages: [
@@ -154,35 +280,87 @@ async function completeOpenAI(prompt, options = {}) {
       ].filter(Boolean)
     })
   }, options);
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('OpenAI-compatible response was not valid JSON.');
+  }
+  const text = data?.choices?.[0]?.message?.content;
+  if (typeof text !== 'string') throw new Error('OpenAI-compatible response is missing assistant text.');
+
+  return Object.freeze({
+    text,
+    provenance: Object.freeze({
+      provider,
+      requested_model: model,
+      response_model: typeof data.model === 'string' ? data.model : null,
+      response_id: typeof data.id === 'string' ? data.id : null
+    })
+  });
 }
 
-async function completeAnthropic(prompt, options = {}) {
+async function completeAnthropicWithReceipt(prompt, options = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is required.');
+  const workspaceId = String(process.env.ANTHROPIC_WORKSPACE_ID || '').trim();
+  const model = pickModel('anthropic', options);
+  const apiVersion = process.env.ANTHROPIC_VERSION || '2023-06-01';
 
-  const response = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
+  const body = {
+    model,
+    max_tokens: boundedMaxTokens(options, model),
+    system: options.system || undefined,
+    messages: [{ role: 'user', content: prompt }]
+  };
+  if (options.temperature !== undefined && supportsAnthropicTemperature(model)) {
+    body.temperature = options.temperature;
+  }
+
+  const data = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: headers({ 'x-api-key': apiKey, 'anthropic-version': process.env.ANTHROPIC_VERSION || '2023-06-01' }),
-    body: JSON.stringify({
-      model: pickModel('anthropic', options),
-      max_tokens: boundedMaxTokens(options),
-      temperature: options.temperature ?? 0.2,
-      system: options.system || undefined,
-      messages: [{ role: 'user', content: prompt }]
+    headers: headers({
+      'x-api-key': apiKey,
+      'anthropic-version': apiVersion,
+      ...(workspaceId ? { 'anthropic-workspace-id': workspaceId } : {})
+    }),
+    body: JSON.stringify(body)
+  }, options, response => readBoundedJsonResponse(response, 'Anthropic', options));
+  if (data?.type !== 'message' || data?.role !== 'assistant' || !Array.isArray(data.content)) {
+    throw new Error('Anthropic response is not a valid Messages API assistant envelope.');
+  }
+  const text = data.content
+    .filter(part => part?.type === 'text' && typeof part.text === 'string')
+    .map(part => part.text)
+    .join('\n')
+    .trim();
+  if (!text) throw new Error('Anthropic response contained no text output.');
+
+  return Object.freeze({
+    text,
+    provenance: Object.freeze({
+      provider: 'anthropic',
+      requested_model: model,
+      response_model: typeof data.model === 'string' ? data.model : null,
+      response_id: typeof data.id === 'string' ? data.id : null,
+      api_version: apiVersion,
+      workspace_header_configured: Boolean(workspaceId)
     })
-  }, options);
-  const data = await response.json();
-  return (data.content || []).map(part => part.text || '').join('\n').trim();
+  });
+}
+
+export async function completeWithReceipt(prompt, options = {}) {
+  const provider = pickProvider(options);
+  if (provider === 'anthropic') return completeAnthropicWithReceipt(prompt, { ...options, provider });
+  if (provider === 'openrouter') return completeOpenAIWithReceipt(prompt, { ...options, provider });
+  if (provider === 'openai') return completeOpenAIWithReceipt(prompt, { ...options, provider });
+  throw new Error(`Unsupported LLM provider: ${provider}.`);
 }
 
 export async function complete(prompt, options = {}) {
-  const provider = pickProvider(options);
-  if (provider === 'anthropic') return completeAnthropic(prompt, { ...options, provider });
-  if (provider === 'openrouter') return completeOpenAI(prompt, { ...options, provider });
-  if (provider === 'openai') return completeOpenAI(prompt, { ...options, provider });
-  throw new Error(`Unsupported LLM provider: ${provider}.`);
+  const receipt = await completeWithReceipt(prompt, options);
+  return receipt.text;
 }
 
 export async function completeJson(prompt, options = {}) {
@@ -205,6 +383,8 @@ export function llmRoutingSnapshot() {
     timeout_ms: DEFAULT_TIMEOUT_MS,
     max_retries: DEFAULT_MAX_RETRIES,
     max_tokens_cap: MAX_TOKENS_CAP,
+    error_body_max_bytes: ERROR_BODY_MAX_BYTES,
+    success_body_max_bytes: SUCCESS_BODY_MAX_BYTES,
     circuit_failure_threshold: CIRCUIT_FAILURE_THRESHOLD,
     circuit_reset_ms: CIRCUIT_RESET_MS,
     client_started_at: LLM_CLIENT_STARTED_AT,

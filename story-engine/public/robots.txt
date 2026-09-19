@@ -1,0 +1,48 @@
+# StoryEngine crawler policy
+# Discovery is intentionally bounded to public truth surfaces.
+# robots.txt is not access control; authenticated/private routes remain protected server-side.
+
+User-agent: OAI-SearchBot
+Disallow: /
+Allow: /robots.txt$
+Allow: /llms.txt$
+Allow: /crawlers.json$
+Allow: /guardrails$
+Allow: /guardrails.json$
+Allow: /runtime-identity$
+
+User-agent: Claude-SearchBot
+Disallow: /
+Allow: /robots.txt$
+Allow: /llms.txt$
+Allow: /crawlers.json$
+Allow: /guardrails$
+Allow: /guardrails.json$
+Allow: /runtime-identity$
+
+User-agent: Claude-User
+Disallow: /
+Allow: /robots.txt$
+Allow: /llms.txt$
+Allow: /crawlers.json$
+Allow: /guardrails$
+Allow: /guardrails.json$
+Allow: /runtime-identity$
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: *
+Disallow: /
+Allow: /robots.txt$
+Allow: /llms.txt$
+Allow: /crawlers.json$
+Allow: /guardrails$
+Allow: /guardrails.json$
+Allow: /runtime-identity$

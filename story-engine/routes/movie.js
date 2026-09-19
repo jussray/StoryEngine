@@ -73,14 +73,18 @@ export default function movieRoutes(router, db) {
     if (!requireWorkspaceAccess(req, res, beat.workspace_id)) return;
 
     const { logline } = req.body || {};
+    if (typeof logline !== 'string') return json(res, 400, { error: 'logline must be a string' });
     const t0 = Date.now();
-    Movie.updateBeat(db, id, { logline });
-    log(db, {
-      workspace_id: beat.workspace_id,
-      mode: 'movie',
-      event_type: 'beat_updated',
-      duration_ms: Date.now() - t0
-    });
+    db.transaction(() => {
+      Movie.updateBeat(db, id, { logline });
+      log(db, {
+        workspace_id: beat.workspace_id,
+        mode: 'movie',
+        event_type: 'beat_updated',
+        payload: { beat_id: id },
+        duration_ms: Date.now() - t0
+      });
+    })();
     json(res, 200, { ok: true });
   });
 
