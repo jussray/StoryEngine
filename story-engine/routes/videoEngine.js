@@ -95,7 +95,7 @@ export default function videoEngineRoutes(router, db) {
       if (!job) return json(res, 404, { error: 'Video job not found.' });
       if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
       const validated = await validateStoryVideoJob(db, req.params.job_id);
-      json(res, validated.status === 'validated' ? 200 : 422, validated);
+      json(res, validated.validation?.passed === true ? 200 : 422, validated);
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
@@ -107,6 +107,12 @@ export default function videoEngineRoutes(router, db) {
       const job = getStoryVideoJob(db, req.params.job_id);
       if (!job) return json(res, 404, { error: 'Video job not found.' });
       if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
+      if (job.status === 'preview_validated' && job.blueprint?.production_contract?.playable_video_required === true) {
+        return json(res, 409, {
+          error: 'Live-action preview passed Playwright; final delivery requires a playable provider-rendered video.',
+          code: 'LIVE_ACTION_PROVIDER_REQUIRED'
+        });
+      }
       const rendered = await renderStoryVideoExport(db, req.params.job_id, req.body || {});
       json(res, rendered.reused ? 200 : 201, rendered);
     } catch (error) {
