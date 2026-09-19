@@ -90,12 +90,17 @@ test('live action blueprints are action-first and cannot treat preview proof as 
       ]
     });
 
-    assert.equal(blueprint.schema_version, '1.3.0');
+    assert.equal(blueprint.schema_version, '1.4.0');
     assert.equal(blueprint.production_contract.workflow, 'LEEVIZE');
     assert.equal(blueprint.production_contract.delivery_target, 'finished_playable_live_action');
     assert.equal(blueprint.production_contract.preview_can_satisfy_delivery, false);
     assert.equal(blueprint.production_contract.final_delivery_status, 'requires_playable_provider_video');
     assert.equal(blueprint.production_contract.requested_action_beat_count, 4);
+    assert.equal(blueprint.shot_continuity_gate.status, 'TEST');
+    assert.equal(blueprint.shot_continuity_gate.ready_for_render, true);
+    assert.equal(blueprint.shot_continuity_gate.rendered_frame_receipts_complete, false);
+    assert.equal(blueprint.shot_continuity_gate.contracts.length, 4);
+    assert.equal(blueprint.shot_continuity_gate.contracts[0].EXIT_FRAME_ANCHOR, blueprint.shot_continuity_gate.contracts[1].ENTRY_FRAME_ANCHOR);
     assert.ok(blueprint.production_contract.generated_visible_action_shots >= 3);
     assert.equal(blueprint.cost_plan.strategy, 'deterministic_preview_then_external_live_action');
     assert.equal(blueprint.cost_plan.provider_generation_enabled, false);

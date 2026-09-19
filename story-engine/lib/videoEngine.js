@@ -4,7 +4,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ensureArtifactSchema } from './artifactValidation.js';
 import { log } from '../models/eventModel.js';
-import { compileShotDirection, shotCommandFor } from './shotGrammar.js';
+import { buildShotContinuityGate, compileShotDirection, shotCommandFor } from './shotGrammar.js';
 import {
   LEGACY_VIDEO_MODE_ALIASES,
   VIDEO_RENDER_MODES,
@@ -92,7 +92,7 @@ function productionContextFor(input, story, characterNames, look) {
   };
 }
 
-function makeShot(index, chapter, excerpt, look, characterNames, duration, productionContext) {
+function makeShot(index, chapter, excerpt, look, characterNames, duration, productionContext, entryFrameAnchor = '') {
   const customDirection = look.custom_style_prompt ? ` Creator direction: ${look.custom_style_prompt}` : '';
   const emotion = ['wonder', 'tension', 'resolve'][index % 3];
   const liveAction = productionContext.action_first === true;
@@ -121,7 +121,8 @@ function makeShot(index, chapter, excerpt, look, characterNames, duration, produ
     duration_seconds: duration,
     style_prompt: stylePrompt,
     must_preserve: mustPreserve,
-    negative_constraints: negativeConstraints
+    negative_constraints: negativeConstraints,
+    opening_frame: entryFrameAnchor
   });
   const liveActionDirection = liveAction
     ? `\nLIVE ACTION DELIVERY: ${productionContext.primary_subject} must visibly perform the beat on camera. Show hands, body movement, eyeline, or direct interaction where relevant. Use ${productionContext.product_or_world} as an active part of the action, not decorative background. Keep the viewer takeaway readable without narration: ${productionContext.viewer_takeaway}`
@@ -154,7 +155,9 @@ function makeShot(index, chapter, excerpt, look, characterNames, duration, produ
     visible_action_required: liveAction,
     sound_off_beat: liveAction ? excerpt : null,
     provider_generation: false,
-    estimated_cost_usd: 0
+    estimated_cost_usd: 0,
+    subject_state: `${shotDirection.subject} remains bound to the locked character and product canon for this beat.`,
+    environment_state: `${chapter?.title || story?.title || 'Story world'} preserves established geography, lighting logic, and visible product state.`
   };
 }
 
@@ -219,7 +222,18 @@ export function buildStoryVideoBlueprint(db, input = {}) {
     : excerpts;
   const productionContext = productionContextFor(input, story, names, look);
   const secondsPerShot = Math.max(4, Math.min(8, Math.floor(MAX_SECONDS / Math.max(1, shotSources.length))));
-  const shots = shotSources.map((item, index) => makeShot(index, item.chapter, item.excerpt, look, names, secondsPerShot, productionContext));
+  const shots = [];
+  for (const [index, item] of shotSources.entries()) {
+    const previousExit = shots.at(-1)?.shot_direction?.ending_frame || '';
+    shots.push(makeShot(index, item.chapter, item.excerpt, look, names, secondsPerShot, productionContext, previousExit));
+  }
+  const shotContinuityGate = buildShotContinuityGate(shots, { evidence_plane: 'GENERATED_VISUALIZATION' });
+  if (!shotContinuityGate.ready_for_render) {
+    const error = new Error('Shot Continuity Contract blocked render planning.');
+    error.code = 'SHOT_CONTINUITY_CONTRACT_BLOCKED';
+    error.failures = shotContinuityGate.failures;
+    throw error;
+  }
   const productionContract = {
     ...productionContext,
     requested_action_beat_count: requestedBeats.length,
@@ -227,7 +241,7 @@ export function buildStoryVideoBlueprint(db, input = {}) {
     generated_visible_action_shots: shots.filter(shot => shot.visible_action_required).length
   };
   return {
-    schema_version: '1.3.0',
+    schema_version: '1.4.0',
     blueprint_id: `video_blueprint_${randomUUID()}`,
     workspace_id: workspaceId,
     source_revision_id: revisionFor(story, chapters, characters),
@@ -274,6 +288,7 @@ export function buildStoryVideoBlueprint(db, input = {}) {
       commands: shots.map(shot => shot.shot_command)
     },
     shots,
+    shot_continuity_gate: shotContinuityGate,
     continuity_contract: {
       one_story_brain: true,
       shared_shot_plan: true,
