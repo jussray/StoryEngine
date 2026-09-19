@@ -125,12 +125,17 @@ test('idempotent replay fails closed when ledger source provenance is tampered',
   db.prepare('UPDATE canon_change_ledger SET source=? WHERE evidence_id=?').run('tampered', evidence.evidence_id);
 
   // The terminal-ledger integrity guard detects this corruption before replay-specific validation.
+  const integrityError = /Canon ledger integrity violation: latest change for anchor .* does not match live canon state\./;
   assert.throws(() => setCanonAnchor(db, {
     ...input,
     evidence,
     authority_grant: grantFor(input.workspace_id).grant
-  }), /Canon ledger integrity violation: latest change for anchor .* does not match live canon state\./);
-  assert.equal(getCanonAnchor(db, input.workspace_id, input.kind, input.key).value, 'Maya');
+  }), integrityError);
+  assert.throws(() => getCanonAnchor(db, input.workspace_id, input.kind, input.key), integrityError);
+  const persisted = db.prepare(
+    'SELECT value FROM canon_anchors WHERE workspace_id=? AND kind=? AND key=?'
+  ).get(input.workspace_id, input.kind, input.key);
+  assert.equal(persisted.value, 'Maya');
   db.close();
 });
 
