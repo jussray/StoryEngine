@@ -18,8 +18,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { getStoryVideoJob } from './videoEngine.js';
 import { log } from '../models/eventModel.js';
 
-const EXPORT_SCHEMA_VERSION = '1.0.0';
-const RENDERER_VERSION = 'ffmpeg_ken_burns_v1';
+const EXPORT_SCHEMA_VERSION = '1.1.0';
+const RENDERER_VERSION = 'ffmpeg_ffprobe_ken_burns_v2';
 const DEFAULT_SCENE_COUNT = 6;
 const DEFAULT_DURATION_SECONDS = 30;
 const DEFAULT_FPS = 30;
@@ -47,17 +47,65 @@ function ffmpegBinary() {
   return text(process.env.L99_VIDEO_FFMPEG_BINARY, 'ffmpeg');
 }
 
+function ffprobeBinary() {
+  return text(process.env.L99_VIDEO_FFPROBE_BINARY, 'ffprobe');
+}
+
 function outputDirectory() {
   return resolve(process.env.L99_VIDEO_OUTPUT_DIR || join(process.cwd(), 'var', 'video-exports'));
 }
 
-function assertFfmpegAvailable() {
-  const probe = spawnSync(ffmpegBinary(), ['-version'], { encoding: 'utf8' });
-  if (probe.error || probe.status !== 0) {
-    const error = new Error('ffmpeg is required for deterministic MP4 export.');
+function assertOpenSourceMediaToolingAvailable() {
+  const ffmpegProbe = spawnSync(ffmpegBinary(), ['-version'], { encoding: 'utf8' });
+  const ffprobeProbe = spawnSync(ffprobeBinary(), ['-version'], { encoding: 'utf8' });
+  if (ffmpegProbe.error || ffmpegProbe.status !== 0 || ffprobeProbe.error || ffprobeProbe.status !== 0) {
+    const error = new Error('ffmpeg and ffprobe are required for deterministic MP4 export and verification.');
     error.code = 'FFMPEG_UNAVAILABLE';
     throw error;
   }
+}
+
+function probeRenderedMedia(filePath, expected) {
+  const result = spawnSync(ffprobeBinary(), [
+    '-v', 'error',
+    '-show_entries', 'format=duration:stream=index,codec_type,codec_name,width,height',
+    '-of', 'json',
+    filePath
+  ], { encoding: 'utf8' });
+  if (result.error || result.status !== 0) {
+    throw new Error(`ffprobe verification failed: ${text(result.stderr, result.error?.message || 'unknown ffprobe error')}`);
+  }
+  let probe;
+  try {
+    probe = JSON.parse(result.stdout || '{}');
+  } catch {
+    throw new Error('ffprobe verification failed: invalid JSON output.');
+  }
+  const streams = Array.isArray(probe.streams) ? probe.streams : [];
+  const video = streams.find(stream => stream.codec_type === 'video');
+  const audio = streams.find(stream => stream.codec_type === 'audio');
+  const subtitles = streams.find(stream => stream.codec_type === 'subtitle');
+  if (!video) throw new Error('ffprobe verification failed: rendered export has no video stream.');
+  if (!audio) throw new Error('ffprobe verification failed: rendered export has no audio stream.');
+  if (!subtitles) throw new Error('ffprobe verification failed: rendered export has no embedded caption stream.');
+  if (Number(video.width) !== expected.width || Number(video.height) !== expected.height) {
+    throw new Error(`ffprobe verification failed: expected ${expected.width}x${expected.height}, received ${video.width}x${video.height}.`);
+  }
+  const duration = Number(probe.format?.duration || 0);
+  if (!Number.isFinite(duration) || Math.abs(duration - expected.duration_seconds) > 0.25) {
+    throw new Error(`ffprobe verification failed: expected ${expected.duration_seconds}s, received ${duration || 0}s.`);
+  }
+  return {
+    verifier: 'ffprobe',
+    verified: true,
+    duration_seconds: duration,
+    dimensions: { width: Number(video.width), height: Number(video.height) },
+    streams: streams.map(stream => ({
+      index: Number(stream.index),
+      codec_type: stream.codec_type,
+      codec_name: stream.codec_name || null
+    }))
+  };
 }
 
 export function ensureVideoExportSchema(db) {
@@ -228,6 +276,7 @@ function exportFingerprint(job, options) {
     width: options.width,
     height: options.height,
     provider_generation: false,
+    verification: 'ffprobe_required',
     narration_mode: 'caption_track_with_silent_audio_fallback'
   });
 }
@@ -293,7 +342,7 @@ export async function renderStoryVideoExport(db, jobId, input = {}) {
     return hydrate(existing, true);
   }
 
-  assertFfmpegAvailable();
+  assertOpenSourceMediaToolingAvailable();
   const scenes = normalizedScenes(job.blueprint, options.scene_count, options.duration_seconds);
   const exportId = existing?.export_id || `video_export_${randomUUID()}`;
   const now = Date.now();
@@ -346,6 +395,7 @@ export async function renderStoryVideoExport(db, jobId, input = {}) {
     if (rendered.code !== 0 || !existsSync(tempOutput)) {
       throw new Error(`ffmpeg export failed: ${text(rendered.stderr, 'unknown ffmpeg error')}`);
     }
+    const mediaProbe = probeRenderedMedia(tempOutput, options);
     renameSync(tempOutput, finalPath);
     const bytes = readFileSync(finalPath);
     const receipt = {
@@ -355,6 +405,8 @@ export async function renderStoryVideoExport(db, jobId, input = {}) {
       source_revision_id: job.source_revision_id,
       renderer: RENDERER_VERSION,
       renderer_binary: ffmpegBinary(),
+      verifier_binary: ffprobeBinary(),
+      media_probe: mediaProbe,
       fingerprint,
       visual_bible_hash: visualBibleHash(job.blueprint),
       scene_count: scenes.length,
@@ -378,7 +430,7 @@ export async function renderStoryVideoExport(db, jobId, input = {}) {
       workspace_id: job.workspace_id,
       mode: 'video_engine',
       event_type: 'video.export.completed',
-      payload: { export_id: exportId, job_id: jobId, fingerprint, content_hash: receipt.content_hash, byte_size: receipt.byte_size, provider_cost_usd: 0 }
+      payload: { export_id: exportId, job_id: jobId, fingerprint, content_hash: receipt.content_hash, byte_size: receipt.byte_size, provider_cost_usd: 0, media_verified: true }
     });
     return getStoryVideoExport(db, exportId);
   } catch (error) {
