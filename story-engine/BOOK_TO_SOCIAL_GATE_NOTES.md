@@ -144,7 +144,7 @@ A future runtime PR must include:
 
 ## Current status
 
-- Correct repository for Story Engine gates: `jussray/l99-StoryEngine`.
+- Correct repository for Story Engine gates: `jussray/StoryEngine`.
 - Correct repository for Circle product behavior: `jussray/Sekret-Bip`.
 - Current change type: documentation/spec scaffold only.
 - Runtime generation: not implemented.
