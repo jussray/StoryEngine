@@ -261,7 +261,7 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   await expect(page.locator('#workspaceId')).toHaveValue(workspaceId);
   await expect(page.locator('#visualStyle option')).toHaveCount(Object.keys(options.visual_styles).length);
 
-  await page.getByRole('button', { name: 'Generate Free Animatic' }).click();
+  await page.getByRole('button', { name: 'Generate Production Preview' }).click();
   await expect(page.getByTestId('video-job-result')).toBeVisible();
   await expect(page.getByTestId('editable-shot-strip')).toBeVisible();
   await expect(page.getByTestId('shot-command-input')).toHaveCount(2);
