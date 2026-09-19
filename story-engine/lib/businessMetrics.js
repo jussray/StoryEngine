@@ -116,6 +116,10 @@ function normalizeMeasurementWindow(value) {
   return parsed;
 }
 
+function sameMetricValue(existing, incoming) {
+  return existing.value_state === incoming.value_state && existing.metric_value === incoming.metric_value;
+}
+
 function normalizeRow(row, defaults, importedAt, lineNumber) {
   const workspace_id = required(defaults.workspace_id, 'workspace_id');
   const audience_segment = optionalText(row.audience_segment || defaults.audience_segment);
@@ -207,6 +211,24 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
     const row = Object.fromEntries(headers.map((header, column) => [header, values[column] ?? '']));
     return normalizeRow(row, defaults, importedAt, index + 2);
   });
+  const findLogicalObservation = db.prepare(`
+    SELECT observation_id, metric_value, value_state
+    FROM business_metric_observations
+    WHERE workspace_id = ?
+      AND audience_segment = ?
+      AND source = ?
+      AND account_id = ?
+      AND page_id IS ?
+      AND content_id IS ?
+      AND metric_name = ?
+      AND unit = ?
+      AND observed_at = ?
+      AND condition = ?
+      AND published_at IS ?
+      AND measurement_window_hours IS ?
+    ORDER BY imported_at ASC, observation_id ASC
+    LIMIT 1
+  `);
   const insert = db.prepare(`
     INSERT OR IGNORE INTO business_metric_observations (
       observation_id, workspace_id, audience_segment, source, account_id, page_id, content_id,
@@ -223,6 +245,31 @@ export function importBusinessMetricsCsv(db, csvText, defaults = {}) {
 
   db.transaction(() => {
     for (const normalized of normalizedRows) {
+      const existing = findLogicalObservation.get(
+        normalized.workspace_id,
+        normalized.audience_segment || '',
+        normalized.source,
+        normalized.account_id,
+        normalized.page_id,
+        normalized.content_id,
+        normalized.metric_name,
+        normalized.unit,
+        normalized.observed_at,
+        normalized.condition,
+        normalized.published_at,
+        normalized.measurement_window_hours
+      );
+
+      if (existing) {
+        if (!sameMetricValue(existing, normalized)) {
+          throw new Error('Conflicting business metric observation for the same identity and timestamp.');
+        }
+        observationIds.push(existing.observation_id);
+        if (normalized.value_state === 'missing') missingValues += 1;
+        duplicates += 1;
+        continue;
+      }
+
       const result = insert.run(
         normalized.observation_id, normalized.workspace_id, normalized.audience_segment || '',
         normalized.source, normalized.account_id, normalized.page_id, normalized.content_id,
@@ -275,6 +322,7 @@ export function businessMetricsSummary(db, workspaceId) {
            grouped.source,
            grouped.account_id,
            grouped.page_id,
+           grouped.content_id,
            NULLIF(grouped.audience_segment, '') AS audience_segment,
            grouped.condition,
            grouped.measurement_window_hours,
@@ -286,7 +334,7 @@ export function businessMetricsSummary(db, workspaceId) {
            latest.value_state AS latest_value_state,
            latest.observed_at AS latest_value_observed_at
     FROM (
-      SELECT metric_name, unit, source, account_id, page_id, audience_segment,
+      SELECT metric_name, unit, source, account_id, page_id, content_id, audience_segment,
              condition, measurement_window_hours,
              COUNT(*) AS observations,
              SUM(CASE WHEN value_state='missing' THEN 1 ELSE 0 END) AS missing,
@@ -294,7 +342,7 @@ export function businessMetricsSummary(db, workspaceId) {
              MAX(CASE WHEN value_state='observed' THEN metric_value END) AS max_observed_value
       FROM business_metric_observations
       WHERE workspace_id = ?
-      GROUP BY metric_name, unit, source, account_id, page_id, audience_segment, condition, measurement_window_hours
+      GROUP BY metric_name, unit, source, account_id, page_id, content_id, audience_segment, condition, measurement_window_hours
     ) grouped
     LEFT JOIN business_metric_observations latest
       ON latest.observation_id = (
@@ -306,6 +354,7 @@ export function businessMetricsSummary(db, workspaceId) {
           AND candidate.source = grouped.source
           AND candidate.account_id = grouped.account_id
           AND candidate.page_id IS grouped.page_id
+          AND candidate.content_id IS grouped.content_id
           AND candidate.audience_segment = grouped.audience_segment
           AND candidate.condition = grouped.condition
           AND candidate.measurement_window_hours IS grouped.measurement_window_hours
@@ -313,7 +362,7 @@ export function businessMetricsSummary(db, workspaceId) {
         LIMIT 1
       )
     ORDER BY grouped.metric_name ASC, grouped.source ASC, grouped.account_id ASC,
-             grouped.page_id ASC, grouped.audience_segment ASC, grouped.condition ASC,
+             grouped.page_id ASC, grouped.content_id ASC, grouped.audience_segment ASC, grouped.condition ASC,
              grouped.measurement_window_hours ASC
   `).all(id, id);
   return { workspace_id: id, metrics: rows };

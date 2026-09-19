@@ -186,7 +186,9 @@ function safeProviderErrorType(rawBody) {
   try {
     const parsed = JSON.parse(rawBody);
     const type = String(parsed?.error?.type || parsed?.type || '').trim();
-    return /^[a-z0-9_.-]{1,80}$/i.test(type) ? type : null;
+    return new Set(['invalid_request_error', 'authentication_error', 'permission_error',
+      'not_found_error', 'request_too_large', 'rate_limit_error', 'api_error',
+      'overloaded_error']).has(type) ? type : null;
   } catch {
     return null;
   }
@@ -194,6 +196,7 @@ function safeProviderErrorType(rawBody) {
 
 function safeFetchError(provider, error) {
   if (error?.code === 'llm_provider_http_error') return error;
+  if (['llm_provider_response_too_large', 'llm_provider_invalid_json'].includes(error?.code)) return error;
   if (error?.code === 'llm_timeout' || error?.name === 'AbortError') {
     const timeout = new Error(`LLM provider request timed out for ${provider}.`);
     timeout.name = 'AbortError';
@@ -205,7 +208,7 @@ function safeFetchError(provider, error) {
   return safe;
 }
 
-async function fetchWithPolicy(provider, url, init, options = {}) {
+async function fetchWithPolicy(provider, url, init, options = {}, consume = response => response) {
   assertCircuitClosed(provider);
   const retries = boundedInteger(options.maxRetries, DEFAULT_MAX_RETRIES, 0, 10);
   const timeoutMs = boundedInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS, 1_000, 300_000);
@@ -230,11 +233,13 @@ async function fetchWithPolicy(provider, url, init, options = {}) {
         if (!retryableStatus(response.status) || attempt === retries) throw error;
         lastError = error;
       } else {
+        // Keep the abort deadline active until the body has been consumed.
+        const result = await consume(response);
         noteSuccess(provider);
-        return response;
+        return result;
       }
     } catch (error) {
-      const safeError = safeFetchError(provider, error);
+      const safeError = safeFetchError(provider, controller.signal.aborted ? controller.signal.reason : error);
       lastError = safeError;
       const retryable = safeError?.name === 'AbortError' || safeError?.code === 'llm_timeout' || retryableStatus(Number(safeError?.status || 0)) || !safeError?.status;
       if (!retryable || attempt === retries) {
@@ -313,7 +318,7 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
     body.temperature = options.temperature;
   }
 
-  const response = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
+  const data = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: headers({
       'x-api-key': apiKey,
@@ -321,9 +326,7 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
       ...(workspaceId ? { 'anthropic-workspace-id': workspaceId } : {})
     }),
     body: JSON.stringify(body)
-  }, options);
-
-  const data = await readBoundedJsonResponse(response, 'Anthropic', options);
+  }, options, response => readBoundedJsonResponse(response, 'Anthropic', options));
   if (data?.type !== 'message' || data?.role !== 'assistant' || !Array.isArray(data.content)) {
     throw new Error('Anthropic response is not a valid Messages API assistant envelope.');
   }
