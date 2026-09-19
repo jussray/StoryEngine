@@ -17,6 +17,23 @@ const COMMAND_ALIASES = Object.freeze({
   '/close': 'close'
 });
 
+export const OPEN_SOURCE_VIDEO_POLICY = Object.freeze({
+  schema_version: '1.0.0',
+  workflow: 'LEEVIZE',
+  shot_contract: 'shot-dna@v1',
+  compile_order: Object.freeze(['director-brief', 'model-neutral-shot-spec', 'renderer-adapter']),
+  open_source_first: true,
+  deterministic_post_tools: Object.freeze(['ffmpeg', 'ffprobe']),
+  optional_open_source_candidates: Object.freeze(['remotion', 'comfyui', 'whisper-compatible']),
+  candidate_availability_is_runtime_fact: true,
+  license_must_be_verified_before_production: true,
+  unknown_license_is_blocked: true,
+  renderer_adapters_replaceable: true,
+  generated_ui_may_prove_product_behavior: false,
+  real_product_capture_requires_playwright: true,
+  final_audio_precedes_caption_timing: true
+});
+
 export const SHOT_COMMANDS = Object.freeze({
   establish: Object.freeze({
     label: 'Establish',
@@ -170,9 +187,22 @@ export function compileShotDirection(input = {}) {
   const focus = parsed.command === 'rack_focus' && target
     ? `Rack focus from ${subject} to ${target}. ${spec.focus}`
     : spec.focus;
+  const storyJob = clean(input.story_job)
+    || (action ? `Advance the story by clearly showing: ${action}` : `Use ${spec.label.toLowerCase()} to deliver one readable story beat.`);
+  const openingFrame = clean(input.opening_frame)
+    || `${subject} is clearly established in ${spec.framing} before the beat begins.`;
+  const endingFrame = clean(input.ending_frame)
+    || `${subject} finishes the beat in a stable readable state that can seed the next shot.`;
+  const environmentalMotion = clean(input.environmental_motion)
+    || 'Use only motivated environmental motion that does not alter canon, identity, geography, or product state.';
+  const soundscape = clean(input.soundscape)
+    || 'Preserve motivated ambience and Foley. Do not invent dialogue, lyrics, or music cues.';
 
   const providerPrompt = [
     `SHOT COMMAND: ${parsed.raw}`,
+    `STORY JOB: ${storyJob}`,
+    `OPENING FRAME: ${openingFrame}`,
+    `ENDING FRAME: ${endingFrame}`,
     `SHOT TYPE: ${spec.shot_type}`,
     `CAMERA: ${spec.camera_move}; ${spec.motion}`,
     `FRAMING: ${spec.framing}`,
@@ -180,6 +210,8 @@ export function compileShotDirection(input = {}) {
     `BLOCKING: ${spec.blocking}`,
     `FOCUS: ${focus}`,
     `PACING: ${spec.pacing}`,
+    `ENVIRONMENTAL MOTION: ${environmentalMotion}`,
+    `SOUND: ${soundscape}`,
     action ? `ACTION: ${action}` : '',
     emotion ? `EMOTION: ${emotion}` : '',
     duration ? `DURATION: ${duration}s` : '',
@@ -189,11 +221,13 @@ export function compileShotDirection(input = {}) {
   ].filter(Boolean).join('\n');
 
   return {
-    schema_version: '1.0.0',
+    schema_version: '1.1.0',
+    shot_contract: 'shot-dna@v1',
     provider_neutral: true,
     command: parsed.raw,
     command_name: parsed.command,
     label: spec.label,
+    story_job: storyJob,
     subject,
     target: target || null,
     shot_type: spec.shot_type,
@@ -205,6 +239,13 @@ export function compileShotDirection(input = {}) {
     focus,
     motion: spec.motion,
     pacing: spec.pacing,
+    environmental_motion: environmentalMotion,
+    soundscape,
+    opening_frame: openingFrame,
+    ending_frame: endingFrame,
+    continuity_constraints: mustPreserve,
+    negative_constraints: negativeConstraints,
+    open_source_policy: OPEN_SOURCE_VIDEO_POLICY,
     provider_prompt: providerPrompt
   };
 }
