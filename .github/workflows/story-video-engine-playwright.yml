@@ -7,6 +7,10 @@ on:
     paths:
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
+      - 'story-engine/lib/videoShotPlanEditor.js'
+      - 'story-engine/lib/videoContinuity.js'
+      - 'story-engine/lib/videoComposition.js'
+      - 'story-engine/lib/shotGrammar.js'
       - 'story-engine/lib/visualStyleCatalog.js'
       - 'story-engine/routes/videoEngine.js'
       - 'story-engine/routes/movie.js'
@@ -14,9 +18,12 @@ on:
       - 'story-engine/public/control_room.html'
       - 'story-engine/e2e/session.js'
       - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/e2e/video_composition.spec.js'
       - 'story-engine/playwright.production.config.js'
       - 'story-engine/test/videoEngine.test.js'
       - 'story-engine/test/videoExport.test.js'
+      - 'story-engine/test/videoContinuity.test.js'
+      - 'story-engine/test/videoComposition.test.js'
       - 'story-engine/test/providerAuthority.test.js'
       - 'story-engine/deployment/providerAuthority.js'
       - 'story-engine/deployment/runtime-contract.json'
@@ -29,6 +36,10 @@ on:
     paths:
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
+      - 'story-engine/lib/videoShotPlanEditor.js'
+      - 'story-engine/lib/videoContinuity.js'
+      - 'story-engine/lib/videoComposition.js'
+      - 'story-engine/lib/shotGrammar.js'
       - 'story-engine/lib/visualStyleCatalog.js'
       - 'story-engine/routes/videoEngine.js'
       - 'story-engine/routes/movie.js'
@@ -36,9 +47,12 @@ on:
       - 'story-engine/public/control_room.html'
       - 'story-engine/e2e/session.js'
       - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/e2e/video_composition.spec.js'
       - 'story-engine/playwright.production.config.js'
       - 'story-engine/test/videoEngine.test.js'
       - 'story-engine/test/videoExport.test.js'
+      - 'story-engine/test/videoContinuity.test.js'
+      - 'story-engine/test/videoComposition.test.js'
       - 'story-engine/test/providerAuthority.test.js'
       - 'story-engine/deployment/providerAuthority.js'
       - 'story-engine/deployment/runtime-contract.json'
@@ -100,8 +114,8 @@ jobs:
       - name: Verify Control Room test-ledger contract
         working-directory: .
         run: node --test test/control-room-test-ledger.test.mjs
-      - name: Verify deterministic blueprint, export, receipt, and provider-authority contracts
-        run: node --test test/videoEngine.test.js test/videoExport.test.js test/providerAuthority.test.js
+      - name: Verify deterministic blueprint, export, continuity, composition, receipt, and provider-authority contracts
+        run: node --test test/videoEngine.test.js test/videoExport.test.js test/videoContinuity.test.js test/videoComposition.test.js test/providerAuthority.test.js
       - name: Verify canonical deployment target class
         env:
           STORYENGINE_DEPLOYMENT_TARGET_CLASS: stateful-container-durable-volume
@@ -119,6 +133,8 @@ jobs:
         run: npx playwright test e2e/source_canonize.spec.js
       - name: Verify Story Video Engine, MP4 export, and Control Room end to end
         run: npx playwright test e2e/video_engine.spec.js
+      - name: Verify long-form Story Video composition end to end
+        run: npx playwright test e2e/video_composition.spec.js
       - name: Verify exact-head stateful production container contract
         working-directory: .
         env:

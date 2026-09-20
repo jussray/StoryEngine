@@ -3,6 +3,7 @@
 
 import { createHash } from 'node:crypto';
 import { compileShotDirection, SHOT_COMMANDS } from './shotGrammar.js';
+import { deriveShotContinuityGate } from './videoContinuity.js';
 import { ensureVideoEngineSchema, getStoryVideoJob } from './videoEngine.js';
 import { log } from '../models/eventModel.js';
 
@@ -64,7 +65,7 @@ function rebuildArtifactHtml(sourceHtml, shots) {
   return htmlValue;
 }
 
-function compileEditedShot(original, requested) {
+function compileEditedShot(original, requested, entryFrameAnchor = '') {
   const command = clean(requested?.command);
   if (!command) throw new Error(`Shot ${original.shot_id} requires a command.`);
   const direction = compileShotDirection({
@@ -74,7 +75,8 @@ function compileEditedShot(original, requested) {
     duration_seconds: original.duration_seconds,
     style_prompt: original.style_prompt,
     must_preserve: original.must_preserve,
-    negative_constraints: original.negative_constraints
+    negative_constraints: original.negative_constraints,
+    opening_frame: entryFrameAnchor
   });
   const deliverySuffix = liveActionDeliverySuffix(original);
   return {
@@ -96,13 +98,16 @@ function requestedShots(job, input) {
 
   const byId = new Map(originals.map(shot => [shot.shot_id, shot]));
   const seen = new Set();
-  return requested.map(item => {
+  const edited = [];
+  for (const item of requested) {
     const shotId = clean(item?.shot_id);
     if (!shotId || !byId.has(shotId)) throw new Error(`Unknown shot_id: ${shotId || '(missing)'}.`);
     if (seen.has(shotId)) throw new Error(`Duplicate shot_id: ${shotId}.`);
     seen.add(shotId);
-    return compileEditedShot(byId.get(shotId), item);
-  });
+    const previousExit = edited.at(-1)?.shot_direction?.ending_frame || '';
+    edited.push(compileEditedShot(byId.get(shotId), item, previousExit));
+  }
+  return edited;
 }
 
 export function storyVideoShotEditorOptions() {
@@ -127,12 +132,20 @@ export function updateStoryVideoShotPlan(db, jobId, input = {}) {
   if (!artifact) throw new Error('Video artifact not found.');
 
   const shots = requestedShots(job, input);
+  const shotContinuityGate = deriveShotContinuityGate(shots, { evidence_plane: 'GENERATED_VISUALIZATION' });
+  if (!shotContinuityGate.ready_for_render) {
+    const error = new Error('Shot Continuity Contract blocked edited shot plan.');
+    error.code = 'SHOT_CONTINUITY_CONTRACT_BLOCKED';
+    error.failures = shotContinuityGate.failures;
+    throw error;
+  }
   const editedAt = Date.now();
   const blueprint = {
     ...job.blueprint,
     shot_plan_revision: Number(job.blueprint?.shot_plan_revision || 0) + 1,
     shot_plan_edited_at: editedAt,
     shots,
+    shot_continuity_gate: shotContinuityGate,
     shot_grammar: {
       ...(job.blueprint?.shot_grammar || {}),
       provider_neutral: true,
@@ -162,6 +175,8 @@ export function updateStoryVideoShotPlan(db, jobId, input = {}) {
         shot_order: shots.map(shot => shot.shot_id),
         commands: shots.map(shot => shot.shot_command),
         validation_reset: true,
+        continuity_ready_for_render: shotContinuityGate.ready_for_render,
+        continuity_source_fingerprint: shotContinuityGate.source_fingerprint,
         provider_generation: false
       }
     });
