@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - agent/story-video-engine-mvp
+      - fix/leevize-self-hosted-renderer
+      - fix/leevize-renderer-product-design-v2
     paths:
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
