@@ -8,12 +8,14 @@ on:
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/visualStyleCatalog.js'
+      - 'story-engine/lib/videoCreationOS.js'
       - 'story-engine/routes/videoEngine.js'
       - 'story-engine/routes/movie.js'
       - 'story-engine/public/video_*'
       - 'story-engine/public/control_room.html'
       - 'story-engine/e2e/session.js'
       - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/e2e/video_creation_os.spec.js'
       - 'story-engine/playwright.production.config.js'
       - 'story-engine/test/videoEngine.test.js'
       - 'story-engine/test/videoExport.test.js'
@@ -30,12 +32,14 @@ on:
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/visualStyleCatalog.js'
+      - 'story-engine/lib/videoCreationOS.js'
       - 'story-engine/routes/videoEngine.js'
       - 'story-engine/routes/movie.js'
       - 'story-engine/public/video_*'
       - 'story-engine/public/control_room.html'
       - 'story-engine/e2e/session.js'
       - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/e2e/video_creation_os.spec.js'
       - 'story-engine/playwright.production.config.js'
       - 'story-engine/test/videoEngine.test.js'
       - 'story-engine/test/videoExport.test.js'
@@ -119,6 +123,8 @@ jobs:
         run: npx playwright test e2e/source_canonize.spec.js
       - name: Verify Story Video Engine, MP4 export, and Control Room end to end
         run: npx playwright test e2e/video_engine.spec.js
+      - name: Verify Video Creation OS browser and Shot DNA integration
+        run: npx playwright test e2e/video_creation_os.spec.js
       - name: Verify exact-head stateful production container contract
         working-directory: .
         env:

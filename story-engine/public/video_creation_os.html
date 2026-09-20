@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Video Creation OS | StoryEngine</title>
+<style>
+:root{color-scheme:dark;--bg:#060914;--panel:#0f1628;--panel2:#131d34;--line:#273656;--text:#f7f8ff;--muted:#aab6d2;--blue:#58a6ff;--purple:#a878ff;--gold:#ffc766;--good:#6ee7b7}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 12% 0,#25134d 0,transparent 34rem),radial-gradient(circle at 88% 6%,#0b3a68 0,transparent 32rem),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{width:min(1240px,100%);margin:auto;padding:clamp(16px,4vw,36px)}a{color:inherit}.top{display:flex;justify-content:space-between;gap:1rem;align-items:center}.brand{font-weight:900;letter-spacing:.03em}.nav{display:flex;gap:.8rem;color:var(--muted);font-size:.9rem}.hero{margin-top:1.5rem;padding:clamp(24px,5vw,48px);border:1px solid var(--line);border-radius:28px;background:linear-gradient(145deg,rgba(31,25,63,.92),rgba(8,18,36,.96));box-shadow:0 30px 90px rgba(0,0,0,.35)}.eyebrow{margin:0;color:var(--gold);font-size:.75rem;font-weight:900;letter-spacing:.16em;text-transform:uppercase}h1{max-width:12ch;margin:.45rem 0 1rem;font-size:clamp(2.5rem,8vw,5.4rem);line-height:.92;letter-spacing:-.055em}.lede{max-width:70ch;margin:0;color:#d8e1f2;font-size:clamp(1rem,2vw,1.18rem)}.formula{margin-top:1.35rem;padding:1rem 1.1rem;border:1px solid rgba(255,199,102,.38);border-radius:16px;background:rgba(255,199,102,.06);color:#f6ddb0;font:700 .82rem/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.workspace{display:grid;grid-template-columns:minmax(280px,.78fr) minmax(0,1.5fr);gap:1rem;margin-top:1rem}.panel{border:1px solid var(--line);border-radius:22px;background:linear-gradient(180deg,rgba(19,29,52,.96),rgba(10,14,26,.98));padding:1.1rem}.panel h2{margin:.1rem 0 .35rem;font-size:1.05rem}.sub{margin:0;color:var(--muted);font-size:.88rem}.field{display:grid;gap:.35rem;margin-top:.9rem}.field label{font-size:.78rem;font-weight:850;color:#d8e1f2}.field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:12px;background:#080d19;color:var(--text);padding:.75rem;font:inherit}.field textarea{min-height:88px;resize:vertical}.modules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem}.module{border:1px solid var(--line);border-radius:16px;background:#0a1020;padding:.8rem}.module strong{display:block;margin-bottom:.5rem}.module select{width:100%;border:1px solid var(--line);border-radius:10px;background:#080d19;color:var(--text);padding:.62rem}.actions{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1rem}.button{min-height:44px;border:1px solid var(--line);border-radius:999px;background:#16233f;color:var(--text);padding:0 1rem;font-weight:900;cursor:pointer}.button.primary{border-color:transparent;background:linear-gradient(120deg,var(--purple),var(--blue));color:#07101f}.output{margin-top:1rem;border:1px solid rgba(110,231,183,.3);border-radius:20px;background:rgba(8,26,29,.55);padding:1rem}.output pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:.7rem 0 0;color:#dffcf2;font:650 .82rem/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem}.chip{border:1px solid var(--line);border-radius:999px;padding:.3rem .55rem;color:#cbd7ef;font-size:.72rem}.rules{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.55rem;margin-top:1rem}.rule{padding:.75rem;border:1px solid var(--line);border-radius:14px;background:rgba(7,12,24,.7);color:var(--muted);font-size:.78rem}.truth{margin-top:1rem;padding:.9rem 1rem;border-left:3px solid var(--gold);background:rgba(255,199,102,.06);color:#e9ddc6;font-size:.84rem}@media(max-width:900px){.workspace{grid-template-columns:1fr}.modules{grid-template-columns:repeat(2,minmax(0,1fr))}.rules{grid-template-columns:1fr 1fr}}@media(max-width:560px){.shell{padding:14px}.hero{border-radius:20px;padding:22px}.modules,.rules{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}h1{font-size:3rem}}
+</style>
+</head>
+<body>
+<main class="shell" data-testid="video-creation-os" data-contract="l99/video-creation-os@v1">
+  <header class="top"><div class="brand">StoryEngine · LEEVIZE</div><nav class="nav"><a href="/video_studio.html">Video Studio</a><a href="/control_room.html">Control Room</a></nav></header>
+  <section class="hero">
+    <p class="eyebrow">FCR / ULTRATHINK · standalone creator system</p>
+    <h1>Video Creation OS</h1>
+    <p class="lede">Turn an intent and story beat into one precise, provider-neutral shot direction. This sits above Shot DNA and below LEEVIZE authority, so creative language can get richer without silently gaining render, spend, truth, or publish authority.</p>
+    <div class="formula" data-testid="core-formula">SUBJECT + SCENE + CAMERA + ANGLE + ACTION + COMPOSITION + EFFECT + FOCUS + COLOR + LIGHTING + OUTPUT INTENT</div>
+  </section>
+
+  <section class="workspace">
+    <aside class="panel">
+      <h2>1 · Intent → Story Beat</h2><p class="sub">Start with meaning. Style comes after the beat.</p>
+      <div class="field"><label for="subject">Subject</label><input id="subject" value="founder" autocomplete="off"></div>
+      <div class="field"><label for="scene">Scene / story beat</label><textarea id="scene">The founder reviews one blocked proof card, refuses the false green, and chooses the next verified action.</textarea></div>
+      <div class="field"><label for="intent">Output intent</label><input id="intent" value="clear cinematic founder story, readable without narration"></div>
+      <div class="actions"><button class="button primary" id="compile" type="button">Compile shot direction</button><button class="button" id="reset" type="button">Reset finish</button></div>
+      <div class="truth"><strong>Authority boundary:</strong> this tool plans creative direction only. LEEVIZE remains the production policy gate. A compiled prompt is not render proof, provider proof, publication approval, or truth reclassification.</div>
+    </aside>
+
+    <section class="panel">
+      <h2>2 · Shot Design → Visual Finish</h2><p class="sub">One selection per layer. Leaving a layer blank means inherit the existing Shot DNA.</p>
+      <div class="modules" id="modules" data-testid="video-os-modules"></div>
+      <div class="output" data-testid="compiled-output" aria-live="polite">
+        <strong>Compiled provider-neutral direction</strong>
+        <div class="chips" id="chips"></div>
+        <pre id="prompt">Choose only the layers that earn their place, then compile.</pre>
+      </div>
+    </section>
+  </section>
+
+  <section class="rules" aria-label="ULTRATHINK video rules">
+    <div class="rule">1. One primary camera movement per shot.</div><div class="rule">2. Choose angle before decorative effect.</div><div class="rule">3. Effects support the beat, never weak footage.</div><div class="rule">4. Color and light communicate emotion, not canon.</div><div class="rule">5. Preserve subject, world, geography and continuity.</div>
+  </section>
+</main>
+<script>
+const categories={
+ camera:{label:'Camera & Movement',items:{'/pushin':'controlled move toward the subject','/pullback':'controlled reveal away from the subject','/followshot':'track with the moving subject','/orbit':'motivated arc around the subject','/dolly':'smooth physical tracking','/handheld':'restrained natural handheld motion','/drone':'motivated aerial movement','/timelapse':'compress visible time progression'}},
+ angle:{label:'Camera Angles',items:{'/groundlevel':'low ground-level perspective','/birdseye':'high overhead perspective','/lowangle':'upward-looking perspective','/highangle':'downward-looking context','/overhead':'clean top-down composition','/dutchtilt':'intentional tilted horizon','/firstperson':'subjective first-person view','/shoulder':'over-the-shoulder view'}},
+ action:{label:'Motion & Action',items:{'/sprintmode':'high-energy motivated action','/strollmode':'relaxed natural movement','/spinreveal':'controlled rotating reveal','/slowmotion':'slow the decisive moment','/fastforward':'compress a passage of time','/timestop':'hold the peak story moment','/weightless':'gentle floating movement','/dropaction':'urgent downward movement'}},
+ composition:{label:'Composition & Framing',items:{'/fullscene':'show environmental context','/closecrop':'tight subject framing','/thirdgrid':'balanced thirds composition','/innerframe':'frame with scene elements','/leadinglines':'guide attention with geometry','/cleanframe':'minimal uncluttered frame','/symmetry':'intentional symmetrical balance','/negative':'use breathing room intentionally'}},
+ effect:{label:'Camera Effects',items:{'/speedblur':'motivated motion blur','/softbokeh':'soft defocused highlights','/sunflare':'restrained motivated flare','/edgefade':'subtle edge falloff','/duotone':'two-tone treatment','/filmgrain':'light film texture','/glitch':'brief story-motivated distortion','/prismsplit':'subtle prism separation'}},
+ focus:{label:'Focus & Depth',items:{'/isolatefocus':'separate subject with depth','/gazepoint':'prioritize eyes or gaze target','/rackfocus':'shift focus between named planes','/shallowdof':'selective shallow depth','/deepfocus':'keep story planes readable','/macro':'extreme close detail','/tiltshift':'selective miniature-like focus','/focuspull':'motivated focus transition'}},
+ color:{label:'Color Grading',items:{'/amberlook':'warm amber-biased grade','/icylook':'cool clean grade','/coalteal':'dark neutral and teal contrast','/highcontrast':'bold controlled contrast','/mutedtone':'restrained low-saturation palette','/vibrant':'rich protected color','/noir':'monochrome dramatic treatment','/neonwash':'futuristic neon-biased palette'}},
+ portrait:{label:'Portrait & Subject',items:{'/heroportrait':'confident hero framing','/glowskin':'natural flattering skin rendition','/halolight':'clean subject edge separation','/headtotoe':'complete subject and stance','/candid':'natural unstaged body language','/overtheshoulder':'story-oriented shoulder view','/silhouette':'readable identity-preserving silhouette','/environmental':'portrait with meaningful context'}},
+ lighting:{label:'Cinematic Lighting',items:{'/rimlight':'motivated rim separation','/softwindow':'broad natural key light','/goldenhour':'warm low-angle natural light','/moonlight':'cool low-key night light','/neonlight':'motivated colored practical light','/backlight':'controlled depth-adding backlight','/lowkey':'shadow-forward dramatic light','/highkey':'bright clean low-ratio light'}}
+};
+const modules=document.querySelector('#modules');
+for(const [id,category] of Object.entries(categories)){
+ const card=document.createElement('label');card.className='module';card.innerHTML=`<strong>${category.label}</strong><select data-category="${id}" aria-label="${category.label}"><option value="">Inherit Shot DNA</option>${Object.entries(category.items).map(([cmd,desc])=>`<option value="${cmd}">${cmd} · ${desc}</option>`).join('')}</select>`;modules.append(card);
+}
+function compile(){
+ const subject=document.querySelector('#subject').value.trim()||'story subject';const scene=document.querySelector('#scene').value.trim()||'current story beat';const intent=document.querySelector('#intent').value.trim()||'continuity-safe cinematic story shot';
+ const selected=[...document.querySelectorAll('[data-category]')].map(el=>{const cmd=el.value;if(!cmd)return null;return{category:el.dataset.category,command:cmd,direction:categories[el.dataset.category].items[cmd]};}).filter(Boolean);
+ document.querySelector('#chips').innerHTML=selected.map(x=>`<span class="chip">${x.command}</span>`).join('')||'<span class="chip">inherit Shot DNA</span>';
+ document.querySelector('#prompt').textContent=`Subject: ${subject}.\nScene: ${scene}.\n${selected.length?`Creator selections: ${selected.map(x=>`${x.command} (${x.direction})`).join('; ')}.`:'Creator selections: inherit the existing Shot DNA without adding decorative effects.'}\nOutput intent: ${intent}.\nPreserve canon, identity, geography, continuity and truth boundaries. One primary camera movement per shot.`;
+}
+document.querySelector('#compile').addEventListener('click',compile);document.querySelector('#reset').addEventListener('click',()=>{document.querySelectorAll('[data-category]').forEach(x=>x.value='');compile();});compile();
+</script>
+</body>
+</html>

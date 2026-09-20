@@ -1,6 +1,8 @@
 // lib/shotGrammar.js
 // Small creator-facing shot commands compiled into provider-neutral production direction.
 
+import { compileVideoCreationStack, VIDEO_CREATION_OS_CONTRACT } from './videoCreationOS.js';
+
 const COMMAND_ALIASES = Object.freeze({
   '/establish': 'establish',
   '/establishing': 'establish',
@@ -18,10 +20,11 @@ const COMMAND_ALIASES = Object.freeze({
 });
 
 export const OPEN_SOURCE_VIDEO_POLICY = Object.freeze({
-  schema_version: '1.0.0',
+  schema_version: '1.1.0',
   workflow: 'LEEVIZE',
   shot_contract: 'shot-dna@v1',
-  compile_order: Object.freeze(['director-brief', 'model-neutral-shot-spec', 'renderer-adapter']),
+  video_creation_os_contract: VIDEO_CREATION_OS_CONTRACT,
+  compile_order: Object.freeze(['director-brief', 'video-creation-os', 'model-neutral-shot-spec', 'renderer-adapter']),
   open_source_first: true,
   deterministic_post_tools: Object.freeze(['ffmpeg', 'ffprobe']),
   optional_open_source_candidates: Object.freeze(['remotion', 'comfyui', 'whisper-compatible']),
@@ -31,7 +34,8 @@ export const OPEN_SOURCE_VIDEO_POLICY = Object.freeze({
   renderer_adapters_replaceable: true,
   generated_ui_may_prove_product_behavior: false,
   real_product_capture_requires_playwright: true,
-  final_audio_precedes_caption_timing: true
+  final_audio_precedes_caption_timing: true,
+  creative_commands_do_not_grant_render_spend_publish_or_truth_authority: true
 });
 
 export const SHOT_COMMANDS = Object.freeze({
@@ -141,6 +145,10 @@ function cleanList(value) {
   return Array.isArray(value) ? value.map(clean).filter(Boolean) : [];
 }
 
+function object(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 export function parseShotCommand(value) {
   const raw = clean(value);
   if (!raw.startsWith('/')) throw new Error('Shot command must start with /.');
@@ -197,6 +205,19 @@ export function compileShotDirection(input = {}) {
     || 'Use only motivated environmental motion that does not alter canon, identity, geography, or product state.';
   const soundscape = clean(input.soundscape)
     || 'Preserve motivated ambience and Foley. Do not invent dialogue, lyrics, or music cues.';
+  const videoOsInput = object(input.video_os);
+  const videoCreationOs = compileVideoCreationStack({
+    subject,
+    scene: clean(videoOsInput.scene) || storyJob,
+    output_intent: clean(videoOsInput.output_intent) || stylePrompt || 'continuity-safe cinematic story shot',
+    selections: object(videoOsInput.selections),
+    baseline: {
+      camera: `${spec.camera_move}; ${spec.motion}`,
+      framing: spec.framing,
+      focus,
+      style: stylePrompt
+    }
+  });
 
   const providerPrompt = [
     `SHOT COMMAND: ${parsed.raw}`,
@@ -212,6 +233,7 @@ export function compileShotDirection(input = {}) {
     `PACING: ${spec.pacing}`,
     `ENVIRONMENTAL MOTION: ${environmentalMotion}`,
     `SOUND: ${soundscape}`,
+    `VIDEO CREATION OS: ${videoCreationOs.provider_direction}`,
     action ? `ACTION: ${action}` : '',
     emotion ? `EMOTION: ${emotion}` : '',
     duration ? `DURATION: ${duration}s` : '',
@@ -221,7 +243,7 @@ export function compileShotDirection(input = {}) {
   ].filter(Boolean).join('\n');
 
   return {
-    schema_version: '1.1.0',
+    schema_version: '1.2.0',
     shot_contract: 'shot-dna@v1',
     provider_neutral: true,
     command: parsed.raw,
@@ -245,6 +267,7 @@ export function compileShotDirection(input = {}) {
     ending_frame: endingFrame,
     continuity_constraints: mustPreserve,
     negative_constraints: negativeConstraints,
+    video_creation_os: videoCreationOs,
     open_source_policy: OPEN_SOURCE_VIDEO_POLICY,
     provider_prompt: providerPrompt
   };
