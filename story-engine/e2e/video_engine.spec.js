@@ -239,7 +239,7 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
     data: { shots: cinematicJob.blueprint.shots.map(shot => ({ shot_id: shot.shot_id, command: shot.shot_command })) }
   });
   expect(immutableResponse.status()).toBe(409);
-  await expect(immutableResponse.json()).resolves.toMatchObject({ error: 'Exported shot plans are immutable. Create a new video job to change direction.' });
+  await expect(immutableResponse.json()).resolves.toMatchObject({ error: 'Approved or exported shot plans are immutable. Create a new video job to change direction.' });
 
   const downloadResponse = await request.get(rendered.download_url, { headers });
   expect(downloadResponse.status()).toBe(200);
@@ -274,9 +274,10 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   await expect(page.getByTestId('video-engine-machine-status')).toContainText(/verified|awaiting_validation|delivery_required/);
   await expect(page.getByTestId('video-engine-validated')).not.toHaveText('0');
   await expect(page.getByTestId('video-engine-visual-styles')).toContainText('3/');
-  await expect(page.getByTestId('video-engine-job').filter({ hasText: 'cinematic_realism' }).first()).toContainText(workspaceId);
-  await expect(page.getByTestId('video-engine-job').filter({ hasText: 'watercolor_storybook' }).first()).toContainText(workspaceId);
-  await expect(page.getByTestId('video-engine-job').filter({ hasText: 'bright_human_future' }).first()).toContainText(workspaceId);
+  const workspaceRows = page.getByTestId('video-engine-job').filter({ hasText: workspaceId });
+  await expect(workspaceRows.filter({ hasText: 'cinematic_realism' }).first()).toContainText(workspaceId);
+  await expect(workspaceRows.filter({ hasText: 'watercolor_storybook' }).first()).toContainText(workspaceId);
+  await expect(workspaceRows.filter({ hasText: 'bright_human_future' }).first()).toContainText(workspaceId);
 
   await page.goto(`/video_studio.html?workspace_id=${encodeURIComponent(workspaceId)}`);
   await expect(page).toHaveTitle('L99 Story Video Studio');

@@ -100,3 +100,11 @@ export function classifyReceiptContinuity(job, receipt = {}) {
     authority_granted: false
   });
 }
+
+// Structural shot-plan continuity is deliberately separate from rendered-evidence cookies.
+// These compatibility exports keep old internal callers on the safe migration path without
+// changing proof-cookie authority semantics.
+export {
+  deriveShotContinuityGate,
+  ensureStoryVideoShotContinuityGate as ensureStoryVideoContinuityGate
+} from './videoShotContinuityGate.js';
