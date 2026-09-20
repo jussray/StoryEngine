@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { createStoryVideoJob, getStoryVideoJob } from '../lib/videoEngine.js';
 import { ensureStoryVideoContinuityGate } from '../lib/videoContinuity.js';
 import { updateStoryVideoShotPlan } from '../lib/videoShotPlanEditor.js';
+import { renderStoryVideoExport } from '../lib/videoExport.js';
 
 const schema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8');
 
@@ -80,5 +83,45 @@ test('legacy validated blueprint deterministically acquires a continuity gate on
     assert.equal(second.gate.source_fingerprint, first.gate.source_fingerprint);
   } finally {
     db.close();
+  }
+});
+
+test('direct renderer migrates a legacy validated blueprint before enforcing continuity', async () => {
+  const db = fixtureDb();
+  const outputDir = mkdtempSync(join(tmpdir(), 'l99-video-continuity-render-'));
+  const previousOutput = process.env.L99_VIDEO_OUTPUT_DIR;
+  process.env.L99_VIDEO_OUTPUT_DIR = outputDir;
+  try {
+    const created = createStoryVideoJob(db, {
+      workspace_id: 'workspace_video_continuity',
+      mode: 'cinematic_3d',
+      visual_style: 'cinematic_realism',
+      action_beats: ['Mina approaches the violet door.']
+    });
+    const legacyBlueprint = { ...created.blueprint, schema_version: '1.3.0' };
+    delete legacyBlueprint.shot_continuity_gate;
+    db.prepare(`UPDATE story_video_jobs SET status='validated',blueprint_json=? WHERE job_id=?`)
+      .run(JSON.stringify(legacyBlueprint), created.job_id);
+
+    const rendered = await renderStoryVideoExport(db, created.job_id, {
+      scene_count: 1,
+      duration_seconds: 5,
+      fps: 24,
+      width: 320,
+      height: 180
+    });
+    assert.equal(rendered.status, 'complete');
+    assert.equal(rendered.receipt.shot_continuity.contract_ready_before_render, true);
+
+    const migrated = getStoryVideoJob(db, created.job_id);
+    assert.equal(migrated.status, 'validated');
+    assert.equal(migrated.blueprint.continuity_gate_migration.reason, 'legacy_missing_gate');
+    assert.equal(migrated.blueprint.shot_continuity_gate.ready_for_render, true);
+    assert.match(migrated.blueprint.shot_continuity_gate.source_fingerprint, /^[0-9a-f]{64}$/);
+  } finally {
+    if (previousOutput === undefined) delete process.env.L99_VIDEO_OUTPUT_DIR;
+    else process.env.L99_VIDEO_OUTPUT_DIR = previousOutput;
+    db.close();
+    rmSync(outputDir, { recursive: true, force: true });
   }
 });
