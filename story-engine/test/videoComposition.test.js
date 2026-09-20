@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +18,10 @@ import {
 } from '../lib/videoComposition.js';
 
 const schema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8');
+
+function sha256Bytes(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
 
 function fixtureDb() {
   const db = new DatabaseSync(':memory:');
@@ -75,6 +80,8 @@ test('eleven verified clips compose into a >60 second video and movie timeline w
     assert.equal(video.receipt.reencoded, false);
     assert.equal(video.receipt.ordered_timeline, true);
     assert.equal(video.receipt.provider_cost_usd, 0);
+    assert.equal(video.receipt.sources.every(source => source.integrity_format === 'legacy_buffer_json_sha256'), true);
+    assert.equal(video.receipt.sources.every(source => source.content_hash !== source.source_receipt_hash), true);
     assert.ok(video.receipt.media_probe.streams.some(stream => stream.codec_type === 'video'));
     assert.ok(video.receipt.media_probe.streams.some(stream => stream.codec_type === 'audio'));
     assert.ok(video.receipt.media_probe.streams.some(stream => stream.codec_type === 'subtitle'));
@@ -83,6 +90,7 @@ test('eleven verified clips compose into a >60 second video and movie timeline w
     assert.ok(file);
     const bytes = readFileSync(file.path);
     assert.ok(bytes.subarray(4, 12).toString('ascii').includes('ftyp'));
+    assert.equal(video.content_hash, sha256Bytes(bytes));
 
     const duplicate = await composeStoryVideoExports(db, {
       workspace_id: 'workspace_video_composition',
@@ -134,11 +142,13 @@ test('current verified self-hosted picture locks can form long timelines without
     assert.ok(file);
     ensureOpenVideoRendererSchema(db);
 
+    const rawBytes = readFileSync(file.path);
+    const rawHash = sha256Bytes(rawBytes);
     const continuity = createContinuityCookie(job);
     const renderId = 'open_master_composition_fixture';
     const proof = createProofCookie(job, {
       evidence_class: 'assembled_open_weight_picture_lock',
-      output_sha256: clip.content_hash,
+      output_sha256: rawHash,
       renderer: 'test-open-weight+ffmpeg',
       media_probe: clip.receipt.media_probe
     });
@@ -153,7 +163,7 @@ test('current verified self-hosted picture locks can form long timelines without
       renderer: 'test-open-weight+ffmpeg',
       continuity_cookie: continuity.value,
       proof_cookie: proof.value,
-      output_sha256: clip.content_hash,
+      output_sha256: rawHash,
       media_probe: clip.receipt.media_probe,
       picture_lock: true,
       release_ready: false,
@@ -166,7 +176,7 @@ test('current verified self-hosted picture locks can form long timelines without
       output_path,output_sha256,technical_status,continuity_status,editorial_status,review_notes,receipt_json,failure_json,created_at,updated_at
     ) VALUES (?,?,?,?,?,?,'complete',?,NULL,NULL,NULL,NULL,?,?, 'passed','approved','pending',NULL,?,'{}',?,?)`).run(
       renderId, job.job_id, job.workspace_id, '__master__', continuity.value, proof.value,
-      'test-open-weight+ffmpeg', file.path, clip.content_hash, JSON.stringify(receipt), now, now
+      'test-open-weight+ffmpeg', file.path, rawHash, JSON.stringify(receipt), now, now
     );
 
     const sources = Array.from({ length: 11 }, () => ({ type: 'open_render', id: renderId }));
@@ -181,6 +191,7 @@ test('current verified self-hosted picture locks can form long timelines without
     assert.equal(video.receipt.media_probe.verified, true);
     assert.equal(video.receipt.sources.every(source => source.proof_cookie === proof.value), true);
     assert.equal(video.receipt.sources.every(source => source.continuity_cookie === continuity.value), true);
+    assert.equal(video.receipt.sources.every(source => source.integrity_format === 'raw_sha256'), true);
     assert.equal(video.receipt.picture_lock_only, true);
     assert.equal(video.receipt.release_ready, false);
     assert.equal(video.receipt.authority_granted, false);
