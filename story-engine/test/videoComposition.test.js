@@ -6,10 +6,13 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { createStoryVideoJob } from '../lib/videoEngine.js';
-import { renderStoryVideoExport } from '../lib/videoExport.js';
+import { getStoryVideoExportFile, renderStoryVideoExport } from '../lib/videoExport.js';
+import { ensureOpenVideoRendererSchema } from '../lib/openVideoRenderer.js';
+import { createContinuityCookie, createProofCookie } from '../lib/videoContinuity.js';
 import {
   VIDEO_COMPOSITION_PROFILES,
   composeStoryVideoExports,
+  composeStoryVideoSources,
   getStoryVideoCompositionFile
 } from '../lib/videoComposition.js';
 
@@ -27,30 +30,34 @@ function fixtureDb() {
   return db;
 }
 
+async function renderedFixture(db) {
+  const job = createStoryVideoJob(db, {
+    workspace_id: 'workspace_video_composition',
+    mode: 'cinematic_3d',
+    visual_style: 'cinematic_realism',
+    quality: 'draft',
+    aspect_ratio: '16:9',
+    action_beats: ['Mina approaches the violet door in the storm.']
+  });
+  db.prepare(`UPDATE story_video_jobs SET status='validated' WHERE job_id=?`).run(job.job_id);
+  const clip = await renderStoryVideoExport(db, job.job_id, {
+    scene_count: 1,
+    duration_seconds: 6,
+    fps: 24,
+    width: 320,
+    height: 180
+  });
+  assert.equal(clip.status, 'complete');
+  return { job, clip };
+}
+
 test('eleven verified clips compose into a >60 second video and movie timeline without re-rendering sources', async () => {
   const db = fixtureDb();
   const outputDir = mkdtempSync(join(tmpdir(), 'l99-video-composition-test-'));
   const previousOutput = process.env.L99_VIDEO_OUTPUT_DIR;
   process.env.L99_VIDEO_OUTPUT_DIR = outputDir;
   try {
-    const job = createStoryVideoJob(db, {
-      workspace_id: 'workspace_video_composition',
-      mode: 'cinematic_3d',
-      visual_style: 'cinematic_realism',
-      quality: 'draft',
-      aspect_ratio: '16:9',
-      action_beats: ['Mina approaches the violet door in the storm.']
-    });
-    db.prepare(`UPDATE story_video_jobs SET status='validated' WHERE job_id=?`).run(job.job_id);
-    const clip = await renderStoryVideoExport(db, job.job_id, {
-      scene_count: 1,
-      duration_seconds: 6,
-      fps: 24,
-      width: 320,
-      height: 180
-    });
-    assert.equal(clip.status, 'complete');
-
+    const { clip } = await renderedFixture(db);
     const eleven = Array.from({ length: 11 }, () => clip.export_id);
     const video = await composeStoryVideoExports(db, {
       workspace_id: 'workspace_video_composition',
@@ -108,6 +115,85 @@ test('eleven verified clips compose into a >60 second video and movie timeline w
     assert.equal(VIDEO_COMPOSITION_PROFILES.clip.max_duration_seconds, 60);
     assert.equal(VIDEO_COMPOSITION_PROFILES.video.max_duration_seconds, 3600);
     assert.equal(VIDEO_COMPOSITION_PROFILES.movie.max_duration_seconds, 21600);
+  } finally {
+    if (previousOutput === undefined) delete process.env.L99_VIDEO_OUTPUT_DIR;
+    else process.env.L99_VIDEO_OUTPUT_DIR = previousOutput;
+    db.close();
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test('current verified self-hosted picture locks can form long timelines without becoming falsely release-ready', async () => {
+  const db = fixtureDb();
+  const outputDir = mkdtempSync(join(tmpdir(), 'l99-video-open-composition-test-'));
+  const previousOutput = process.env.L99_VIDEO_OUTPUT_DIR;
+  process.env.L99_VIDEO_OUTPUT_DIR = outputDir;
+  try {
+    const { job, clip } = await renderedFixture(db);
+    const file = getStoryVideoExportFile(db, clip.export_id);
+    assert.ok(file);
+    ensureOpenVideoRendererSchema(db);
+
+    const continuity = createContinuityCookie(job);
+    const renderId = 'open_master_composition_fixture';
+    const proof = createProofCookie(job, {
+      evidence_class: 'assembled_open_weight_picture_lock',
+      output_sha256: clip.content_hash,
+      renderer: 'test-open-weight+ffmpeg',
+      media_probe: clip.receipt.media_probe
+    });
+    const now = Date.now();
+    const receipt = {
+      schema_version: '2.0.0',
+      render_id: renderId,
+      job_id: job.job_id,
+      workspace_id: job.workspace_id,
+      shot_id: '__master__',
+      kind: 'picture_lock',
+      renderer: 'test-open-weight+ffmpeg',
+      continuity_cookie: continuity.value,
+      proof_cookie: proof.value,
+      output_sha256: clip.content_hash,
+      media_probe: clip.receipt.media_probe,
+      picture_lock: true,
+      release_ready: false,
+      audio: { status: 'silent_picture_lock', required_before_release: true },
+      captions: { status: 'pending_final_audio', required_before_release: true },
+      authority_granted: false
+    };
+    db.prepare(`INSERT INTO story_video_open_renders (
+      render_id,job_id,workspace_id,shot_id,continuity_cookie,proof_cookie,status,renderer,prompt_id,workflow_sha256,model_id,reference_sha256,
+      output_path,output_sha256,technical_status,continuity_status,editorial_status,review_notes,receipt_json,failure_json,created_at,updated_at
+    ) VALUES (?,?,?,?,?,?,'complete',?,NULL,NULL,NULL,NULL,?,?, 'passed','approved','pending',NULL,?,'{}',?,?)`).run(
+      renderId, job.job_id, job.workspace_id, '__master__', continuity.value, proof.value,
+      'test-open-weight+ffmpeg', file.path, clip.content_hash, JSON.stringify(receipt), now, now
+    );
+
+    const sources = Array.from({ length: 11 }, () => ({ type: 'open_render', id: renderId }));
+    const video = await composeStoryVideoSources(db, {
+      workspace_id: job.workspace_id,
+      profile: 'video',
+      sources
+    });
+    assert.equal(video.status, 'complete');
+    assert.equal(video.source_count, 11);
+    assert.ok(video.duration_seconds > 60);
+    assert.equal(video.receipt.media_probe.verified, true);
+    assert.equal(video.receipt.sources.every(source => source.proof_cookie === proof.value), true);
+    assert.equal(video.receipt.sources.every(source => source.continuity_cookie === continuity.value), true);
+    assert.equal(video.receipt.picture_lock_only, true);
+    assert.equal(video.receipt.release_ready, false);
+    assert.equal(video.receipt.authority_granted, false);
+
+    db.prepare(`UPDATE story_video_jobs SET blueprint_json=json_set(blueprint_json,'$.shot_plan_revision',99) WHERE job_id=?`).run(job.job_id);
+    await assert.rejects(
+      () => composeStoryVideoSources(db, {
+        workspace_id: job.workspace_id,
+        profile: 'video',
+        sources: [{ type: 'open_render', id: renderId }]
+      }),
+      error => error?.code === 'COMPOSITION_SOURCE_STALE'
+    );
   } finally {
     if (previousOutput === undefined) delete process.env.L99_VIDEO_OUTPUT_DIR;
     else process.env.L99_VIDEO_OUTPUT_DIR = previousOutput;
