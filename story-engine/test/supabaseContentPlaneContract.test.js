@@ -36,6 +36,19 @@ test('every content table is fail-closed behind RLS and no client grants', () =>
   assert.doesNotMatch(sql, /create\s+policy[\s\S]*to\s+(anon|authenticated)/i);
 });
 
+test('workspace membership roles stay identical to the runtime authority roles', () => {
+  const securityContext = readFileSync(join(__dirname, '../lib/securityContext.js'), 'utf8');
+  const runtimeRoleBlock = securityContext.match(/ROLE_ORDER\s*=\s*Object\.freeze\(\{([^}]+)\}\)/);
+  assert.ok(runtimeRoleBlock, 'ROLE_ORDER authority contract not found');
+  const runtimeRoles = [...runtimeRoleBlock[1].matchAll(/([a-z_]+)\s*:/g)].map(match => match[1]);
+
+  const migrationRoleBlock = sql.match(/workspace_memberships_role_check[\s\S]*?check\s*\(\s*role\s+in\s*\(([^)]+)\)\s*\)/i);
+  assert.ok(migrationRoleBlock, 'workspace membership role check not found');
+  const migrationRoles = [...migrationRoleBlock[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+
+  assert.deepEqual(migrationRoles, runtimeRoles);
+});
+
 test('migration carries tenant, creator, membership, artifact, and fail-closed shape checks', () => {
   for (const token of [
     'tenant_id',
