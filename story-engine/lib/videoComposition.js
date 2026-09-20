@@ -2,7 +2,7 @@
 // Ordered, verified long-form assembly across deterministic exports and real LEEVIZE footage.
 
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -11,7 +11,7 @@ import { ensureVideoExportSchema } from './videoExport.js';
 import { createContinuityCookie } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
 
-const COMPOSITION_SCHEMA_VERSION = '2.0.0';
+const COMPOSITION_SCHEMA_VERSION = '2.0.1';
 const COMPOSITOR_VERSION = 'ffmpeg_concat_copy_v2';
 
 export const VIDEO_COMPOSITION_PROFILES = Object.freeze({
@@ -52,6 +52,13 @@ async function hashFile(filePath) {
     stream.on('error', () => rejectHash(compositionError('COMPOSITION_FILE_READ_FAILED', 'Video composition media could not be read for integrity verification.')));
     stream.on('end', () => resolveHash(digest.digest('hex')));
   });
+}
+
+function legacyDeterministicExportHash(filePath) {
+  // Story Video export schema 1.1 hashed Buffer JSON rather than raw bytes.
+  // Keep that historical receipt verifiable, but never propagate it as the canonical
+  // content hash of a new composition.
+  return hash(readFileSync(filePath));
 }
 
 function probeMedia(filePath) {
@@ -185,10 +192,19 @@ async function resolveExportSource(db, workspaceId, ref) {
   const receipt = safeJson(row.receipt_json, {});
   if (receipt?.media_probe?.verified !== true) throw compositionError('COMPOSITION_SOURCE_UNVERIFIED', 'A requested deterministic video export lacks verified media proof.', [{ source_type: ref.type, source_id: ref.id, reason: 'media_probe_not_verified' }]);
   const actualHash = await hashFile(row.output_path);
-  if (!row.content_hash || actualHash !== row.content_hash) throw compositionError('COMPOSITION_SOURCE_HASH_MISMATCH', 'A requested deterministic video export no longer matches its integrity receipt.', [{ source_type: ref.type, source_id: ref.id, reason: 'content_hash_mismatch' }]);
+  const receiptHash = text(row.content_hash);
+  const integrityFormat = receiptHash === actualHash
+    ? 'raw_sha256'
+    : receipt?.schema_version === '1.1.0' && receiptHash === legacyDeterministicExportHash(row.output_path)
+      ? 'legacy_buffer_json_sha256'
+      : null;
+  if (!integrityFormat) throw compositionError('COMPOSITION_SOURCE_HASH_MISMATCH', 'A requested deterministic video export no longer matches its integrity receipt.', [{ source_type: ref.type, source_id: ref.id, reason: 'content_hash_mismatch' }]);
   const liveProbe = probeMedia(row.output_path);
   return {
-    type: 'export', id: ref.id, output_path: row.output_path, content_hash: actualHash,
+    type: 'export', id: ref.id, output_path: row.output_path,
+    content_hash: actualHash,
+    source_receipt_hash: receiptHash,
+    integrity_format: integrityFormat,
     duration_seconds: liveProbe.duration_seconds, signature: liveProbe.signature,
     proof_cookie: null, continuity_cookie: null,
     release_ready: receipt.release_ready === true || receipt.satisfies_final_delivery === true,
@@ -215,7 +231,10 @@ async function resolveOpenRenderSource(db, workspaceId, ref) {
   if (!row.output_sha256 || actualHash !== row.output_sha256 || (receipt.output_sha256 && receipt.output_sha256 !== actualHash)) throw compositionError('COMPOSITION_SOURCE_HASH_MISMATCH', 'A requested open-render source no longer matches its proof receipt.', [{ source_type: ref.type, source_id: ref.id, reason: 'content_hash_mismatch' }]);
   const liveProbe = probeMedia(row.output_path);
   return {
-    type: 'open_render', id: ref.id, output_path: row.output_path, content_hash: actualHash,
+    type: 'open_render', id: ref.id, output_path: row.output_path,
+    content_hash: actualHash,
+    source_receipt_hash: row.output_sha256,
+    integrity_format: 'raw_sha256',
     duration_seconds: liveProbe.duration_seconds, signature: liveProbe.signature,
     proof_cookie: row.proof_cookie, continuity_cookie: row.continuity_cookie,
     release_ready: receipt.release_ready === true,
@@ -310,7 +329,19 @@ export async function composeStoryVideoSources(db, input = {}) {
       compositor: COMPOSITOR_VERSION,
       profile: profileName,
       source_count: sources.length,
-      sources: sources.map(source => ({ order: source.order, type: source.type, id: source.id, content_hash: source.content_hash, duration_seconds: source.duration_seconds, continuity_cookie: source.continuity_cookie || null, proof_cookie: source.proof_cookie || null, release_ready: source.release_ready, picture_lock: source.picture_lock })),
+      sources: sources.map(source => ({
+        order: source.order,
+        type: source.type,
+        id: source.id,
+        content_hash: source.content_hash,
+        source_receipt_hash: source.source_receipt_hash,
+        integrity_format: source.integrity_format,
+        duration_seconds: source.duration_seconds,
+        continuity_cookie: source.continuity_cookie || null,
+        proof_cookie: source.proof_cookie || null,
+        release_ready: source.release_ready,
+        picture_lock: source.picture_lock
+      })),
       expected_duration_seconds: expectedDuration,
       duration_seconds: mediaProbe.duration_seconds,
       media_probe: mediaProbe,
