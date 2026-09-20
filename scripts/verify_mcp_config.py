@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPECTED = ["context7", "github", "playwright", "supabase"]
 TOOLSETS = "repos,issues,pull_requests,actions,code_security,secret_protection"
 PLAYWRIGHT = "@playwright/mcp@0.0.78"
-STORYENGINE_PROJECT_REF = "tarnmxcjpvaxapnjnesf"
+STORYENGINE_PROJECT_REF = "iuxworqsqnyilbxrfctv"
 EXAMPLE_PROJECT_REF = "YOUR_STORYENGINE_PROJECT_REF"
 
 
