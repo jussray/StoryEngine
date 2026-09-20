@@ -30,6 +30,10 @@ function createDb() {
   `).run('workspace-a', 'tenant-a', 'actor-a', now);
   db.prepare(`
     INSERT INTO workspace_memberships (workspace_id, tenant_id, actor_id, role, created_at)
+    VALUES (?, ?, ?, 'viewer', ?)
+  `).run('workspace-a', 'tenant-a', 'actor-viewer', now);
+  db.prepare(`
+    INSERT INTO workspace_memberships (workspace_id, tenant_id, actor_id, role, created_at)
     VALUES (?, ?, ?, 'creator', ?)
   `).run('workspace-b', 'tenant-b', 'actor-b', now);
   return db;
@@ -61,6 +65,14 @@ const creator = {
   actor_id: 'actor-a',
   tenant_id: 'tenant-a',
   role: 'creator',
+  workspace_ids: ['workspace-a']
+};
+
+const viewer = {
+  type: 'session',
+  actor_id: 'actor-viewer',
+  tenant_id: 'tenant-a',
+  role: 'viewer',
   workspace_ids: ['workspace-a']
 };
 
@@ -137,6 +149,37 @@ test('creator may process only a dispatch belonging to an authorized workspace',
   await routes.get('POST /api/runtime/dispatch/:dispatch_id/process')(otherReq, otherRes);
   assert.equal(otherRes.statusCode, 403);
   assert.equal(JSON.parse(otherRes.body).error, 'workspace_forbidden');
+  db.close();
+});
+
+test('viewer membership stays read-only for runtime enqueue and processing', async () => {
+  const db = createDb();
+  const routes = captureRoutes(db);
+  insertDispatch(db, { dispatchId: 'dispatch-viewer', workspaceId: 'workspace-a' });
+
+  const enqueueReq = {
+    auth: viewer,
+    request_id: 'viewer-enqueue',
+    db,
+    params: { workspace_id: 'workspace-a' },
+    body: { trigger_type: 'manual_dispatch' }
+  };
+  const enqueueRes = responseRecorder();
+  await routes.get('POST /api/runtime/dispatch/:workspace_id')(enqueueReq, enqueueRes);
+  assert.equal(enqueueRes.statusCode, 403);
+  assert.equal(JSON.parse(enqueueRes.body).error, 'forbidden');
+
+  const processReq = {
+    auth: viewer,
+    request_id: 'viewer-process',
+    db,
+    params: { dispatch_id: 'dispatch-viewer' },
+    body: {}
+  };
+  const processRes = responseRecorder();
+  await routes.get('POST /api/runtime/dispatch/:dispatch_id/process')(processReq, processRes);
+  assert.equal(processRes.statusCode, 403);
+  assert.equal(JSON.parse(processRes.body).error, 'forbidden');
   db.close();
 });
 
