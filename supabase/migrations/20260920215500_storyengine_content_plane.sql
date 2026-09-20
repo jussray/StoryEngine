@@ -26,7 +26,7 @@ create table if not exists public.workspace_memberships (
   created_at bigint not null,
   primary key (workspace_id, tenant_id, actor_id),
   constraint workspace_memberships_role_check
-    check (role in ('viewer', 'creator', 'operator', 'administrator'))
+    check (role in ('viewer', 'creator', 'editor', 'reviewer', 'release_manager', 'administrator'))
 );
 
 create table if not exists public.outlines (
