@@ -21,9 +21,13 @@ export default function missionControlRoutes(router, db) {
     json(res, item.deduplicated ? 200 : 201, item);
   });
 
-  router.post('/api/runtime/drain', (req, res) => {
+  router.post('/api/runtime/drain', async (req, res) => {
     const limit = Math.min(Number(req.body?.limit) || 5, 25);
-    json(res, 200, { processed: drainRuntimeQueue(db, limit) });
+    try {
+      json(res, 200, { processed: await drainRuntimeQueue(db, limit) });
+    } catch (error) {
+      json(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    }
   });
 
   router.post('/api/runtime/scan', (req, res) => {
