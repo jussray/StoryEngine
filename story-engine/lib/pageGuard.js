@@ -21,6 +21,7 @@ const CREATOR_PAGES = new Set([
   '/studio.html',
   '/ip_studio.html',
   '/video_studio.html',
+  '/video_creation_os.html',
   '/l99_auth.js',
   '/video_control_room.js'
 ]);
