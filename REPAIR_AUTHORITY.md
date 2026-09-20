@@ -10,6 +10,16 @@ A trusted acting operator may implement the smallest reversible repair on the ex
 
 Every repair must bind, where applicable, repository/base/head, workspace/tenant/canon subject, event/schema version, provider/runtime identity, failure fingerprint, evidence-only proof cookies, before state, rollback, and post-action readback.
 
+## Repair OS inheritance
+
+StoryEngine uses the portfolio fused repair loop for consequential repairs:
+
+`LINDY → RED TEAM I → ATTACK TEN → OODA OBSERVE → OODA ORIENT → OODA DECIDE → L99 AUTHORITY → ACT → RED TEAM II → RECURSIVE HARDENING → VERIFY → LOOP/STOP`.
+
+StoryEngine's existing OODA processor remains its runtime/domain observation engine. The portfolio Repair OS does not duplicate or replace it. Instead, it governs how a verified incident may become a repair. Lindy prefers durable carriers; Red Team I attacks the premise; ATTACK TEN pressures the proposal; OODA reacquires exact event/canon/runtime state; L99 verifies subject, authority, provenance, rollback, and consequence before Act; Red Team II attacks the implementation; recursive hardening pressures authority inversion, evidence falsification, human outcome, and temporal races; Verify requires the appropriate source/runtime/Playwright/user-consequence evidence.
+
+Attack/Lindy/Red Team/OODA/L99 outputs may revise or block a repair but never create canon authority, publication rights, tenant access, consent, credentials, deployment authority, or commercial authority.
+
 ## Source and CI authority
 
 Trusted repository operators may:
@@ -62,6 +72,6 @@ Forward-only, non-destructive repairs that preserve all existing access/privacy/
 
 ## Evidence law
 
-Fingerprints and proof cookies are evidence-only. Tracker state, documentation, model output, provider acceptance, and a prior green packet cannot substitute for current subject-bound proof.
+Fingerprints and proof cookies are evidence-only. Tracker state, documentation, model output, provider acceptance, attack results, and a prior green packet cannot substitute for current subject-bound proof.
 
 For consequential repairs report REALITY, WITNESSES, FIX, PROOF, RISK, ROLLBACK, NEXT GATE.
