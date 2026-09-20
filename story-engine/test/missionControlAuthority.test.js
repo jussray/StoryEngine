@@ -161,6 +161,29 @@ test('creator cannot enqueue runtime work for another tenant workspace', async (
   db.close();
 });
 
+test('creator can enqueue runtime work for an authorized workspace', async () => {
+  const db = createDb();
+  const routes = captureRoutes(db);
+  const req = {
+    auth: creator,
+    request_id: 'enqueue-own',
+    db,
+    params: { workspace_id: 'workspace-a' },
+    body: { trigger_type: 'manual_dispatch' }
+  };
+  const res = responseRecorder();
+  await routes.get('POST /api/runtime/dispatch/:workspace_id')(req, res);
+  assert.equal(res.statusCode, 201);
+  const body = JSON.parse(res.body);
+  assert.equal(body.workspace_id, 'workspace-a');
+  assert.equal(body.status, 'queued');
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM runtime_dispatch_queue WHERE workspace_id=?').get('workspace-a').count,
+    1
+  );
+  db.close();
+});
+
 test('administrator retains the global queue drain control', async () => {
   const db = createDb();
   const routes = captureRoutes(db);
