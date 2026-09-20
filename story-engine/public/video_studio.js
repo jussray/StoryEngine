@@ -21,6 +21,10 @@ async function api(path, init={}){
 
 function isLiveAction(){ return $('mode').value === 'live_action'; }
 function jobIsValidated(){ return ['validated','preview_validated'].includes(currentJob?.status); }
+function shortCookie(value){
+  const raw=String(value||'');
+  return raw.length>30?`${raw.slice(0,21)}…${raw.slice(-7)}`:raw;
+}
 
 function actionBeatValues(){
   return $('actionBeats').value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
@@ -70,6 +74,24 @@ function masterEvidence(){
   return renders.find(item=>item.shot_id==='__master__' && item.continuity?.receipt_status!=='STALE') || null;
 }
 
+function currentShotRenders(){
+  return draftShots.map(shot=>evidenceForShot(shot.shot_id)).filter(Boolean);
+}
+
+function approvedShotCount(){
+  return draftShots.filter(shot=>{
+    const item=evidenceForShot(shot.shot_id);
+    return item?.status==='complete' && item.technical_status==='passed' && item.continuity_status==='approved' && item.editorial_status==='approved';
+  }).length;
+}
+
+function continuityMarkup(){
+  const marker=openEvidence?.continuity_cookie?.value || '';
+  const stale=(openEvidence?.renders||[]).filter(item=>item.continuity?.receipt_status==='STALE').length;
+  if(!marker) return '<div class="mode-note" data-testid="continuity-marker"><strong>Continuity cookie:</strong> waiting for job evidence. Marker only, never authority.</div>';
+  return `<div class="mode-note" data-testid="continuity-marker"><strong>Continuity cookie:</strong> <code data-testid="continuity-cookie">${esc(shortCookie(marker))}</code> · stale render receipts ${stale}. <span class="sub">Bidirectional state marker only, never authority.</span></div>`;
+}
+
 function qaStatusClass(value){ return value==='approved'?'ok':value==='rejected'?'bad':'warn'; }
 
 function shotRenderMarkup(shot,index){
@@ -106,10 +128,7 @@ function renderDraftShots(){
 }
 
 function allShotsApproved(){
-  return draftShots.length>0 && draftShots.every(shot=>{
-    const item=evidenceForShot(shot.shot_id);
-    return item?.status==='complete' && item.technical_status==='passed' && item.continuity_status==='approved' && item.editorial_status==='approved';
-  });
+  return draftShots.length>0 && approvedShotCount()===draftShots.length;
 }
 
 function masterMarkup(){
@@ -122,7 +141,11 @@ function productionMarkup(contract){
   if(!contract.playable_video_required) return '';
   const approved=allShotsApproved();
   const failureCount=Array.isArray(openEvidence?.failures)?openEvidence.failures.length:0;
-  return `<section class="card production-card" data-testid="real-footage-production"><div class="production-head"><div><div class="eyebrow">Actual video production</div><h2>Render → inspect → approve → assemble</h2><p class="sub">Each failed shot keeps its own receipt. Existing approved shots stay intact.</p></div><span class="status ${rendererStatus?.ready?'ok':'warn'}">${rendererStatus?.ready?'Renderer ready':'Infrastructure gated'}</span></div><div class="plan-tools"><button id="refreshEvidence" class="btn" type="button">Refresh render evidence</button><button id="assembleMaster" class="btn primary" type="button" ${approved?'':'disabled'}>Assemble approved picture lock</button><span class="tag">${failureCount} failure receipt${failureCount===1?'':'s'}</span></div></section>${masterMarkup()}`;
+  const currentRenders=currentShotRenders();
+  const rendered=currentRenders.filter(item=>item.status==='complete' && item.technical_status==='passed').length;
+  const approvedCount=approvedShotCount();
+  const total=draftShots.length;
+  return `<section class="card production-card" data-testid="real-footage-production"><div class="production-head"><div><div class="eyebrow">Actual video production</div><h2>Render → inspect → approve → assemble</h2><p class="sub">Each failed shot keeps its own receipt. Existing approved shots stay intact.</p></div><span class="status ${rendererStatus?.ready?'ok':'warn'}">${rendererStatus?.ready?'Renderer ready':'Infrastructure gated'}</span></div>${continuityMarkup()}<div class="delivery-note" data-testid="actual-render-truth"><strong>Actual footage:</strong> ${rendered}/${total} technically verified · ${approvedCount}/${total} film-approved. Plan proof is not footage proof.</div><div class="plan-tools"><button id="refreshEvidence" class="btn" type="button">Refresh render evidence</button><button id="assembleMaster" class="btn primary" type="button" ${approved?'':'disabled'}>Assemble approved picture lock</button><span class="tag">${failureCount} failure receipt${failureCount===1?'':'s'}</span></div></section>${masterMarkup()}`;
 }
 
 function renderJob(job,{keepEvidence=false}={}){
