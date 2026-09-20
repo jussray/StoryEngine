@@ -185,7 +185,12 @@ test('current verified self-hosted picture locks can form long timelines without
     assert.equal(video.receipt.release_ready, false);
     assert.equal(video.receipt.authority_granted, false);
 
-    db.prepare(`UPDATE story_video_jobs SET blueprint_json=json_set(blueprint_json,'$.shot_plan_revision',99) WHERE job_id=?`).run(job.job_id);
+    const row = db.prepare('SELECT blueprint_json FROM story_video_jobs WHERE job_id=?').get(job.job_id);
+    const driftedBlueprint = JSON.parse(row.blueprint_json);
+    driftedBlueprint.shots[0].provider_prompt = `${driftedBlueprint.shots[0].provider_prompt}\nCANON DRIFT: changed after proof.`;
+    db.prepare('UPDATE story_video_jobs SET blueprint_json=?,updated_at=? WHERE job_id=?')
+      .run(JSON.stringify(driftedBlueprint), Date.now(), job.job_id);
+
     await assert.rejects(
       () => composeStoryVideoSources(db, {
         workspace_id: job.workspace_id,
