@@ -7,39 +7,14 @@ import { ensureVideoEngineSchema, getStoryVideoJob } from './videoEngine.js';
 import { log } from '../models/eventModel.js';
 
 const COMMAND_TEMPLATES = Object.freeze([
-  '/establish',
-  '/dolly-in subject',
-  '/whip-pan subject',
-  '/rack-focus subject -> target',
-  '/hyperlapse place',
-  '/reaction subject',
-  '/insert story detail',
-  '/close subject'
+  '/establish', '/dolly-in subject', '/whip-pan subject', '/rack-focus subject -> target', '/hyperlapse place', '/reaction subject', '/insert story detail', '/close subject'
 ]);
-
 const LIVE_ACTION_MARKER = '\nLIVE ACTION DELIVERY:';
 
-function clean(value) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
-}
-
-function html(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function tableExists(db, name) {
-  return Boolean(db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(name));
-}
-
-function hasCompletedExport(db, jobId) {
-  if (!tableExists(db, 'story_video_exports')) return false;
-  return Boolean(db.prepare("SELECT 1 FROM story_video_exports WHERE job_id=? AND status='complete' LIMIT 1").get(jobId));
-}
+function clean(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
+function html(value) { return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;'); }
+function tableExists(db, name) { return Boolean(db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(name)); }
+function hasCompletedExport(db, jobId) { return tableExists(db, 'story_video_exports') && Boolean(db.prepare("SELECT 1 FROM story_video_exports WHERE job_id=? AND status='complete' LIMIT 1").get(jobId)); }
 
 function liveActionDeliverySuffix(shot) {
   if (shot?.visible_action_required !== true) return '';
@@ -47,6 +22,21 @@ function liveActionDeliverySuffix(shot) {
   const markerIndex = prompt.indexOf(LIVE_ACTION_MARKER);
   if (markerIndex < 0) throw new Error(`Live-action shot ${shot?.shot_id || '(unknown)'} is missing its delivery contract.`);
   return prompt.slice(markerIndex);
+}
+
+function videoOsFor(original) {
+  const source = original?.shot_direction?.video_creation_os;
+  if (!source || typeof source !== 'object') return undefined;
+  const selections = {};
+  for (const item of Array.isArray(source.selections) ? source.selections : []) {
+    if (item?.category && item?.command) selections[item.category] = item.command;
+  }
+  return {
+    subject: source.subject,
+    scene: source.scene,
+    output_intent: source.output_intent,
+    selections
+  };
 }
 
 function articleMarkup(shot, index) {
@@ -74,7 +64,8 @@ function compileEditedShot(original, requested) {
     duration_seconds: original.duration_seconds,
     style_prompt: original.style_prompt,
     must_preserve: original.must_preserve,
-    negative_constraints: original.negative_constraints
+    negative_constraints: original.negative_constraints,
+    video_os: videoOsFor(original)
   });
   const deliverySuffix = liveActionDeliverySuffix(original);
   return {
@@ -93,7 +84,6 @@ function requestedShots(job, input) {
   const requested = Array.isArray(input?.shots) ? input.shots : [];
   if (!originals.length) throw new Error('Video job has no editable shots.');
   if (requested.length !== originals.length) throw new Error('Shot plan edits must preserve the existing shot count.');
-
   const byId = new Map(originals.map(shot => [shot.shot_id, shot]));
   const seen = new Set();
   return requested.map(item => {
@@ -110,10 +100,7 @@ export function storyVideoShotEditorOptions() {
     editable: true,
     reorderable: true,
     immutable_after_export: true,
-    commands: COMMAND_TEMPLATES.map((template, index) => ({
-      template,
-      command_name: Object.keys(SHOT_COMMANDS)[index] || null
-    }))
+    commands: COMMAND_TEMPLATES.map((template, index) => ({ template, command_name: Object.keys(SHOT_COMMANDS)[index] || null }))
   };
 }
 
@@ -122,7 +109,6 @@ export function updateStoryVideoShotPlan(db, jobId, input = {}) {
   const job = getStoryVideoJob(db, jobId);
   if (!job) throw new Error('Video job not found.');
   if (hasCompletedExport(db, jobId)) throw new Error('Exported shot plans are immutable. Create a new video job to change direction.');
-
   const artifact = db.prepare('SELECT * FROM story_artifacts WHERE artifact_id=?').get(job.artifact_id);
   if (!artifact) throw new Error('Video artifact not found.');
 
@@ -147,10 +133,8 @@ export function updateStoryVideoShotPlan(db, jobId, input = {}) {
   const contentHash = createHash('sha256').update(artifactHtml).digest('hex');
 
   db.transaction(() => {
-    db.prepare(`UPDATE story_video_jobs SET status='ready_for_validation',blueprint_json=?,validation_json='{}',updated_at=? WHERE job_id=?`)
-      .run(JSON.stringify(blueprint), editedAt, jobId);
-    db.prepare(`UPDATE story_artifacts SET status='generated',content_hash=?,html=?,validation_json='{}',updated_at=? WHERE artifact_id=?`)
-      .run(contentHash, artifactHtml, editedAt, artifact.artifact_id);
+    db.prepare(`UPDATE story_video_jobs SET status='ready_for_validation',blueprint_json=?,validation_json='{}',updated_at=? WHERE job_id=?`).run(JSON.stringify(blueprint), editedAt, jobId);
+    db.prepare(`UPDATE story_artifacts SET status='generated',content_hash=?,html=?,validation_json='{}',updated_at=? WHERE artifact_id=?`).run(contentHash, artifactHtml, editedAt, artifact.artifact_id);
     log(db, {
       workspace_id: job.workspace_id,
       mode: 'video_engine',
@@ -166,6 +150,5 @@ export function updateStoryVideoShotPlan(db, jobId, input = {}) {
       }
     });
   })();
-
   return getStoryVideoJob(db, jobId);
 }

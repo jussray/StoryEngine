@@ -5,12 +5,12 @@ import { json } from '../lib/miniRouter.js';
 import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
   VIDEO_ENGINE_OPTIONS,
-  createStoryVideoJob,
   getStoryVideoJob,
   listStoryVideoJobs,
   storyVideoEngineOverview,
   validateStoryVideoJob
 } from '../lib/videoEngine.js';
+import { createStoryVideoJobFromHandoff } from '../lib/videoCreationHandoffJob.js';
 import {
   storyVideoShotEditorOptions,
   updateStoryVideoShotPlan
@@ -41,7 +41,7 @@ export default function videoEngineRoutes(router, db) {
     if (!workspaceId) return json(res, 400, { error: 'workspace_id is required.' });
     if (!requireWorkspaceAccess(req, res, workspaceId)) return;
     try {
-      json(res, 201, createStoryVideoJob(db, req.body || {}));
+      json(res, 201, createStoryVideoJobFromHandoff(db, req.body || {}));
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
