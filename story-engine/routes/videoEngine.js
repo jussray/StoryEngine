@@ -1,6 +1,7 @@
 // routes/videoEngine.js
 
-import { createReadStream } from 'node:fs';
+import { createReadStream, statSync } from 'node:fs';
+import { extname } from 'node:path';
 import { json } from '../lib/miniRouter.js';
 import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
@@ -47,6 +48,15 @@ function openRenderError(res, error, fallback) {
     failure_receipts: error?.failure_receipts || null,
     missing_shots: error?.missing_shots || null
   });
+}
+
+function mediaContentType(filename) {
+  switch (extname(String(filename || '')).toLowerCase()) {
+    case '.webm': return 'video/webm';
+    case '.mov': return 'video/quicktime';
+    case '.mkv': return 'video/x-matroska';
+    default: return 'video/mp4';
+  }
 }
 
 export default function videoEngineRoutes(router, db) {
@@ -185,8 +195,10 @@ export default function videoEngineRoutes(router, db) {
       const file = getOpenVideoRenderFile(db, req.params.render_id);
       if (!file) return json(res, 404, { error: 'Rendered video not found.' });
       if (!requireWorkspaceAccess(req, res, file.row.workspace_id)) return;
+      const stat = statSync(file.path);
       res.writeHead(200, {
-        'Content-Type': 'video/mp4',
+        'Content-Type': mediaContentType(file.filename),
+        'Content-Length': String(stat.size),
         'Content-Disposition': `inline; filename="${file.filename}"`,
         'Cache-Control': 'private, no-store'
       });
