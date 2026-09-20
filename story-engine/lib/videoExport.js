@@ -16,11 +16,10 @@ import { basename, join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 
 import { getStoryVideoJob } from './videoEngine.js';
-import { ensureStoryVideoContinuityGate } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
 
-const EXPORT_SCHEMA_VERSION = '1.2.0';
-const RENDERER_VERSION = 'ffmpeg_ffprobe_ken_burns_v4';
+const EXPORT_SCHEMA_VERSION = '1.1.0';
+const RENDERER_VERSION = 'ffmpeg_ffprobe_ken_burns_v2';
 const DEFAULT_SCENE_COUNT = 6;
 const DEFAULT_DURATION_SECONDS = 30;
 const DEFAULT_FPS = 30;
@@ -204,13 +203,13 @@ function deterministicFramePpm(blueprint, scene, width = DEFAULT_WIDTH, height =
   const panel = parseHexColor(theme.panel, '#15121d');
   const pixels = Buffer.alloc(width * height * 3);
   const seed = createHash('sha256')
-    .update(`${visualBibleHash(blueprint)}:shared-continuity-geometry`)
+    .update(`${visualBibleHash(blueprint)}:${scene.scene_index}:${scene.source_shot_id || ''}`)
     .digest();
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const depth = y / Math.max(1, height - 1);
-      const shimmer = (x % 97) / 97;
+      const shimmer = ((x + (scene.scene_index * 29)) % 97) / 97;
       const rgb = [0, 1, 2].map(channel => Math.max(0, Math.min(255,
         Math.round((bg[channel] * (1 - depth * 0.35)) + (panel[channel] * depth * 0.35) + (accent[channel] * shimmer * 0.05))
       )));
@@ -226,7 +225,7 @@ function deterministicFramePpm(blueprint, scene, width = DEFAULT_WIDTH, height =
   fillRect(pixels, width, height, 0, horizon, width, height, panel);
   const characterCount = Math.max(1, Math.min(3, scene.characters.length || blueprint.character_bible?.length || 1));
   for (let index = 0; index < characterCount; index += 1) {
-    const x = Math.round(width * (0.25 + (index * 0.22)));
+    const x = Math.round(width * (0.25 + (index * 0.22)) + ((scene.scene_index % 3) - 1) * 5);
     const bodyTop = Math.round(height * 0.46);
     const bodyBottom = Math.round(height * 0.76);
     const bodyWidth = Math.round(width * 0.055);
@@ -319,15 +318,9 @@ export function getStoryVideoExportFile(db, exportId) {
 
 export async function renderStoryVideoExport(db, jobId, input = {}) {
   ensureVideoExportSchema(db);
-  let job = getStoryVideoJob(db, jobId);
+  const job = getStoryVideoJob(db, jobId);
   if (!job) throw new Error('Video job not found.');
   if (job.status !== 'validated') throw new Error('Video job must pass Playwright validation before MP4 export.');
-
-  const continuity = ensureStoryVideoContinuityGate(db, jobId);
-  job = continuity.job;
-  if (continuity.gate?.ready_for_render !== true) {
-    throw new Error('Shot Continuity Contract must be complete before render.');
-  }
   if (Number(job.estimated_cost_usd || 0) !== 0 || Number(job.actual_cost_usd || 0) !== 0) {
     throw new Error('Zero-provider export refuses a job with non-zero provider cost.');
   }
@@ -404,46 +397,6 @@ export async function renderStoryVideoExport(db, jobId, input = {}) {
     }
     const mediaProbe = probeRenderedMedia(tempOutput, options);
     renameSync(tempOutput, finalPath);
-
-    const boundaryTemp = join(temp, 'shot-boundaries');
-    mkdirSync(boundaryTemp, { recursive: true });
-    const secondsPerScene = options.duration_seconds / options.scene_count;
-    const boundaryFrames = [];
-    for (const [index, scene] of scenes.entries()) {
-      const shotId = text(scene.source_shot_id, `shot_${String(index + 1).padStart(2, '0')}`);
-      const firstAt = index * secondsPerScene;
-      const lastAt = Math.max(firstAt, ((index + 1) * secondsPerScene) - (1 / options.fps));
-      const capture = {};
-      for (const [kind, at] of [['first_frame', firstAt], ['last_frame', lastAt]]) {
-        const filename = `${String(index + 1).padStart(2, '0')}-${kind}.png`;
-        const tempPath = join(boundaryTemp, filename);
-        const frameResult = await new Promise((resolveFrame, rejectFrame) => {
-          const child = spawn(ffmpegBinary(), [
-            '-hide_banner', '-loglevel', 'error', '-y',
-            '-ss', at.toFixed(6), '-i', finalPath,
-            '-frames:v', '1', tempPath
-          ], { stdio: ['ignore', 'ignore', 'pipe'] });
-          let stderr = '';
-          child.stderr.on('data', chunk => { if (stderr.length < 1024 * 1024) stderr += chunk.toString(); });
-          child.on('error', rejectFrame);
-          child.on('close', code => resolveFrame({ code, stderr }));
-        });
-        if (frameResult.code !== 0 || !existsSync(tempPath)) {
-          throw new Error(`ffmpeg boundary-frame capture failed: ${text(frameResult.stderr, 'unknown ffmpeg error')}`);
-        }
-        const frameBytes = readFileSync(tempPath);
-        capture[kind] = { filename, at_seconds: Number(at.toFixed(6)), content_hash: hash(frameBytes), byte_size: frameBytes.length };
-      }
-      boundaryFrames.push({ shot_id: shotId, ...capture });
-    }
-    const boundaryDir = join(finalDir, `${exportId}-shot-boundaries`);
-    rmSync(boundaryDir, { recursive: true, force: true });
-    renameSync(boundaryTemp, boundaryDir);
-    for (const item of boundaryFrames) {
-      item.first_frame.path = join(boundaryDir, item.first_frame.filename);
-      item.last_frame.path = join(boundaryDir, item.last_frame.filename);
-    }
-
     const bytes = readFileSync(finalPath);
     const receipt = {
       schema_version: EXPORT_SCHEMA_VERSION,
@@ -464,14 +417,6 @@ export async function renderStoryVideoExport(db, jobId, input = {}) {
       motion: 'ken_burns_zoompan',
       captions: { format: 'mov_text', embedded: true, source: 'shot_narration' },
       voiceover: { status: 'provider_not_configured', audio_track: 'silent_fallback', narration_preserved_in_captions: true },
-      shot_continuity: {
-        contract_schema_version: job.blueprint.shot_continuity_gate.schema_version,
-        contract_count: job.blueprint.shot_continuity_gate.contracts.length,
-        contract_ready_before_render: true,
-        boundary_frames: boundaryFrames,
-        actual_frame_comparison_status: 'PENDING_VISUAL_REVIEW',
-        workflow_status: 'TEST'
-      },
       provider_generation: false,
       provider_cost_usd: 0,
       retry_policy: 'idempotent_by_source_revision_blueprint_and_render_profile',

@@ -18,11 +18,13 @@ const COMMAND_ALIASES = Object.freeze({
 });
 
 export const OPEN_SOURCE_VIDEO_POLICY = Object.freeze({
-  schema_version: '1.0.0',
+  schema_version: '1.1.0',
   workflow: 'LEEVIZE',
   shot_contract: 'shot-dna@v1',
   compile_order: Object.freeze(['director-brief', 'model-neutral-shot-spec', 'renderer-adapter']),
+  primary_render_lane: 'self_hosted_open_weight',
   open_source_first: true,
+  vendor_credit_zero_blocking: false,
   deterministic_post_tools: Object.freeze(['ffmpeg', 'ffprobe']),
   optional_open_source_candidates: Object.freeze(['remotion', 'comfyui', 'whisper-compatible']),
   candidate_availability_is_runtime_fact: true,
@@ -173,7 +175,6 @@ export function shotCommandFor(index, context = {}) {
   return sequence[Math.abs(Number(index) || 0) % sequence.length];
 }
 
-
 export const SHOT_CONTINUITY_EVIDENCE_PLANES = Object.freeze([
   'CAPTURED_REALITY',
   'GENERATED_VISUALIZATION',
@@ -203,7 +204,7 @@ export function buildShotContinuityGate(shots = [], options = {}) {
 
   const contracts = shots.map((shot, index) => {
     const direction = shot?.shot_direction || shot || {};
-    const contract = {
+    return Object.freeze({
       SHOT_ID: clean(shot?.shot_id || `shot_${String(index + 1).padStart(2, '0')}`),
       CANON_REFERENCES: cleanList(shot?.must_preserve || direction.continuity_constraints),
       ENTRY_FRAME_ANCHOR: clean(direction.opening_frame),
@@ -215,13 +216,12 @@ export function buildShotContinuityGate(shots = [], options = {}) {
       ACCEPTANCE_CHECKS: Object.freeze([
         'actual first frame matches ENTRY_FRAME_ANCHOR',
         'actual last frame matches EXIT_FRAME_ANCHOR',
-        'no undeclared character or product identity drift',
+        'no undeclared character, prop, environment, or product identity drift',
         'adjacent exit and entry anchors remain compatible unless a discontinuity is declared',
         'factual product or UI claims use CAPTURED_REALITY evidence',
         'every failed criterion produces its own repair receipt'
       ])
-    };
-    return Object.freeze(contract);
+    });
   });
 
   const failures = [];
@@ -254,7 +254,7 @@ export function buildShotContinuityGate(shots = [], options = {}) {
     rendered_frame_receipts_complete: false,
     contracts: Object.freeze(contracts),
     failures: Object.freeze(failures),
-    stop_condition: 'Do not fold into canonical LEEVIZE until rendered first/last frames are captured and visually reviewed.'
+    stop_condition: 'Do not treat the production plan as final footage. Rendered first/last-frame evidence and film QA remain required.'
   });
 }
 
@@ -306,7 +306,7 @@ export function compileShotDirection(input = {}) {
   ].filter(Boolean).join('\n');
 
   return {
-    schema_version: '1.1.0',
+    schema_version: '1.2.0',
     shot_contract: 'shot-dna@v1',
     provider_neutral: true,
     command: parsed.raw,

@@ -216,8 +216,28 @@ export function persistDecision(db, decision) {
   return { ...decision, decision_id: decisionId };
 }
 
+function latestArtifactEvidence(db, workspaceId) {
+  const table = db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='story_artifacts'`).get();
+  if (!table) return { present: false, validated: false, real_route_proof: false, artifact_id: null };
+  const row = db.prepare(`
+    SELECT artifact_id, status, validation_json
+    FROM story_artifacts
+    WHERE workspace_id=?
+    ORDER BY created_at DESC, id DESC LIMIT 1
+  `).get(workspaceId);
+  if (!row) return { present: false, validated: false, real_route_proof: false, artifact_id: null };
+  const validation = safeJson(row.validation_json, {});
+  return {
+    present: true,
+    validated: row.status === 'validated' && validation.passed === true,
+    real_route_proof: validation.real_route_proof === true,
+    artifact_id: row.artifact_id
+  };
+}
+
 export function runReleaseAudit(db, workspaceId) {
   const decision = evaluateWorkspace(db, workspaceId);
+  const artifact = latestArtifactEvidence(db, workspaceId);
   const checks = [
     { name: 'creative_profile', passed: Boolean(decision.evidence.creative_profile) },
     { name: 'story_intent', passed: decision.evidence.creative_profile_complete },
@@ -226,7 +246,11 @@ export function runReleaseAudit(db, workspaceId) {
     { name: 'story_drift', passed: decision.evidence.max_drift < 0.8 },
     { name: 'runtime_latency', passed: decision.evidence.runtime.p99 <= 2000 },
     { name: 'rollback_rate', passed: decision.evidence.runtime.rollback_rate <= 0.05 },
-    { name: 'chapter_completeness', passed: decision.evidence.chapters.empty_count === 0 },
+    { name: 'chapter_presence', passed: decision.evidence.chapters.total > 0 },
+    { name: 'chapter_completeness', passed: decision.evidence.chapters.total > 0 && decision.evidence.chapters.empty_count === 0 },
+    { name: 'artifact_present', passed: artifact.present },
+    { name: 'artifact_validated', passed: artifact.validated },
+    { name: 'artifact_real_route_playwright', passed: artifact.real_route_proof },
     { name: 'confidence', passed: decision.confidence_score >= 75 }
   ];
   const blockers = checks.filter(check => !check.passed).map(check => check.name);
@@ -247,9 +271,10 @@ export function runReleaseAudit(db, workspaceId) {
       result,
       blockers,
       confidence_score: decision.confidence_score,
-      creative_profile_id: decision.strategy?.profile_id || null
+      creative_profile_id: decision.strategy?.profile_id || null,
+      artifact_id: artifact.artifact_id
     },
     rollback: result === 'BLOCKED' ? 1 : 0
   });
-  return { audit_id: auditId, workspace_id: workspaceId, result, checks, blockers, decision };
+  return { audit_id: auditId, workspace_id: workspaceId, result, checks, blockers, decision, artifact };
 }

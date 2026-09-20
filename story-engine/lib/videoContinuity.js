@@ -1,121 +1,102 @@
-// lib/videoContinuity.js
-// Continuity derivation and compatibility migration for Story Video jobs.
-
 import { createHash } from 'node:crypto';
 
-import { buildShotContinuityGate, compileShotDirection } from './shotGrammar.js';
-import { ensureVideoEngineSchema, getStoryVideoJob } from './videoEngine.js';
+export const VIDEO_CONTINUITY_COOKIE_CONTRACT = 'leevize/video-continuity-cookie@v1';
+export const VIDEO_PROOF_COOKIE_CONTRACT = 'leevize/video-proof-cookie@v1';
 
-function clean(value, fallback = '') {
-  return String(value ?? '').replace(/\s+/g, ' ').trim() || fallback;
-}
-
-function list(value) {
-  return Array.isArray(value) ? value.map(item => clean(item)).filter(Boolean) : [];
-}
-
-function fingerprintFor(shots) {
-  return createHash('sha256').update(JSON.stringify(shots.map(shot => ({
-    shot_id: shot.shot_id,
-    command: shot.shot_direction?.command || shot.shot_command || null,
-    opening_frame: shot.shot_direction?.opening_frame || null,
-    ending_frame: shot.shot_direction?.ending_frame || null,
-    subject_state: shot.subject_state || null,
-    environment_state: shot.environment_state || null,
-    must_preserve: list(shot.must_preserve || shot.shot_direction?.continuity_constraints)
-  })))).digest('hex');
-}
-
-function normalizeShotsForContinuity(shots = []) {
-  if (!Array.isArray(shots) || shots.length === 0) {
-    throw new Error('Video job has no shots available for continuity verification.');
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
   }
-
-  const normalized = [];
-  for (const [index, shot] of shots.entries()) {
-    const previousExit = normalized.at(-1)?.shot_direction?.ending_frame || '';
-    const currentDirection = shot?.shot_direction || {};
-    const command = clean(shot?.shot_command || currentDirection.command);
-    if (!command) throw new Error(`Shot ${shot?.shot_id || index + 1} has no shot command.`);
-
-    const direction = compileShotDirection({
-      command,
-      action: shot?.action || shot?.narration,
-      emotion: shot?.emotion,
-      duration_seconds: shot?.duration_seconds,
-      style_prompt: shot?.style_prompt,
-      must_preserve: shot?.must_preserve || currentDirection.continuity_constraints,
-      negative_constraints: shot?.negative_constraints || currentDirection.negative_constraints,
-      opening_frame: index === 0 ? currentDirection.opening_frame : previousExit,
-      ending_frame: currentDirection.ending_frame
-    });
-
-    normalized.push({
-      ...shot,
-      shot_direction: direction,
-      subject_state: clean(
-        shot?.subject_state,
-        `${direction.subject || 'story subject'} remains bound to the declared character and product canon for this beat.`
-      ),
-      environment_state: clean(
-        shot?.environment_state,
-        shot?.style_prompt || 'Preserve the established environment, geography, lighting logic, and visible product state.'
-      )
-    });
-  }
-  return normalized;
+  return value;
 }
 
-export function deriveShotContinuityGate(shots = [], options = {}) {
-  const normalized = normalizeShotsForContinuity(shots);
-  const gate = buildShotContinuityGate(normalized, {
-    evidence_plane: options.evidence_plane || 'GENERATED_VISUALIZATION'
+function sha256(value) {
+  return createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(stable(value))).digest('hex');
+}
+
+function clean(value) {
+  return String(value ?? '').trim();
+}
+
+export function continuityBasis(job) {
+  const blueprint = job?.blueprint || {};
+  return {
+    source_revision_id: clean(job?.source_revision_id || blueprint.source_revision_id),
+    workspace_id: clean(job?.workspace_id || blueprint.workspace_id),
+    target_mode: clean(blueprint.target_mode),
+    visual_style: clean(blueprint.visual_style),
+    aspect_ratio: clean(blueprint.aspect_ratio),
+    character_bible: blueprint.character_bible || [],
+    world_bible: blueprint.world_bible || {},
+    shots: (blueprint.shots || []).map(shot => ({
+      shot_id: clean(shot.shot_id),
+      duration_seconds: Number(shot.duration_seconds || 0),
+      shot_command: clean(shot.shot_command),
+      provider_prompt: clean(shot.provider_prompt),
+      must_preserve: Array.isArray(shot.must_preserve) ? shot.must_preserve : [],
+      negative_constraints: Array.isArray(shot.negative_constraints) ? shot.negative_constraints : [],
+      opening_frame: clean(shot.shot_direction?.opening_frame),
+      ending_frame: clean(shot.shot_direction?.ending_frame)
+    }))
+  };
+}
+
+export function createContinuityCookie(job) {
+  const basis = continuityBasis(job);
+  const full_hash = sha256(basis);
+  return Object.freeze({
+    contract: VIDEO_CONTINUITY_COOKIE_CONTRACT,
+    value: `lvz_cc_${full_hash.slice(0, 24)}`,
+    full_hash,
+    source_revision_id: basis.source_revision_id,
+    shot_count: basis.shots.length,
+    authority: 'none',
+    secret: false,
+    purpose: 'bidirectional continuity and staleness marker only'
+  });
+}
+
+export function verifyContinuityCookie(job, suppliedCookie) {
+  const current = createContinuityCookie(job);
+  const supplied = clean(typeof suppliedCookie === 'string' ? suppliedCookie : suppliedCookie?.value);
+  return Object.freeze({
+    contract: VIDEO_CONTINUITY_COOKIE_CONTRACT,
+    matches: Boolean(supplied) && supplied === current.value,
+    current: current.value,
+    supplied: supplied || null,
+    stale: Boolean(supplied) && supplied !== current.value,
+    authority_granted: false
+  });
+}
+
+export function createProofCookie(job, evidence = {}) {
+  const continuity = createContinuityCookie(job);
+  const evidenceHash = sha256({
+    continuity_cookie: continuity.value,
+    evidence_class: clean(evidence.evidence_class || evidence.class || 'unknown'),
+    output_sha256: clean(evidence.output_sha256 || evidence.content_hash),
+    renderer: clean(evidence.renderer),
+    workflow_sha256: clean(evidence.workflow_sha256),
+    media_probe: evidence.media_probe || null
   });
   return Object.freeze({
-    ...gate,
-    source_fingerprint: fingerprintFor(normalized)
+    contract: VIDEO_PROOF_COOKIE_CONTRACT,
+    value: `lvz_pc_${evidenceHash.slice(0, 24)}`,
+    continuity_cookie: continuity.value,
+    evidence_hash: evidenceHash,
+    authority: 'none',
+    secret: false,
+    purpose: 'proof continuity marker only'
   });
 }
 
-export function ensureStoryVideoContinuityGate(db, jobId) {
-  ensureVideoEngineSchema(db);
-  const job = getStoryVideoJob(db, jobId);
-  if (!job) throw new Error('Video job not found.');
-
-  const derived = deriveShotContinuityGate(job.blueprint?.shots || []);
-  const existing = job.blueprint?.shot_continuity_gate;
-  if (
-    existing?.ready_for_render === true
-    && existing?.source_fingerprint
-    && existing.source_fingerprint === derived.source_fingerprint
-  ) {
-    return { job, gate: existing, migrated: false };
-  }
-
-  if (!derived.ready_for_render) {
-    const error = new Error('Shot Continuity Contract blocked render planning.');
-    error.code = 'SHOT_CONTINUITY_CONTRACT_BLOCKED';
-    error.failures = derived.failures;
-    throw error;
-  }
-
-  const migratedAt = Date.now();
-  const blueprint = {
-    ...job.blueprint,
-    shot_continuity_gate: derived,
-    continuity_gate_migration: {
-      source_schema_version: clean(job.blueprint?.schema_version, 'legacy'),
-      reason: existing ? 'stale_or_unfingerprinted_gate' : 'legacy_missing_gate',
-      migrated_at: migratedAt
-    }
-  };
-
-  db.prepare('UPDATE story_video_jobs SET blueprint_json=?,updated_at=? WHERE job_id=?')
-    .run(JSON.stringify(blueprint), migratedAt, jobId);
-
-  return {
-    job: getStoryVideoJob(db, jobId),
-    gate: derived,
-    migrated: true
-  };
+export function classifyReceiptContinuity(job, receipt = {}) {
+  const continuity = verifyContinuityCookie(job, receipt.continuity_cookie);
+  return Object.freeze({
+    ...continuity,
+    receipt_status: continuity.matches ? 'CURRENT' : receipt.continuity_cookie ? 'STALE' : 'UNBOUND',
+    invalidates_old_green: continuity.stale,
+    authority_granted: false
+  });
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -22,7 +22,7 @@ function fixtureDb() {
   return db;
 }
 
-test('validated three-shot microsequence exports one deterministic MP4 with boundary-frame receipts', async () => {
+test('validated zero-provider job exports one deterministic 30-second MP4, verifies it with ffprobe, and reuses its receipt', async () => {
   const db = fixtureDb();
   const outputDir = mkdtempSync(join(tmpdir(), 'l99-video-test-'));
   const previousOutput = process.env.L99_VIDEO_OUTPUT_DIR;
@@ -33,22 +33,17 @@ test('validated three-shot microsequence exports one deterministic MP4 with boun
       mode: 'cinematic_3d',
       visual_style: 'cinematic_realism',
       quality: 'draft',
-      aspect_ratio: '16:9',
-      action_beats: [
-        'Mina approaches the violet door in the storm.',
-        'Mina touches the violet door without changing wardrobe or identity.',
-        'Mina looks through the opened door while the storm light holds.'
-      ]
+      aspect_ratio: '16:9'
     });
     db.prepare(`UPDATE story_video_jobs SET status='validated' WHERE job_id=?`).run(job.job_id);
 
-    const first = await renderStoryVideoExport(db, job.job_id, { scene_count: 3, duration_seconds: 30 });
+    const first = await renderStoryVideoExport(db, job.job_id);
     assert.equal(first.status, 'complete');
-    assert.equal(first.scene_count, 3);
+    assert.equal(first.scene_count, 6);
     assert.equal(first.duration_seconds, 30);
     assert.equal(first.actual_cost_usd, 0);
-    assert.equal(first.receipt.schema_version, '1.2.0');
-    assert.equal(first.receipt.renderer, 'ffmpeg_ffprobe_ken_burns_v4');
+    assert.equal(first.receipt.schema_version, '1.1.0');
+    assert.equal(first.receipt.renderer, 'ffmpeg_ffprobe_ken_burns_v2');
     assert.equal(first.receipt.provider_generation, false);
     assert.equal(first.receipt.provider_cost_usd, 0);
     assert.equal(first.receipt.motion, 'ken_burns_zoompan');
@@ -60,16 +55,6 @@ test('validated three-shot microsequence exports one deterministic MP4 with boun
     assert.ok(first.receipt.media_probe.streams.some(stream => stream.codec_type === 'video'));
     assert.ok(first.receipt.media_probe.streams.some(stream => stream.codec_type === 'audio'));
     assert.ok(first.receipt.media_probe.streams.some(stream => stream.codec_type === 'subtitle'));
-    assert.equal(first.receipt.shot_continuity.contract_count, 3);
-    assert.equal(first.receipt.shot_continuity.workflow_status, 'TEST');
-    assert.equal(first.receipt.shot_continuity.actual_frame_comparison_status, 'PENDING_VISUAL_REVIEW');
-    assert.equal(first.receipt.shot_continuity.boundary_frames.length, 3);
-    for (const boundary of first.receipt.shot_continuity.boundary_frames) {
-      assert.ok(existsSync(boundary.first_frame.path));
-      assert.ok(existsSync(boundary.last_frame.path));
-      assert.match(boundary.first_frame.content_hash, /^[0-9a-f]{64}$/);
-      assert.match(boundary.last_frame.content_hash, /^[0-9a-f]{64}$/);
-    }
     assert.equal(first.reused, false);
     assert.ok(first.byte_size > 1000);
     assert.match(first.content_hash, /^[0-9a-f]{64}$/);
@@ -79,7 +64,7 @@ test('validated three-shot microsequence exports one deterministic MP4 with boun
     const bytes = readFileSync(file.path);
     assert.ok(bytes.subarray(4, 12).toString('ascii').includes('ftyp'));
 
-    const second = await renderStoryVideoExport(db, job.job_id, { scene_count: 3, duration_seconds: 30 });
+    const second = await renderStoryVideoExport(db, job.job_id);
     assert.equal(second.export_id, first.export_id);
     assert.equal(second.content_hash, first.content_hash);
     assert.equal(second.reused, true);

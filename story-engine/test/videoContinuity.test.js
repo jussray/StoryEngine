@@ -1,127 +1,92 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
-import { createStoryVideoJob, getStoryVideoJob } from '../lib/videoEngine.js';
-import { ensureStoryVideoContinuityGate } from '../lib/videoContinuity.js';
-import { updateStoryVideoShotPlan } from '../lib/videoShotPlanEditor.js';
-import { renderStoryVideoExport } from '../lib/videoExport.js';
+import {
+  VIDEO_CONTINUITY_COOKIE_CONTRACT,
+  VIDEO_PROOF_COOKIE_CONTRACT,
+  classifyReceiptContinuity,
+  createContinuityCookie,
+  createProofCookie,
+  verifyContinuityCookie
+} from '../lib/videoContinuity.js';
 
-const schema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8');
-
-function fixtureDb() {
-  const db = new DatabaseSync(':memory:');
-  db.exec(schema);
-  db.prepare(`INSERT INTO stories (workspace_id,title,genre,pitch) VALUES (?,?,?,?)`)
-    .run('workspace_video_continuity', 'The Violet Door', 'fantasy', 'Mina follows a violet door through a storm.');
-  db.prepare(`INSERT INTO chapters (workspace_id,chapter_id,title,content,position) VALUES (?,?,?,?,?)`)
-    .run('workspace_video_continuity', 'chapter_1', 'Storm Door', 'Mina crosses the street. Mina reaches the violet door. Mina looks through the opening.', 0);
-  db.prepare(`INSERT INTO memory_characters (workspace_id,char_id,name,role,traits,data_json) VALUES (?,?,?,?,?,?)`)
-    .run('workspace_video_continuity', 'mina', 'Mina', 'protagonist', JSON.stringify(['brave']), JSON.stringify({ locked_visuals: ['yellow raincoat'] }));
-  return db;
+function job(overrides = {}) {
+  return {
+    job_id: 'video_job_test',
+    workspace_id: 'workspace-a',
+    source_revision_id: 'source-revision-a',
+    blueprint: {
+      target_mode: 'live_action',
+      visual_style: 'cinematic_realism',
+      aspect_ratio: '16:9',
+      character_bible: [{ character_id: 'lead', name: 'Lead', locked_visuals: ['dark raincoat'] }],
+      world_bible: { palette: 'cool rain + amber practicals' },
+      shots: [{
+        shot_id: 'shot_01',
+        duration_seconds: 10,
+        shot_command: '/dolly-in Lead',
+        provider_prompt: 'Lead walks through rain.',
+        must_preserve: ['same face', 'same coat'],
+        negative_constraints: ['identity drift'],
+        shot_direction: { opening_frame: 'under awning', ending_frame: 'at doorway' }
+      }],
+      ...overrides.blueprint
+    },
+    ...overrides
+  };
 }
 
-test('shot-plan reorder rebuilds continuity contracts in rendered order', () => {
-  const db = fixtureDb();
-  try {
-    const job = createStoryVideoJob(db, {
-      workspace_id: 'workspace_video_continuity',
-      mode: 'cinematic_3d',
-      visual_style: 'cinematic_realism',
-      action_beats: [
-        'Mina approaches the violet door.',
-        'Mina reaches for the handle.',
-        'Mina looks through the opening.'
-      ]
-    });
-    const reversed = [...job.blueprint.shots].reverse().map((shot, index) => ({
-      shot_id: shot.shot_id,
-      command: index === 0 ? '/establish' : shot.shot_command
-    }));
-
-    const edited = updateStoryVideoShotPlan(db, job.job_id, { shots: reversed });
-    const contracts = edited.blueprint.shot_continuity_gate.contracts;
-    assert.equal(edited.blueprint.shot_continuity_gate.ready_for_render, true);
-    assert.match(edited.blueprint.shot_continuity_gate.source_fingerprint, /^[0-9a-f]{64}$/);
-    assert.deepEqual(contracts.map(item => item.SHOT_ID), edited.blueprint.shots.map(shot => shot.shot_id));
-    for (let index = 1; index < contracts.length; index += 1) {
-      assert.equal(contracts[index].ENTRY_FRAME_ANCHOR, contracts[index - 1].EXIT_FRAME_ANCHOR);
-    }
-  } finally {
-    db.close();
-  }
+test('continuity cookie is deterministic, non-secret and non-authorizing', () => {
+  const first = createContinuityCookie(job());
+  const second = createContinuityCookie(job());
+  assert.equal(first.contract, VIDEO_CONTINUITY_COOKIE_CONTRACT);
+  assert.equal(first.value, second.value);
+  assert.match(first.value, /^lvz_cc_[0-9a-f]{24}$/);
+  assert.equal(first.secret, false);
+  assert.equal(first.authority, 'none');
+  assert.equal(verifyContinuityCookie(job(), first).matches, true);
+  assert.equal(verifyContinuityCookie(job(), first).authority_granted, false);
 });
 
-test('legacy validated blueprint deterministically acquires a continuity gate once', () => {
-  const db = fixtureDb();
-  try {
-    const created = createStoryVideoJob(db, {
-      workspace_id: 'workspace_video_continuity',
-      mode: 'cinematic_3d',
-      visual_style: 'cinematic_realism',
-      action_beats: ['Mina approaches the violet door.', 'Mina reaches for the handle.']
-    });
-    const legacyBlueprint = { ...created.blueprint, schema_version: '1.3.0' };
-    delete legacyBlueprint.shot_continuity_gate;
-    db.prepare(`UPDATE story_video_jobs SET status='validated',blueprint_json=? WHERE job_id=?`)
-      .run(JSON.stringify(legacyBlueprint), created.job_id);
-
-    const first = ensureStoryVideoContinuityGate(db, created.job_id);
-    assert.equal(first.migrated, true);
-    assert.equal(first.gate.ready_for_render, true);
-    assert.match(first.gate.source_fingerprint, /^[0-9a-f]{64}$/);
-    const persisted = getStoryVideoJob(db, created.job_id);
-    assert.equal(persisted.status, 'validated');
-    assert.equal(persisted.blueprint.continuity_gate_migration.reason, 'legacy_missing_gate');
-    assert.equal(persisted.blueprint.shot_continuity_gate.source_fingerprint, first.gate.source_fingerprint);
-
-    const second = ensureStoryVideoContinuityGate(db, created.job_id);
-    assert.equal(second.migrated, false);
-    assert.equal(second.gate.source_fingerprint, first.gate.source_fingerprint);
-  } finally {
-    db.close();
-  }
+test('editing canon or a shot invalidates the prior continuity cookie', () => {
+  const original = job();
+  const cookie = createContinuityCookie(original);
+  const edited = job({ blueprint: {
+    ...original.blueprint,
+    shots: [{ ...original.blueprint.shots[0], shot_command: '/reaction Lead' }]
+  }});
+  const result = verifyContinuityCookie(edited, cookie.value);
+  assert.equal(result.matches, false);
+  assert.equal(result.stale, true);
+  assert.equal(result.authority_granted, false);
 });
 
-test('direct renderer migrates a legacy validated blueprint before enforcing continuity', async () => {
-  const db = fixtureDb();
-  const outputDir = mkdtempSync(join(tmpdir(), 'l99-video-continuity-render-'));
-  const previousOutput = process.env.L99_VIDEO_OUTPUT_DIR;
-  process.env.L99_VIDEO_OUTPUT_DIR = outputDir;
-  try {
-    const created = createStoryVideoJob(db, {
-      workspace_id: 'workspace_video_continuity',
-      mode: 'cinematic_3d',
-      visual_style: 'cinematic_realism',
-      action_beats: ['Mina approaches the violet door.']
-    });
-    const legacyBlueprint = { ...created.blueprint, schema_version: '1.3.0' };
-    delete legacyBlueprint.shot_continuity_gate;
-    db.prepare(`UPDATE story_video_jobs SET status='validated',blueprint_json=? WHERE job_id=?`)
-      .run(JSON.stringify(legacyBlueprint), created.job_id);
+test('proof cookie binds output evidence to the current continuity cookie without granting authority', () => {
+  const current = job();
+  const continuity = createContinuityCookie(current);
+  const proof = createProofCookie(current, {
+    evidence_class: 'rendered_open_weight_video',
+    output_sha256: 'a'.repeat(64),
+    renderer: 'comfyui_open_weight_video_v1',
+    workflow_sha256: 'b'.repeat(64),
+    media_probe: { verified: true, duration_seconds: 10 }
+  });
+  assert.equal(proof.contract, VIDEO_PROOF_COOKIE_CONTRACT);
+  assert.equal(proof.continuity_cookie, continuity.value);
+  assert.match(proof.value, /^lvz_pc_[0-9a-f]{24}$/);
+  assert.equal(proof.authority, 'none');
 
-    const rendered = await renderStoryVideoExport(db, created.job_id, {
-      scene_count: 1,
-      duration_seconds: 5,
-      fps: 24,
-      width: 320,
-      height: 180
-    });
-    assert.equal(rendered.status, 'complete');
-    assert.equal(rendered.receipt.shot_continuity.contract_ready_before_render, true);
+  const state = classifyReceiptContinuity(current, { continuity_cookie: continuity.value });
+  assert.equal(state.receipt_status, 'CURRENT');
+  assert.equal(state.invalidates_old_green, false);
+});
 
-    const migrated = getStoryVideoJob(db, created.job_id);
-    assert.equal(migrated.status, 'validated');
-    assert.equal(migrated.blueprint.continuity_gate_migration.reason, 'legacy_missing_gate');
-    assert.equal(migrated.blueprint.shot_continuity_gate.ready_for_render, true);
-    assert.match(migrated.blueprint.shot_continuity_gate.source_fingerprint, /^[0-9a-f]{64}$/);
-  } finally {
-    if (previousOutput === undefined) delete process.env.L99_VIDEO_OUTPUT_DIR;
-    else process.env.L99_VIDEO_OUTPUT_DIR = previousOutput;
-    db.close();
-    rmSync(outputDir, { recursive: true, force: true });
-  }
+test('new evidence marks an old receipt stale instead of preserving false green state', () => {
+  const original = job();
+  const oldCookie = createContinuityCookie(original).value;
+  const revised = job({ source_revision_id: 'source-revision-b' });
+  const state = classifyReceiptContinuity(revised, { continuity_cookie: oldCookie });
+  assert.equal(state.receipt_status, 'STALE');
+  assert.equal(state.invalidates_old_green, true);
+  assert.equal(state.authority_granted, false);
 });

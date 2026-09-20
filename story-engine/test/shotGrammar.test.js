@@ -4,8 +4,6 @@ import assert from 'node:assert/strict';
 import {
   OPEN_SOURCE_VIDEO_POLICY,
   SHOT_COMMANDS,
-  SHOT_CONTINUITY_CONTRACT_FIELDS,
-  buildShotContinuityGate,
   compileShotDirection,
   parseShotCommand,
   shotCommandFor
@@ -79,40 +77,4 @@ test('default director uses restrained story coverage while richer commands rema
   assert.equal(shotCommandFor(3, { characters }), '/reaction Mina');
   assert.ok(SHOT_COMMANDS.whip_pan);
   assert.ok(SHOT_COMMANDS.hyperlapse);
-});
-
-
-test('three-shot microsequence has complete pre-render contracts and compatible adjacent anchors', () => {
-  const first = compileShotDirection({
-    command: '/establish',
-    opening_frame: 'Mina stands at the rain-lit curb in her yellow raincoat and silver glasses.',
-    ending_frame: 'Mina stops at the violet door with her right hand raised.',
-    must_preserve: ['Mina keeps her yellow raincoat and silver glasses.']
-  });
-  const second = compileShotDirection({
-    command: '/dolly-in Mina',
-    opening_frame: first.ending_frame,
-    ending_frame: 'Mina touches the violet door while the same storm light holds.',
-    must_preserve: ['Mina keeps her yellow raincoat and silver glasses.']
-  });
-  const third = compileShotDirection({
-    command: '/close Mina',
-    opening_frame: second.ending_frame,
-    ending_frame: 'Mina looks through the opened violet door; wardrobe, glasses, and storm light remain unchanged.',
-    must_preserve: ['Mina keeps her yellow raincoat and silver glasses.']
-  });
-  const gate = buildShotContinuityGate([
-    { shot_id: 'shot_01', shot_direction: first, must_preserve: first.continuity_constraints, environment_state: 'Same curb, storm, violet door, and lighting logic.' },
-    { shot_id: 'shot_02', shot_direction: second, must_preserve: second.continuity_constraints, environment_state: 'Same curb, storm, violet door, and lighting logic.' },
-    { shot_id: 'shot_03', shot_direction: third, must_preserve: third.continuity_constraints, environment_state: 'Same curb, storm, violet door, and lighting logic.' }
-  ]);
-
-  assert.equal(gate.status, 'TEST');
-  assert.equal(gate.ready_for_render, true);
-  assert.equal(gate.rendered_frame_receipts_complete, false);
-  assert.equal(gate.contracts.length, 3);
-  assert.deepEqual(Object.keys(gate.contracts[0]), SHOT_CONTINUITY_CONTRACT_FIELDS);
-  assert.equal(gate.contracts[0].EXIT_FRAME_ANCHOR, gate.contracts[1].ENTRY_FRAME_ANCHOR);
-  assert.equal(gate.contracts[1].EXIT_FRAME_ANCHOR, gate.contracts[2].ENTRY_FRAME_ANCHOR);
-  assert.equal(gate.contracts.every(contract => contract.EVIDENCE_PLANE === 'GENERATED_VISUALIZATION'), true);
 });

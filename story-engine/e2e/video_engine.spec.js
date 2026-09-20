@@ -80,6 +80,16 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   expect(options.shot_editor.reorderable).toBe(true);
   expect(options.shot_editor.immutable_after_export).toBe(true);
   expect(options.shot_editor.commands.some(item => item.template.startsWith('/rack-focus'))).toBe(true);
+  expect(options.render_router.primary_lane).toBe('self_hosted_open_weight');
+  expect(options.render_router.vendor_credit_zero_blocking).toBe(false);
+  expect(options.render_router.assembly_requires_human_film_qa).toBe(true);
+
+  const rendererResponse = await request.get('/api/video-engine/open-renderer/status', { headers });
+  expect(rendererResponse.status()).toBe(200);
+  const renderer = await rendererResponse.json();
+  expect(renderer.primary_lane).toBe('self_hosted_open_weight');
+  expect(renderer.vendor_credit_required).toBe(false);
+  expect(renderer.authority).toBe('none');
 
   const storyResponse = await request.post('/api/story', {
     headers,
@@ -102,11 +112,7 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
     }
   });
   expect(chapterResponse.status()).toBe(201);
-  await expect(chapterResponse.json()).resolves.toMatchObject({
-    ok: true,
-    queued: false,
-    dispatch: null
-  });
+  await expect(chapterResponse.json()).resolves.toMatchObject({ ok: true, queued: false, dispatch: null });
 
   const rawCinematicJob = await createJob(request, workspaceId, {
     mode: 'cinematic_3d',
@@ -206,8 +212,8 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   });
   expect(blockedLiveActionRender.status()).toBe(409);
   await expect(blockedLiveActionRender.json()).resolves.toMatchObject({
-    error: 'Live-action preview passed Playwright; final delivery requires a playable provider-rendered video.',
-    code: 'LIVE_ACTION_PROVIDER_REQUIRED'
+    error: 'Live-action preview passed Playwright. Final delivery requires real playable footage; the self-hosted open-weight renderer is the primary lane and paid renderers are optional fallback only.',
+    code: 'LIVE_ACTION_REAL_FOOTAGE_REQUIRED'
   });
 
   const renderResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(cinematicJob.job_id)}/render`, {
@@ -230,9 +236,7 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
 
   const immutableResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(cinematicJob.job_id)}/shot-plan`, {
     headers,
-    data: {
-      shots: cinematicJob.blueprint.shots.map(shot => ({ shot_id: shot.shot_id, command: shot.shot_command }))
-    }
+    data: { shots: cinematicJob.blueprint.shots.map(shot => ({ shot_id: shot.shot_id, command: shot.shot_command })) }
   });
   expect(immutableResponse.status()).toBe(409);
   await expect(immutableResponse.json()).resolves.toMatchObject({ error: 'Exported shot plans are immutable. Create a new video job to change direction.' });
@@ -260,14 +264,9 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   expect(Array.isArray(listedJobs)).toBe(true);
   expect(listedJobs.length).toBeGreaterThanOrEqual(3);
 
-  const forbiddenListResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, {
-    headers: scopedHeaders
-  });
+  const forbiddenListResponse = await request.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/video-jobs`, { headers: scopedHeaders });
   expect(forbiddenListResponse.status()).toBe(403);
-  await expect(forbiddenListResponse.json()).resolves.toMatchObject({
-    error: 'workspace_forbidden',
-    workspace_id: workspaceId
-  });
+  await expect(forbiddenListResponse.json()).resolves.toMatchObject({ error: 'workspace_forbidden', workspace_id: workspaceId });
 
   await establishBrowserSession(page);
   await page.goto('/control_room.html');
@@ -282,10 +281,13 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   await page.goto(`/video_studio.html?workspace_id=${encodeURIComponent(workspaceId)}`);
   await expect(page).toHaveTitle('L99 Story Video Studio');
   await expect(page.getByTestId('video-studio')).toBeVisible();
+  await expect(page.getByTestId('renderer-infrastructure')).toBeVisible();
+  await expect(page.locator('#vendorCreditTruth')).toHaveText('Not required');
+  await expect(page.locator('body')).not.toContainText('provider-rendered video required');
   await expect(page.locator('#workspaceId')).toHaveValue(workspaceId);
   await expect(page.locator('#visualStyle option')).toHaveCount(Object.keys(options.visual_styles).length);
 
-  await page.getByRole('button', { name: 'Generate Production Preview' }).click();
+  await page.getByRole('button', { name: 'Generate Production Plan' }).click();
   await expect(page.getByTestId('video-job-result')).toBeVisible();
   await expect(page.getByTestId('editable-shot-strip')).toBeVisible();
   await expect(page.getByTestId('shot-command-input')).toHaveCount(2);
@@ -296,4 +298,26 @@ test('free Story Video Engine validates editable shot grammar and exports an ide
   await expect(page.getByTestId('video-job-status')).toHaveText('ready_for_validation');
   await expect(page.getByTestId('shot-plan-revision')).toContainText('r1');
   await expect(page.getByTestId('shot-command-input').nth(1)).toHaveValue('/reaction Nia');
+});
+
+test('Story Video Studio product design exposes canon, replaceable compute and separate QA gates', async ({ page, request }) => {
+  await establishBrowserSession(page);
+  await page.goto('/video_studio.html');
+  await expect(page.getByTestId('renderer-infrastructure')).toBeVisible();
+  await expect(page.locator('#rendererLane')).toHaveText('Self-hosted open-weight');
+  await expect(page.locator('#vendorCreditTruth')).toHaveText('Not required');
+  await expect(page.getByText('Plan the shot. Render the motion. Review the evidence. Cut the film.')).toBeVisible();
+  await page.locator('#mode').selectOption('live_action');
+  await expect(page.getByTestId('live-action-fields')).toBeVisible();
+  await expect(page.getByTestId('canon-reference-image')).toBeVisible();
+
+  const statusResponse = await request.get('/api/video-engine/open-renderer/status', { headers });
+  expect(statusResponse.status()).toBe(200);
+  const status = await statusResponse.json();
+  expect(status.vendor_credit_required).toBe(false);
+  expect(status.authority).toBe('none');
+  if (!status.ready) {
+    await expect(page.locator('#rendererState')).toContainText(/Compute needed|Needs attention/);
+    await expect(page.getByTestId('renderer-blocker').first()).toBeVisible();
+  }
 });

@@ -4,6 +4,13 @@ import { json } from '../lib/miniRouter.js';
 import { getArtifact, listArtifacts, validateArtifactWithPlaywright } from '../lib/artifactValidation.js';
 import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
+function validationBaseUrl() {
+  const configured = String(process.env.ARTIFACT_PLAYWRIGHT_BASE_URL || '').trim();
+  if (configured) return configured;
+  const port = Number(process.env.PORT || 3000);
+  return `http://127.0.0.1:${Number.isFinite(port) && port > 0 ? port : 3000}`;
+}
+
 export default function artifactRoutes(router, db) {
   router.get('/api/artifacts/:artifact_id', (req, res) => {
     try {
@@ -33,7 +40,10 @@ export default function artifactRoutes(router, db) {
       const artifact = getArtifact(db, req.params.artifact_id);
       if (!artifact) return json(res, 404, { error: 'Artifact not found.' });
       if (!requireWorkspaceAccess(req, res, artifact.workspace_id)) return;
-      json(res, 200, await validateArtifactWithPlaywright(db, req.params.artifact_id));
+      json(res, 200, await validateArtifactWithPlaywright(db, req.params.artifact_id, {
+        baseUrl: validationBaseUrl(),
+        cookieHeader: req.headers?.cookie || ''
+      }));
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
@@ -42,6 +52,7 @@ export default function artifactRoutes(router, db) {
 
   router.get('/api/workspaces/:workspace_id/artifacts', (req, res) => {
     try {
+      if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
       json(res, 200, listArtifacts(db, req.params.workspace_id, Number(req.query.limit || 50)));
     } catch (error) {
       json(res, 500, { error: error.message });

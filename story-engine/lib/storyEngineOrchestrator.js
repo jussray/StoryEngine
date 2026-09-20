@@ -168,9 +168,9 @@ function setStage(db, runId, workspaceId, stage, status, summary, details = {}) 
   const agent = stageAgent(stage);
   db.prepare(`
     UPDATE story_engine_runs
-    SET current_stage=?, active_agent=?, status=?, updated_at=?
+    SET current_stage=?, active_agent=?, updated_at=?
     WHERE run_id=?
-  `).run(stage, agent, status, now, runId);
+  `).run(stage, agent, now, runId);
   db.prepare(`
     INSERT INTO story_engine_stage_events (
       run_id, workspace_id, stage, agent, status, summary, details_json, created_at
