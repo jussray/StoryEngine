@@ -16,6 +16,7 @@ import { basename, join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 
 import { getStoryVideoJob } from './videoEngine.js';
+import { ensureStoryVideoContinuityGate } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
 
 const EXPORT_SCHEMA_VERSION = '1.2.0';
@@ -318,10 +319,13 @@ export function getStoryVideoExportFile(db, exportId) {
 
 export async function renderStoryVideoExport(db, jobId, input = {}) {
   ensureVideoExportSchema(db);
-  const job = getStoryVideoJob(db, jobId);
+  let job = getStoryVideoJob(db, jobId);
   if (!job) throw new Error('Video job not found.');
   if (job.status !== 'validated') throw new Error('Video job must pass Playwright validation before MP4 export.');
-  if (job.blueprint?.shot_continuity_gate?.ready_for_render !== true) {
+
+  const continuity = ensureStoryVideoContinuityGate(db, jobId);
+  job = continuity.job;
+  if (continuity.gate?.ready_for_render !== true) {
     throw new Error('Shot Continuity Contract must be complete before render.');
   }
   if (Number(job.estimated_cost_usd || 0) !== 0 || Number(job.actual_cost_usd || 0) !== 0) {
