@@ -7,9 +7,9 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,7 +19,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { ensureVideoExportSchema } from './videoExport.js';
 import { log } from '../models/eventModel.js';
 
-const COMPOSITION_SCHEMA_VERSION = '1.0.0';
+const COMPOSITION_SCHEMA_VERSION = '1.0.1';
 const COMPOSITOR_VERSION = 'ffmpeg_concat_copy_v1';
 
 export const VIDEO_COMPOSITION_PROFILES = Object.freeze({
@@ -63,9 +63,7 @@ function assertMediaToolingAvailable() {
   const ffmpegProbe = spawnSync(ffmpegBinary(), ['-version'], { encoding: 'utf8' });
   const ffprobeProbe = spawnSync(ffprobeBinary(), ['-version'], { encoding: 'utf8' });
   if (ffmpegProbe.error || ffmpegProbe.status !== 0 || ffprobeProbe.error || ffprobeProbe.status !== 0) {
-    const error = new Error('ffmpeg and ffprobe are required for Story Video composition.');
-    error.code = 'FFMPEG_UNAVAILABLE';
-    throw error;
+    throw compositionError('FFMPEG_UNAVAILABLE', 'ffmpeg and ffprobe are required for Story Video composition.');
   }
 }
 
@@ -74,7 +72,10 @@ async function hashFile(filePath) {
     const digest = createHash('sha256');
     const stream = createReadStream(filePath);
     stream.on('data', chunk => digest.update(chunk));
-    stream.on('error', rejectHash);
+    stream.on('error', () => rejectHash(compositionError(
+      'COMPOSITION_FILE_READ_FAILED',
+      'Video composition media could not be read for integrity verification.'
+    )));
     stream.on('end', () => resolveHash(digest.digest('hex')));
   });
 }
@@ -105,31 +106,43 @@ function probeComposition(filePath, expectedDuration, expectedSignature, sourceC
     filePath
   ], { encoding: 'utf8' });
   if (result.error || result.status !== 0) {
-    throw new Error(`ffprobe composition verification failed: ${text(result.stderr, result.error?.message || 'unknown ffprobe error')}`);
+    throw compositionError('COMPOSITION_FFPROBE_FAILED', 'Video composition failed final media verification.', [
+      { reason: 'ffprobe_nonzero_exit', exit_code: Number.isInteger(result.status) ? result.status : null }
+    ]);
   }
 
   let probe;
   try { probe = JSON.parse(result.stdout || '{}'); }
-  catch { throw new Error('ffprobe composition verification failed: invalid JSON output.'); }
+  catch {
+    throw compositionError('COMPOSITION_FFPROBE_FAILED', 'Video composition verifier returned an invalid result.', [
+      { reason: 'ffprobe_invalid_json' }
+    ]);
+  }
 
   const streams = Array.isArray(probe.streams) ? probe.streams : [];
   const video = streams.find(stream => stream.codec_type === 'video');
   const audio = streams.find(stream => stream.codec_type === 'audio');
   const subtitle = streams.find(stream => stream.codec_type === 'subtitle');
-  if (!video) throw new Error('ffprobe composition verification failed: no video stream.');
-  if (expectedSignature.has_audio && !audio) throw new Error('ffprobe composition verification failed: source audio stream was lost.');
-  if (expectedSignature.has_subtitle && !subtitle) throw new Error('ffprobe composition verification failed: source caption stream was lost.');
+  if (!video) throw compositionError('COMPOSITION_MEDIA_INVALID', 'Video composition has no verified video stream.', [{ reason: 'missing_video_stream' }]);
+  if (expectedSignature.has_audio && !audio) throw compositionError('COMPOSITION_MEDIA_INVALID', 'Video composition lost its required audio stream.', [{ reason: 'missing_audio_stream' }]);
+  if (expectedSignature.has_subtitle && !subtitle) throw compositionError('COMPOSITION_MEDIA_INVALID', 'Video composition lost its required caption stream.', [{ reason: 'missing_caption_stream' }]);
   if (expectedSignature.width && Number(video.width) !== expectedSignature.width) {
-    throw new Error(`ffprobe composition verification failed: expected width ${expectedSignature.width}, received ${video.width}.`);
+    throw compositionError('COMPOSITION_MEDIA_INVALID', 'Video composition dimensions do not match the verified source profile.', [
+      { reason: 'width_mismatch', expected: expectedSignature.width, actual: Number(video.width || 0) }
+    ]);
   }
   if (expectedSignature.height && Number(video.height) !== expectedSignature.height) {
-    throw new Error(`ffprobe composition verification failed: expected height ${expectedSignature.height}, received ${video.height}.`);
+    throw compositionError('COMPOSITION_MEDIA_INVALID', 'Video composition dimensions do not match the verified source profile.', [
+      { reason: 'height_mismatch', expected: expectedSignature.height, actual: Number(video.height || 0) }
+    ]);
   }
 
   const duration = Number(probe.format?.duration || 0);
   const tolerance = Math.max(0.75, sourceCount * 0.08);
   if (!Number.isFinite(duration) || Math.abs(duration - expectedDuration) > tolerance) {
-    throw new Error(`ffprobe composition verification failed: expected approximately ${expectedDuration}s, received ${duration || 0}s.`);
+    throw compositionError('COMPOSITION_MEDIA_INVALID', 'Video composition duration does not match the verified timeline.', [
+      { reason: 'duration_mismatch', expected_seconds: expectedDuration, actual_seconds: duration || 0, tolerance_seconds: tolerance }
+    ]);
   }
 
   return {
@@ -219,7 +232,7 @@ async function resolveSources(db, workspaceId, exportIds) {
 
     const row = db.prepare('SELECT * FROM story_video_exports WHERE export_id=?').get(exportId);
     if (!row) {
-      throw compositionError('COMPOSITION_SOURCE_MISSING', `Video export not found: ${exportId}.`, [
+      throw compositionError('COMPOSITION_SOURCE_MISSING', 'A requested video export was not found.', [
         { export_id: exportId, reason: 'source_export_not_found' }
       ]);
     }
@@ -229,20 +242,20 @@ async function resolveSources(db, workspaceId, exportIds) {
       ]);
     }
     if (row.status !== 'complete' || !row.output_path || !existsSync(row.output_path)) {
-      throw compositionError('COMPOSITION_SOURCE_NOT_READY', `Video export is not ready for composition: ${exportId}.`, [
+      throw compositionError('COMPOSITION_SOURCE_NOT_READY', 'A requested video export is not ready for composition.', [
         { export_id: exportId, reason: 'source_export_not_complete' }
       ]);
     }
 
     const receipt = safeJson(row.receipt_json, {});
     if (receipt?.media_probe?.verified !== true) {
-      throw compositionError('COMPOSITION_SOURCE_UNVERIFIED', `Video export lacks verified media proof: ${exportId}.`, [
+      throw compositionError('COMPOSITION_SOURCE_UNVERIFIED', 'A requested video export lacks verified media proof.', [
         { export_id: exportId, reason: 'media_probe_not_verified' }
       ]);
     }
     const actualHash = await hashFile(row.output_path);
     if (!row.content_hash || actualHash !== row.content_hash) {
-      throw compositionError('COMPOSITION_SOURCE_HASH_MISMATCH', `Video export content hash no longer matches its receipt: ${exportId}.`, [
+      throw compositionError('COMPOSITION_SOURCE_HASH_MISMATCH', 'A requested video export no longer matches its integrity receipt.', [
         { export_id: exportId, reason: 'content_hash_mismatch' }
       ]);
     }
@@ -359,20 +372,24 @@ export async function composeStoryVideoExports(db, input = {}) {
     ];
     const rendered = await new Promise((resolveRender, rejectRender) => {
       const child = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
-      let stderr = '';
-      child.stderr.on('data', chunk => {
-        if (stderr.length < 4 * 1024 * 1024) stderr += chunk.toString();
-      });
-      child.on('error', rejectRender);
-      child.on('close', code => resolveRender({ code, stderr }));
+      child.stderr.on('data', () => {});
+      child.on('error', () => rejectRender(compositionError(
+        'COMPOSITION_FFMPEG_FAILED',
+        'Video composition failed during ffmpeg assembly.',
+        [{ reason: 'ffmpeg_spawn_error' }]
+      )));
+      child.on('close', code => resolveRender({ code }));
     });
     if (rendered.code !== 0 || !existsSync(tempOutput)) {
-      throw new Error(`ffmpeg composition failed: ${text(rendered.stderr, 'unknown ffmpeg error')}`);
+      throw compositionError('COMPOSITION_FFMPEG_FAILED', 'Video composition failed during ffmpeg assembly.', [
+        { reason: 'ffmpeg_nonzero_exit', exit_code: rendered.code }
+      ]);
     }
 
     const mediaProbe = probeComposition(tempOutput, expectedDuration, signature, sources.length);
     renameSync(tempOutput, finalPath);
-    const bytes = readFileSync(finalPath);
+    const contentHash = await hashFile(finalPath);
+    const byteSize = statSync(finalPath).size;
     const receipt = {
       schema_version: COMPOSITION_SCHEMA_VERSION,
       composition_id: compositionId,
@@ -395,8 +412,8 @@ export async function composeStoryVideoExports(db, input = {}) {
       captions_preserved: signature.has_subtitle,
       ordered_timeline: true,
       retry_policy: 'idempotent_by_ordered_verified_source_hashes_and_profile',
-      content_hash: hash(bytes),
-      byte_size: bytes.length,
+      content_hash: contentHash,
+      byte_size: byteSize,
       generated_at: Date.now()
     };
 
@@ -418,14 +435,20 @@ export async function composeStoryVideoExports(db, input = {}) {
     });
     return getStoryVideoComposition(db, compositionId);
   } catch (error) {
+    const safeCode = typeof error?.code === 'string' && (error.code.startsWith('COMPOSITION_') || error.code === 'FFMPEG_UNAVAILABLE')
+      ? error.code
+      : 'COMPOSITION_FAILED';
+    const safeMessage = safeCode === 'COMPOSITION_FAILED'
+      ? 'Video composition failed during media assembly.'
+      : text(error.message, 'video composition failed');
     const failure = {
       schema_version: COMPOSITION_SCHEMA_VERSION,
       composition_id: compositionId,
       compositor: COMPOSITOR_VERSION,
       profile: profileName,
       source_count: sources.length,
-      error: text(error.message, 'video composition failed'),
-      code: error.code || 'COMPOSITION_FAILED',
+      error: safeMessage,
+      code: safeCode,
       failures: Array.isArray(error.failures) ? error.failures : [],
       provider_cost_usd: 0,
       failed_at: Date.now()
@@ -445,6 +468,7 @@ export async function composeStoryVideoExports(db, input = {}) {
         provider_cost_usd: 0
       }
     });
+    if (safeCode !== error.code) throw compositionError(safeCode, safeMessage, failure.failures);
     throw error;
   } finally {
     rmSync(temp, { recursive: true, force: true });
