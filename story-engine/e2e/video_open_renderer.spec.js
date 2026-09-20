@@ -4,7 +4,7 @@ import { establishBrowserSession, ADMIN_BOOTSTRAP_KEY } from './session.js';
 const headers = { 'x-api-key': ADMIN_BOOTSTRAP_KEY, 'Content-Type': 'application/json' };
 
 test('Story Video Studio separates plan proof, render infrastructure, continuity cookies, and actual footage', async ({ page, request }) => {
-  await establishBrowserSession(page, { apiKey: ADMIN_BOOTSTRAP_KEY });
+  await establishBrowserSession(page, ADMIN_BOOTSTRAP_KEY);
 
   const storyResponse = await request.post('/api/story', {
     headers,
