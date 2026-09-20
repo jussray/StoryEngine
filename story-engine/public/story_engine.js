@@ -51,6 +51,29 @@ function ensureUniverseLink(workspaceId) {
   link.href = `/story_universe.html?workspace_id=${encodeURIComponent(workspaceId)}`;
 }
 
+function ensureArtifactLink(artifact) {
+  const artifactId = artifact?.artifact_id;
+  const runHead = document.querySelector('.run-head > div:last-child');
+  if (!runHead) return;
+  let link = document.getElementById('storyArtifactLink');
+  if (!artifactId) {
+    if (link) link.classList.add('hidden');
+    return;
+  }
+  if (!link) {
+    link = document.createElement('a');
+    link.id = 'storyArtifactLink';
+    link.className = 'btn';
+    link.dataset.testid = 'story-artifact-link';
+    link.textContent = 'Open output';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    runHead.append(' ', link);
+  }
+  link.href = `/api/artifacts/${encodeURIComponent(artifactId)}/html`;
+  link.classList.remove('hidden');
+}
+
 document.querySelectorAll('.type').forEach(button => {
   button.addEventListener('click', () => {
     document.querySelectorAll('.type').forEach(item => item.classList.remove('active'));
@@ -75,6 +98,7 @@ function shouldPoll(run) {
 function renderRun(run) {
   currentRunId = run.run_id;
   ensureUniverseLink(run.workspace_id);
+  ensureArtifactLink(run.artifact);
   $('runPanel').classList.remove('hidden');
   $('runTitle').textContent = run.intent?.title || 'L99 Pipeline Run';
   const role = run.assist_profile?.assist_mode;
@@ -121,10 +145,48 @@ function renderRun(run) {
   }
 }
 
+async function advanceRun(run) {
+  let current = run;
+  if (shouldPoll(current)) {
+    current = await api(`/api/story-engine/runs/${encodeURIComponent(current.run_id)}/resume`, {
+      method: 'POST',
+      body: '{}'
+    });
+  }
+
+  const artifact = current.artifact;
+  const routeProofNeeded = current.status === 'needs_review'
+    && artifact?.artifact_id
+    && artifact?.validation?.requires_real_route === true;
+  if (routeProofNeeded) {
+    const validated = await api(`/api/artifacts/${encodeURIComponent(artifact.artifact_id)}/validate`, {
+      method: 'POST',
+      body: '{}'
+    });
+    if (validated.validation?.passed === true && validated.validation?.real_route_proof === true) {
+      current = await api(`/api/story-engine/runs/${encodeURIComponent(current.run_id)}/resume`, {
+        method: 'POST',
+        body: '{}'
+      });
+    } else {
+      current = {
+        ...current,
+        artifact: {
+          ...artifact,
+          status: validated.status,
+          validation: validated.validation
+        }
+      };
+    }
+  }
+  return current;
+}
+
 async function refreshRun() {
   if (!currentRunId) return null;
   try {
-    const run = await api(`/api/story-engine/runs/${encodeURIComponent(currentRunId)}`);
+    const loaded = await api(`/api/story-engine/runs/${encodeURIComponent(currentRunId)}`);
+    const run = await advanceRun(loaded);
     renderRun(run);
     return run;
   } catch (error) {

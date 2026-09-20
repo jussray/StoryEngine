@@ -3,6 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import * as Chapter from '../models/chapterModel.js';
 import { runAutonomousRuntime } from './autonomousRuntime.js';
+import { materializeAutonomousBook } from './autonomousBookProducer.js';
 import { log } from '../models/eventModel.js';
 
 export function ensureRuntimeDispatchSchema(db) {
@@ -85,7 +86,7 @@ export function enqueueRuntime(db, workspaceId, triggerType = 'event_dispatch', 
   return db.prepare('SELECT * FROM runtime_dispatch_queue WHERE dispatch_id = ?').get(dispatchId);
 }
 
-export function drainRuntimeQueue(db, limit = 5) {
+export async function drainRuntimeQueue(db, limit = 5) {
   ensureSchema(db);
   const queued = db.prepare(`
     SELECT * FROM runtime_dispatch_queue
@@ -96,13 +97,22 @@ export function drainRuntimeQueue(db, limit = 5) {
 
   const results = [];
   for (const item of queued) {
-    db.prepare(`
+    const claimed = db.prepare(`
       UPDATE runtime_dispatch_queue
       SET status = 'running', attempts = attempts + 1, started_at = ?
       WHERE dispatch_id = ? AND status = 'queued'
     `).run(Date.now(), item.dispatch_id);
+    if (Number(claimed.changes || 0) !== 1) continue;
 
     try {
+      let manuscript = null;
+      if (item.trigger_type === 'story_engine_pipeline' || item.trigger_type === 'story_engine_operator_approved') {
+        manuscript = await materializeAutonomousBook(db, {
+          workspaceId: item.workspace_id,
+          dispatchId: item.dispatch_id
+        });
+      }
+
       const chapter = item.chapter_id ? Chapter.get(db, Number(item.chapter_id)) : null;
       const run = runAutonomousRuntime(db, {
         workspaceId: item.workspace_id,
@@ -116,14 +126,22 @@ export function drainRuntimeQueue(db, limit = 5) {
         SET status = ?, run_id = ?, completed_at = ?, error = NULL
         WHERE dispatch_id = ?
       `).run(status, run.run_id, Date.now(), item.dispatch_id);
-      results.push({ dispatch_id: item.dispatch_id, status, run_id: run.run_id, run });
+      results.push({ dispatch_id: item.dispatch_id, status, run_id: run.run_id, manuscript, run });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       db.prepare(`
         UPDATE runtime_dispatch_queue
         SET status = 'failed', error = ?, completed_at = ?
         WHERE dispatch_id = ?
-      `).run(error.message, Date.now(), item.dispatch_id);
-      results.push({ dispatch_id: item.dispatch_id, status: 'failed', error: error.message });
+      `).run(message, Date.now(), item.dispatch_id);
+      log(db, {
+        workspace_id: item.workspace_id,
+        mode: 'autonomous_runtime',
+        event_type: 'runtime.dispatch.failed',
+        payload: { dispatch_id: item.dispatch_id, trigger_type: item.trigger_type, error: message },
+        rollback: 1
+      });
+      results.push({ dispatch_id: item.dispatch_id, status: 'failed', error: message });
     }
   }
   return results;
@@ -169,18 +187,27 @@ export function startRuntimeScheduler(db, {
   drainIntervalMs = 15 * 1000
 } = {}) {
   ensureSchema(db);
+  let draining = false;
   const scan = () => {
     const queued = scanChangedWorkspaces(db);
     if (queued.length) console.log(`[Runtime] Queued ${queued.length} changed workspace(s)`);
   };
-  const drain = () => {
-    const results = drainRuntimeQueue(db);
-    if (results.length) console.log(`[Runtime] Processed ${results.length} dispatch item(s)`);
+  const drain = async () => {
+    if (draining) return;
+    draining = true;
+    try {
+      const results = await drainRuntimeQueue(db);
+      if (results.length) console.log(`[Runtime] Processed ${results.length} dispatch item(s)`);
+    } catch (error) {
+      console.error('[Runtime] Queue drain failed:', error instanceof Error ? error.message : String(error));
+    } finally {
+      draining = false;
+    }
   };
   scan();
-  drain();
+  void drain();
   const scanTimer = setInterval(scan, scanIntervalMs);
-  const drainTimer = setInterval(drain, drainIntervalMs);
+  const drainTimer = setInterval(() => { void drain(); }, drainIntervalMs);
   return () => {
     clearInterval(scanTimer);
     clearInterval(drainTimer);
