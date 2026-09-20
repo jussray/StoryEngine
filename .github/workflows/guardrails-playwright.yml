@@ -34,7 +34,7 @@ env:
 jobs:
   verify-guardrails:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: story-engine
@@ -78,6 +78,8 @@ jobs:
         run: npx playwright test e2e/product-build-control.spec.js
       - name: Verify real creator persistence path
         run: npx playwright test e2e/creator_persistence.spec.js
+      - name: Verify autonomous book end to end
+        run: npx playwright test --config=playwright.book.config.js
       - name: Verify business metrics evidence path
         run: npx playwright test e2e/business_metrics.spec.js
       - name: Verify local domain authority
