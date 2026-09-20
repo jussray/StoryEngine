@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { ADMIN_BOOTSTRAP_KEY } from './session.js';
+import { establishBrowserSession, ADMIN_BOOTSTRAP_KEY } from './session.js';
 
 const headers = { 'x-api-key': ADMIN_BOOTSTRAP_KEY, 'Content-Type': 'application/json' };
 
 test('Video Creation OS is a standalone nine-layer creator tool and compiles into StoryEngine Shot DNA', async ({ page, request }) => {
+  await establishBrowserSession(page);
   await page.goto('/video_creation_os.html');
   await expect(page).toHaveTitle('Video Creation OS | StoryEngine');
   await expect(page.getByTestId('video-creation-os')).toHaveAttribute('data-contract', 'l99/video-creation-os@v1');
