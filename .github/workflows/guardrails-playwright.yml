@@ -59,6 +59,9 @@ jobs:
       - name: Verify project-scoped Supabase MCP boundary
         working-directory: .
         run: python scripts/verify_mcp_config.py
+      - name: Run exact-head founder truth gate
+        working-directory: .
+        run: python runtime/founder_truth_gate.py
       - run: npm ci
       - name: Ensure deterministic MP4 renderer is available
         run: |
@@ -98,6 +101,7 @@ jobs:
         with:
           name: l99-test-evidence
           path: |
+            artifacts/founder-truth/
             story-engine/node-test-output.log
             story-engine/playwright-report/
             story-engine/test-results/
