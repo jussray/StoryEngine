@@ -46,7 +46,7 @@ test('eleven verified clips compose through the real API into a long-form MP4', 
   });
   expect(jobResponse.status()).toBe(201);
   const job = await jobResponse.json();
-  expect(job.blueprint.shot_continuity_gate.ready_for_render).toBe(true);
+  expect(job.blueprint.shots.length).toBeGreaterThan(0);
 
   const validationResponse = await request.post(`/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/validate`, {
     headers,
@@ -65,6 +65,14 @@ test('eleven verified clips compose through the real API into a long-form MP4', 
   const clip = await renderResponse.json();
   expect(clip.status).toBe('complete');
   expect(clip.duration_seconds).toBe(6);
+
+  // The render route is the authoritative continuity migration boundary. Prove that
+  // the real stored job, not only an in-memory receipt, is normalized before composition.
+  const migratedJobResponse = await request.get(`/api/video-engine/jobs/${encodeURIComponent(job.job_id)}`, { headers });
+  expect(migratedJobResponse.status()).toBe(200);
+  const migratedJob = await migratedJobResponse.json();
+  expect(migratedJob.blueprint.shot_continuity_gate.ready_for_render).toBe(true);
+  expect(migratedJob.blueprint.shot_continuity_gate.source_fingerprint).toMatch(/^[0-9a-f]{64}$/);
 
   const exportIds = Array.from({ length: 11 }, () => clip.export_id);
   const compositionResponse = await request.post('/api/video-engine/compositions', {
