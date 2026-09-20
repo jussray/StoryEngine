@@ -7,6 +7,7 @@ on:
       - fix/leevize-self-hosted-renderer
       - fix/leevize-renderer-product-design-v2
     paths:
+      - 'story-engine/.dockerignore'
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/videoShotPlanEditor.js'
@@ -36,6 +37,7 @@ on:
       - '.github/workflows/story-video-engine-playwright.yml'
   pull_request:
     paths:
+      - 'story-engine/.dockerignore'
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/videoShotPlanEditor.js'
