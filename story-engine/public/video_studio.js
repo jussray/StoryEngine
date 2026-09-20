@@ -4,65 +4,32 @@ let options = null;
 let currentJob = null;
 let draftShots = [];
 let rendererStatus = null;
-let renderEvidence = null;
+let openEvidence = { renders: [], failures: [] };
+let referenceImageDataUrl = null;
 
 async function api(path, init={}){
-  const response = await fetch(path,{headers:{'Content-Type':'application/json'},...init});
+  const response = await fetch(path,{headers:{'Content-Type':'application/json',...(init.headers||{})},...init});
   const data = await response.json().catch(()=>({}));
-  if(!response.ok && response.status !== 422){
-    const error = new Error(data.error || `Request failed: ${response.status}`);
-    error.code=data.code || null;
+  if(!response.ok){
+    const error=new Error(data.error || `Request failed: ${response.status}`);
     error.status=response.status;
-    error.failure_receipt=data.failure_receipt || null;
+    error.data=data;
     throw error;
   }
   return data;
 }
 
 function isLiveAction(){ return $('mode').value === 'live_action'; }
+function jobIsValidated(){ return ['validated','preview_validated'].includes(currentJob?.status); }
 
 function actionBeatValues(){
-  return $('actionBeats').value
-    .split(/\r?\n/)
-    .map(value=>value.trim())
-    .filter(Boolean);
-}
-
-function shortCookie(value){
-  const text=String(value || '');
-  return text.length > 24 ? `${text.slice(0,18)}…${text.slice(-6)}` : text;
-}
-
-function renderRendererStatusCard(){
-  let card=$('openRendererStatusCard');
-  if(!card){
-    card=document.createElement('section');
-    card.id='openRendererStatusCard';
-    card.className='card';
-    card.dataset.testid='open-renderer-status-card';
-    $('jobForm').before(card);
-  }
-  const ready=rendererStatus?.ready === true;
-  const configured=rendererStatus?.configured === true;
-  const blocker=rendererStatus?.blocker || null;
-  const state=ready ? 'READY' : configured ? 'BLOCKED' : 'NOT CONFIGURED';
-  const cls=ready ? 'ok' : 'warn';
-  card.innerHTML=`<div class="eyebrow">Actual video renderer</div><div class="plan-tools"><span class="status ${cls}" data-testid="open-renderer-state">${esc(state)}</span><button id="refreshRendererStatus" class="btn" type="button">Refresh GPU</button></div><p class="sub"><strong>Primary lane:</strong> self-hosted/open-weight ComfyUI. Vendor credits are not required for this lane.</p><div class="tags"><span class="tag">compute ${rendererStatus?.compute_reachable ? 'reachable' : 'not proven'}</span><span class="tag">workflow ${rendererStatus?.workflow_configured ? 'configured' : 'missing'}</span><span class="tag">license ${rendererStatus?.license_verified ? 'verified' : 'not verified'}</span></div>${blocker ? `<p class="sub" data-testid="open-renderer-blocker">Blocker: ${esc(blocker)}</p>` : ''}<p class="plan-help">This status is runtime evidence only. It does not grant publish, merge, or provider authority.</p>`;
-  $('refreshRendererStatus').addEventListener('click',refreshRendererStatus);
-}
-
-async function refreshRendererStatus(){
-  try{ rendererStatus=await api('/api/video-engine/open-renderer/status'); }
-  catch{ rendererStatus={ready:false,configured:false,blocker:'OPEN_RENDER_STATUS_UNKNOWN',vendor_credit_required:false,authority:'none'}; }
-  renderRendererStatusCard();
-  if(currentJob) renderActualControls();
-  return rendererStatus;
+  return $('actionBeats').value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
 }
 
 function renderLookNotes(){
   const mode = options?.modes?.[$('mode').value];
   const style = options?.visual_styles?.[$('visualStyle').value];
-  $('modeNote').textContent = mode ? `${mode.label}: ${mode.description} Blueprint renderer status: ${mode.status}.` : '';
+  $('modeNote').textContent = mode ? `${mode.label}: ${mode.description} Renderer status: ${mode.status}.` : '';
   $('styleNote').textContent = style ? `${style.label}: ${style.description} Best with: ${style.recommended_modes.map(value=>options.modes[value]?.label || value).join(', ')}.` : '';
   $('customStyleField').classList.toggle('hidden', $('visualStyle').value !== 'custom');
   $('liveActionFields').classList.toggle('hidden', !isLiveAction());
@@ -72,143 +39,199 @@ function renderLookNotes(){
   }
 }
 
+function renderRendererStatus(){
+  const state=$('rendererState');
+  if(!rendererStatus){ state.className='status warn'; state.textContent='Unknown'; return; }
+  state.className=`status ${rendererStatus.ready?'ok':rendererStatus.configured?'warn':'bad'}`;
+  state.textContent=rendererStatus.ready?'Ready':rendererStatus.configured?'Needs attention':'Compute needed';
+  $('rendererLane').textContent=rendererStatus.primary_lane==='self_hosted_open_weight'?'Self-hosted open-weight':'Unknown';
+  $('vendorCreditTruth').textContent=rendererStatus.vendor_credit_required===false?'Not required':'Unknown';
+  $('rendererModel').textContent=rendererStatus.model?.id || 'Not verified';
+  $('rendererCompute').textContent=rendererStatus.compute_reachable?'GPU reachable':rendererStatus.configured?'Unreachable':'Not configured';
+  const blockers=Array.isArray(rendererStatus.blockers)?rendererStatus.blockers:[];
+  $('rendererBlockers').innerHTML=blockers.map(item=>`<div class="blocker" data-testid="renderer-blocker"><strong>${esc(item.id||item.code)}</strong> · ${esc(item.reason||item.code)}</div>`).join('');
+  if(!blockers.length) $('rendererBlockers').innerHTML='<div class="status ok">Workflow + model + media tooling verified</div>';
+}
+
+async function loadRendererStatus(){
+  try{rendererStatus=await api('/api/video-engine/open-renderer/status');}
+  catch(error){rendererStatus={ready:false,configured:false,compute_reachable:false,vendor_credit_required:false,primary_lane:'self_hosted_open_weight',blockers:[{id:'GPU-UNKNOWN',reason:error.message}]};}
+  renderRendererStatus();
+  if(currentJob) renderJob(currentJob,{keepEvidence:true});
+}
+
+function evidenceForShot(shotId){
+  const renders=Array.isArray(openEvidence?.renders)?openEvidence.renders:[];
+  return renders.find(item=>item.shot_id===shotId && item.continuity?.receipt_status!=='STALE') || null;
+}
+
+function masterEvidence(){
+  const renders=Array.isArray(openEvidence?.renders)?openEvidence.renders:[];
+  return renders.find(item=>item.shot_id==='__master__' && item.continuity?.receipt_status!=='STALE') || null;
+}
+
+function qaStatusClass(value){ return value==='approved'?'ok':value==='rejected'?'bad':'warn'; }
+
+function shotRenderMarkup(shot,index){
+  if(!currentJob?.blueprint?.production_contract?.playable_video_required) return '';
+  const render=evidenceForShot(shot.shot_id);
+  if(!render){
+    const disabled=!jobIsValidated() || !rendererStatus?.ready || !referenceImageDataUrl;
+    return `<div class="render-evidence"><div class="render-row"><div><strong>Actual footage</strong><br><small>No current render receipt for this continuity cookie.</small></div><button class="btn primary" data-render-shot="${index}" type="button" ${disabled?'disabled':''}>Render actual shot</button></div></div>`;
+  }
+  if(['submitted','rendering'].includes(render.status)){
+    return `<div class="render-evidence"><div class="render-row"><div><strong>Actual footage</strong><br><small>${esc(render.status)} · render ${esc(render.render_id.slice(-8))}</small></div><span class="status info">Rendering</span></div></div>`;
+  }
+  if(render.status==='failed'){
+    return `<div class="render-evidence"><div class="render-row"><div><strong>Actual footage</strong><br><small>This attempt failed without changing canon.</small></div><button class="btn" data-render-shot="${index}" type="button" ${!rendererStatus?.ready||!referenceImageDataUrl?'disabled':''}>Retry shot</button></div></div>`;
+  }
+  return `<div class="render-evidence" data-testid="shot-render-evidence"><video class="video-proof" controls preload="metadata" src="${esc(render.media_url)}"></video><div class="tags"><span class="status ok">Technical pass</span><span class="status ${qaStatusClass(render.continuity_status)}">Continuity ${esc(render.continuity_status)}</span><span class="status ${qaStatusClass(render.editorial_status)}">Editorial ${esc(render.editorial_status)}</span></div><div class="qa-grid"><div class="qa-box"><strong>Continuity review</strong><div class="actions"><button class="btn good" data-review-render="${esc(render.render_id)}" data-review-kind="continuity" data-review-value="approved" type="button">Approve</button><button class="btn bad" data-review-render="${esc(render.render_id)}" data-review-kind="continuity" data-review-value="rejected" type="button">Reject</button></div></div><div class="qa-box"><strong>Editorial review</strong><div class="actions"><button class="btn good" data-review-render="${esc(render.render_id)}" data-review-kind="editorial" data-review-value="approved" type="button">Approve</button><button class="btn bad" data-review-render="${esc(render.render_id)}" data-review-kind="editorial" data-review-value="rejected" type="button">Reject</button></div></div></div><div class="actions"><button class="btn" data-render-shot="${index}" type="button" ${!rendererStatus?.ready||!referenceImageDataUrl?'disabled':''}>Render another take</button></div></div>`;
+}
+
 function renderDraftShots(){
   const strip = $('shotStrip');
   if(!strip) return;
-  strip.innerHTML = draftShots.map((shot,index)=>`<article class="shot" data-testid="video-studio-shot" data-shot-id="${esc(shot.shot_id)}"><div class="tags"><span class="tag">${esc(shot.shot_id)}</span><span class="tag">${esc(shot.shot_type)}</span><span class="tag">${esc(shot.camera_move)}</span><span class="tag">${shot.duration_seconds}s</span>${shot.delivery_role ? `<span class="tag">${esc(shot.delivery_role)}</span>` : ''}</div><h3>${esc(shot.source_chapter_title)}</h3><p>${esc(shot.narration)}</p><div class="field shot-command"><label for="shot-command-${index}">Shot command</label><input id="shot-command-${index}" data-testid="shot-command-input" data-index="${index}" list="shotCommandTemplates" value="${esc(shot.shot_command || '')}" aria-label="Shot ${index + 1} command"></div><div class="tags"><span class="tag">${esc(shot.visual_style)}</span><span class="tag">${esc(shot.emotion)}</span><span class="tag">${esc(shot.intensity)}</span>${shot.visible_action_required ? '<span class="tag">visible action required</span>' : ''}<span class="tag">$0.00 preview</span></div><div class="shot-controls"><button class="btn" data-testid="shot-move-earlier" data-index="${index}" data-move="-1" type="button" ${index===0?'disabled':''}>← Earlier</button><button class="btn" data-testid="shot-move-later" data-index="${index}" data-move="1" type="button" ${index===draftShots.length-1?'disabled':''}>Later →</button></div></article>`).join('');
+  strip.innerHTML = draftShots.map((shot,index)=>`<article class="shot" data-testid="video-studio-shot" data-shot-id="${esc(shot.shot_id)}"><div class="tags"><span class="tag">${esc(shot.shot_id)}</span><span class="tag">${esc(shot.shot_type)}</span><span class="tag">${esc(shot.camera_move)}</span><span class="tag">${shot.duration_seconds}s</span>${shot.delivery_role ? `<span class="tag">${esc(shot.delivery_role)}</span>` : ''}</div><h3>${esc(shot.source_chapter_title)}</h3><p>${esc(shot.narration)}</p><div class="field shot-command"><label for="shot-command-${index}">Shot command</label><input id="shot-command-${index}" data-testid="shot-command-input" data-index="${index}" list="shotCommandTemplates" value="${esc(shot.shot_command || '')}" aria-label="Shot ${index + 1} command"></div><div class="tags"><span class="tag">${esc(shot.visual_style)}</span><span class="tag">${esc(shot.emotion)}</span><span class="tag">${esc(shot.intensity)}</span>${shot.visible_action_required ? '<span class="tag">visible action required</span>' : ''}<span class="tag">canon-bound</span></div><div class="shot-controls"><button class="btn" data-testid="shot-move-earlier" data-index="${index}" data-move="-1" type="button" ${index===0?'disabled':''}>← Earlier</button><button class="btn" data-testid="shot-move-later" data-index="${index}" data-move="1" type="button" ${index===draftShots.length-1?'disabled':''}>Later →</button></div>${shotRenderMarkup(shot,index)}</article>`).join('');
 
   strip.querySelectorAll('[data-testid="shot-command-input"]').forEach(input=>input.addEventListener('input',event=>{
-    const index=Number(event.currentTarget.dataset.index);
-    draftShots[index].shot_command=event.currentTarget.value;
+    const index=Number(event.currentTarget.dataset.index); draftShots[index].shot_command=event.currentTarget.value;
   }));
   strip.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',event=>{
-    const from=Number(event.currentTarget.dataset.index);
-    const to=from+Number(event.currentTarget.dataset.move);
+    const from=Number(event.currentTarget.dataset.index),to=from+Number(event.currentTarget.dataset.move);
     if(to<0 || to>=draftShots.length) return;
-    [draftShots[from],draftShots[to]]=[draftShots[to],draftShots[from]];
-    renderDraftShots();
+    [draftShots[from],draftShots[to]]=[draftShots[to],draftShots[from]]; renderDraftShots();
   }));
+  strip.querySelectorAll('[data-render-shot]').forEach(button=>button.addEventListener('click',()=>submitShotRender(Number(button.dataset.renderShot))));
+  strip.querySelectorAll('[data-review-render]').forEach(button=>button.addEventListener('click',()=>reviewRender(button.dataset.reviewRender,button.dataset.reviewKind,button.dataset.reviewValue)));
 }
 
-function currentRenderCount(){
-  const rows=renderEvidence?.renders || [];
-  return new Set(rows.filter(row=>row.status==='complete' && row.continuity?.receipt_status==='CURRENT').map(row=>row.shot_id)).size;
+function allShotsApproved(){
+  return draftShots.length>0 && draftShots.every(shot=>{
+    const item=evidenceForShot(shot.shot_id);
+    return item?.status==='complete' && item.technical_status==='passed' && item.continuity_status==='approved' && item.editorial_status==='approved';
+  });
 }
 
-function renderActualControls(){
-  const host=$('actualRenderControls');
-  if(!host || !currentJob) return;
-  const contract=currentJob.blueprint?.production_contract || {};
-  if(!contract.playable_video_required){ host.innerHTML=''; return; }
-  const planValidated=['preview_validated','validated'].includes(currentJob.status);
-  const rendererReady=rendererStatus?.ready === true;
-  const rendered=currentRenderCount();
-  const total=Number(currentJob.blueprint?.shot_count || 0);
-  const allRendered=total>0 && rendered>=total;
-  const blocker=!planValidated ? 'Run the Playwright plan gate first.' : !rendererReady ? `GPU lane blocked: ${rendererStatus?.blocker || 'runtime not ready'}.` : null;
-  host.innerHTML=`<div class="delivery-note" data-testid="actual-render-truth"><strong>Actual footage:</strong> ${rendered}/${total} current shots rendered. Self-hosted/open-weight is primary. Paid generation is fallback only.</div><div class="plan-tools"><button id="openRenderActual" data-testid="open-render-actual" class="btn primary" type="button" ${planValidated&&rendererReady?'':'disabled'}>Render Actual Video</button><button id="assembleOpenMaster" data-testid="assemble-open-master" class="btn" type="button" ${allRendered?'':'disabled'}>Assemble Master</button><button id="refreshRenderEvidence" class="btn" type="button">Refresh Evidence</button></div>${blocker?`<p class="sub" data-testid="actual-render-blocker">${esc(blocker)}</p>`:''}`;
-  if($('openRenderActual')) $('openRenderActual').addEventListener('click',renderCurrentOpen);
-  if($('assembleOpenMaster')) $('assembleOpenMaster').addEventListener('click',assembleCurrentOpen);
-  if($('refreshRenderEvidence')) $('refreshRenderEvidence').addEventListener('click',refreshRenderEvidence);
+function masterMarkup(){
+  const master=masterEvidence();
+  if(!master) return '';
+  return `<section class="card master" data-testid="picture-lock"><div class="eyebrow">Picture lock</div><h3>Approved shots assembled</h3><video class="video-proof" controls preload="metadata" src="${esc(master.media_url)}"></video><div class="master-note"><strong>Not release-ready yet.</strong> This is verified picture lock. Final sound design, final-audio review and caption timing remain separate release gates.</div><div class="tags"><span class="status ok">Media verified</span><span class="status warn">Audio pending</span><span class="status warn">Captions after final audio</span></div></section>`;
 }
 
-async function refreshRenderEvidence(){
-  if(!currentJob) return null;
-  try{
-    renderEvidence=await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/open-renders`);
-    const marker=$('continuityMarker');
-    if(marker){
-      const cookie=renderEvidence?.continuity_cookie?.value || '';
-      const stale=(renderEvidence?.renders || []).filter(row=>row.continuity?.receipt_status==='STALE').length;
-      marker.innerHTML=`<strong>Continuity cookie:</strong> <code data-testid="continuity-cookie">${esc(shortCookie(cookie))}</code> · current rendered shots ${currentRenderCount()}/${Number(currentJob.blueprint?.shot_count||0)} · stale receipts ${stale}. <span class="sub">Marker only, never authority.</span>`;
-    }
-  }catch{
-    renderEvidence=null;
-    const marker=$('continuityMarker');
-    if(marker) marker.textContent='Continuity evidence unavailable. No authority inferred.';
-  }
-  renderActualControls();
-  return renderEvidence;
+function productionMarkup(contract){
+  if(!contract.playable_video_required) return '';
+  const approved=allShotsApproved();
+  const failureCount=Array.isArray(openEvidence?.failures)?openEvidence.failures.length:0;
+  return `<section class="card production-card" data-testid="real-footage-production"><div class="production-head"><div><div class="eyebrow">Actual video production</div><h2>Render → inspect → approve → assemble</h2><p class="sub">Each failed shot keeps its own receipt. Existing approved shots stay intact.</p></div><span class="status ${rendererStatus?.ready?'ok':'warn'}">${rendererStatus?.ready?'Renderer ready':'Infrastructure gated'}</span></div><div class="plan-tools"><button id="refreshEvidence" class="btn" type="button">Refresh render evidence</button><button id="assembleMaster" class="btn primary" type="button" ${approved?'':'disabled'}>Assemble approved picture lock</button><span class="tag">${failureCount} failure receipt${failureCount===1?'':'s'}</span></div></section>${masterMarkup()}`;
 }
 
-async function renderCurrentOpen(){
-  if(!currentJob) return;
-  const button=$('openRenderActual');
-  if(button){button.disabled=true;button.textContent='Rendering on GPU…';}
-  $('formStatus').textContent=''; $('formStatus').className='sub';
-  try{
-    const result=await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/open-render`,{method:'POST',body:JSON.stringify({continue_on_failure:false})});
-    await refreshRenderEvidence();
-    $('formStatus').textContent=result.complete
-      ? 'Actual shot set rendered. Continuity receipts are current; assemble the master next.'
-      : `Rendering stopped on ${result.results?.find(item=>item.status==='failed')?.failure?.failure_class || 'a recorded failure'}. Earlier successful shots remain preserved.`;
-  }catch(error){
-    $('formStatus').textContent=`${error.code || 'OPEN_RENDER_FAILED'}: ${error.message}`;
-    $('formStatus').className='error';
-  }finally{ renderActualControls(); }
-}
-
-async function assembleCurrentOpen(){
-  if(!currentJob) return;
-  const button=$('assembleOpenMaster');
-  if(button){button.disabled=true;button.textContent='Assembling…';}
-  $('formStatus').textContent=''; $('formStatus').className='sub';
-  try{
-    const receipt=await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/open-assemble`,{method:'POST',body:'{}'});
-    $('formStatus').textContent=`Master verified: ${Number(receipt.media_probe?.duration_seconds||0).toFixed(1)}s · proof ${shortCookie(receipt.proof_cookie)}. This proof cookie records evidence; it does not authorize publishing.`;
-  }catch(error){
-    $('formStatus').textContent=`${error.code || 'OPEN_RENDER_ASSEMBLY_FAILED'}: ${error.message}`;
-    $('formStatus').className='error';
-  }finally{ renderActualControls(); }
-}
-
-function renderJob(job){
+function renderJob(job,{keepEvidence=false}={}){
   currentJob = job;
   const blueprint = job.blueprint || {};
   const validation = job.validation || {};
   const contract = blueprint.production_contract || {};
   draftShots = (blueprint.shots || []).map(shot=>({...shot}));
+  if(!keepEvidence) openEvidence={renders:[],failures:[]};
   const cls = ['validated','preview_validated'].includes(job.status) ? 'ok' : job.status === 'failed' ? 'bad' : 'warn';
   const deliveryNote = contract.playable_video_required
-    ? `<div class="delivery-note" data-testid="final-delivery-note"><strong>Preview only.</strong> Playwright proves the shot plan, not the movie. Final delivery requires verified playable footage. The primary render lane is self-hosted/open-weight GPU; paid vendors are optional fallback. Concept ≠ deliverable.</div>`
+    ? `<div class="delivery-note" data-testid="final-delivery-note"><strong>Plan ≠ finished movie.</strong> Playwright verifies the production plan. Final delivery requires real playable footage. Self-hosted/open-weight rendering is the primary lane; paid renderers are optional shot-level fallback, never authority.</div>`
     : '';
   $('result').className='';
-  $('result').innerHTML=`<section class="card" data-testid="video-job-result"><div class="eyebrow">${esc(blueprint.target_mode_label || blueprint.target_mode)} · ${esc(blueprint.visual_style_label || blueprint.visual_style)} · ${esc(blueprint.preview_renderer)}</div><h2>${esc(blueprint.title)}</h2><span class="status ${cls}" data-testid="video-job-status">${esc(job.status)}</span><p class="sub">${blueprint.shot_count || 0} shots · ${blueprint.duration_seconds || 0}s · ${esc(blueprint.aspect_ratio)} · style fit ${esc(blueprint.style_fit)} · source revision ${esc(String(job.source_revision_id||'').slice(0,12))}</p>${deliveryNote}<div id="continuityMarker" class="mode-note" data-testid="continuity-marker">Loading continuity marker…</div><div class="plan-tools"><a class="btn primary" href="/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/html" target="_blank" rel="noreferrer">Open Production Preview</a><button id="saveShotPlan" data-testid="save-shot-plan" class="btn" type="button">Save Shot Plan</button><button id="validateJob" class="btn" type="button">Run Playwright Gate</button><span class="plan-revision" data-testid="shot-plan-revision">shot plan r${Number(blueprint.shot_plan_revision || 0)}</span></div><div id="actualRenderControls"></div><p class="plan-help">Edit a command or move a card. Saving recompiles provider-neutral direction, changes the continuity cookie, and invalidates old render proof. Live-action preview validation never grants final-delivery or publish authority.</p>${validation.validated_at ? `<p class="sub">Playwright preview proof: ${validation.passed ? 'passed' : 'failed'} · final delivery: ${validation.satisfies_final_delivery ? 'satisfied' : 'not yet satisfied'} · ${new Date(validation.validated_at).toLocaleString()}</p>` : ''}</section><div id="shotStrip" class="shots" data-testid="editable-shot-strip"></div>`;
+  $('result').innerHTML=`<section class="card" data-testid="video-job-result"><div class="eyebrow">${esc(blueprint.target_mode_label || blueprint.target_mode)} · ${esc(blueprint.visual_style_label || blueprint.visual_style)} · ${esc(blueprint.preview_renderer)}</div><h2>${esc(blueprint.title)}</h2><span class="status ${cls}" data-testid="video-job-status">${esc(job.status)}</span><p class="sub">${blueprint.shot_count || 0} shots · ${blueprint.duration_seconds || 0}s · ${esc(blueprint.aspect_ratio)} · style fit ${esc(blueprint.style_fit)} · source revision ${esc(String(job.source_revision_id||'').slice(0,12))}</p>${deliveryNote}<div class="plan-tools"><a class="btn primary" href="/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/html" target="_blank" rel="noreferrer">Open Production Plan</a><button id="saveShotPlan" data-testid="save-shot-plan" class="btn" type="button">Save Shot Plan</button><button id="validateJob" class="btn" type="button">Run Playwright Gate</button><span class="plan-revision" data-testid="shot-plan-revision">shot plan r${Number(blueprint.shot_plan_revision || 0)}</span></div><p class="plan-help">Editing the plan invalidates old validation and changes the continuity cookie. Old footage remains historical evidence but cannot silently satisfy the new cut.</p>${validation.validated_at ? `<p class="sub">Playwright plan proof: ${validation.passed ? 'passed' : 'failed'} · final delivery: ${validation.satisfies_final_delivery ? 'satisfied' : 'requires real footage'} · ${new Date(validation.validated_at).toLocaleString()}</p>` : ''}</section>${productionMarkup(contract)}<div id="shotStrip" class="shots" data-testid="editable-shot-strip"></div>`;
   $('validateJob').addEventListener('click',validateCurrent);
   $('saveShotPlan').addEventListener('click',saveCurrentShotPlan);
+  if($('refreshEvidence')) $('refreshEvidence').addEventListener('click',refreshEvidence);
+  if($('assembleMaster')) $('assembleMaster').addEventListener('click',assembleMaster);
   renderDraftShots();
-  renderActualControls();
-  refreshRenderEvidence();
 }
 
 async function saveCurrentShotPlan(){
   if(!currentJob) return;
-  const button=$('saveShotPlan');
-  button.disabled=true;
-  button.textContent='Saving…';
-  $('formStatus').textContent='';
-  $('formStatus').className='sub';
+  const button=$('saveShotPlan'); button.disabled=true; button.textContent='Saving…';
+  $('formStatus').textContent=''; $('formStatus').className='sub';
   try{
-    const updated=await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/shot-plan`,{
-      method:'POST',
-      body:JSON.stringify({shots:draftShots.map(shot=>({shot_id:shot.shot_id,command:String(shot.shot_command||'').trim()}))})
-    });
-    renderEvidence=null;
-    renderJob(updated);
-    $('formStatus').textContent='Shot plan saved. The continuity cookie changed; old render proof is now stale and Playwright plan validation is required again.';
-  }catch(error){
-    $('formStatus').textContent=error.message;
-    $('formStatus').className='error';
-    button.disabled=false;
-    button.textContent='Save Shot Plan';
-  }
+    const updated=await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/shot-plan`,{method:'POST',body:JSON.stringify({shots:draftShots.map(shot=>({shot_id:shot.shot_id,command:String(shot.shot_command||'').trim()}))})});
+    openEvidence={renders:[],failures:[]}; renderJob(updated);
+    $('formStatus').textContent='Shot plan saved. Old proof is stale; run the Playwright plan gate again.';
+  }catch(error){$('formStatus').textContent=error.message;$('formStatus').className='error';button.disabled=false;button.textContent='Save Shot Plan';}
 }
 
 async function validateCurrent(){
   if(!currentJob) return;
   const button=$('validateJob'); button.disabled=true; button.textContent='Validating…';
-  try{renderJob(await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/validate`,{method:'POST',body:'{}'}));}
-  catch(error){$('formStatus').textContent=error.message;$('formStatus').className='error';button.disabled=false;button.textContent='Run Playwright Gate';}
+  try{
+    const validated=await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/validate`,{method:'POST',body:'{}'});
+    renderJob(validated,{keepEvidence:true});
+    await refreshEvidence();
+  }catch(error){$('formStatus').textContent=error.message;$('formStatus').className='error';button.disabled=false;button.textContent='Run Playwright Gate';}
+}
+
+async function refreshEvidence(){
+  if(!currentJob) return;
+  try{
+    openEvidence=await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/open-renders`);
+    renderJob(currentJob,{keepEvidence:true});
+  }catch(error){$('formStatus').textContent=error.message;$('formStatus').className='error';}
+}
+
+async function submitShotRender(index){
+  const shot=draftShots[index];
+  if(!shot || !currentJob) return;
+  if(!jobIsValidated()){ $('formStatus').textContent='Run the Playwright production-plan gate before real rendering.'; $('formStatus').className='error'; return; }
+  if(!rendererStatus?.ready){ $('formStatus').textContent='The self-hosted renderer is not ready. Check the infrastructure receipt above.'; $('formStatus').className='error'; return; }
+  if(!referenceImageDataUrl){ $('formStatus').textContent='Choose the approved canonical reference image before rendering.'; $('formStatus').className='error'; return; }
+  $('formStatus').textContent=`Submitting ${shot.shot_id} to the open-weight renderer…`; $('formStatus').className='sub';
+  try{
+    const submitted=await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/open-render`,{method:'POST',body:JSON.stringify({shot_id:shot.shot_id,reference_image_data_url:referenceImageDataUrl})});
+    await refreshEvidence();
+    pollRender(submitted.render_id);
+  }catch(error){
+    const code=error.data?.code?` (${error.data.code})`:'';
+    $('formStatus').textContent=`${error.message}${code}`; $('formStatus').className='error'; await refreshEvidence();
+  }
+}
+
+async function pollRender(renderId){
+  for(let attempt=0;attempt<360;attempt+=1){
+    await new Promise(resolve=>setTimeout(resolve,2500));
+    try{
+      const render=await api(`/api/video-engine/open-renders/${encodeURIComponent(renderId)}`);
+      if(['complete','failed'].includes(render.status)){
+        $('formStatus').textContent=render.status==='complete'?'Actual footage rendered. Review continuity and editorial quality before assembly.':'Render failed. Its failure receipt is preserved; other shots are untouched.';
+        $('formStatus').className=render.status==='complete'?'sub':'error';
+        await refreshEvidence(); return;
+      }
+      if(attempt%4===0) await refreshEvidence();
+    }catch(error){$('formStatus').textContent=error.message;$('formStatus').className='error';return;}
+  }
+  $('formStatus').textContent='Render is still running. Use Refresh render evidence to check it later.';
+}
+
+async function reviewRender(renderId,kind,value){
+  const current=(openEvidence.renders||[]).find(item=>item.render_id===renderId);
+  if(!current) return;
+  const body={continuity_status:kind==='continuity'?value:current.continuity_status,editorial_status:kind==='editorial'?value:current.editorial_status,notes:value==='rejected'?`${kind} rejected in Story Video Studio.`:''};
+  try{await api(`/api/video-engine/open-renders/${encodeURIComponent(renderId)}/review`,{method:'POST',body:JSON.stringify(body)});await refreshEvidence();}
+  catch(error){$('formStatus').textContent=error.message;$('formStatus').className='error';}
+}
+
+async function assembleMaster(){
+  if(!currentJob || !allShotsApproved()) return;
+  const button=$('assembleMaster'); button.disabled=true; button.textContent='Assembling…';
+  try{
+    await api(`/api/video-engine/jobs/${encodeURIComponent(currentJob.job_id)}/open-assemble`,{method:'POST',body:'{}'});
+    $('formStatus').textContent='Picture lock assembled from approved actual footage. Final audio and captions remain separate release gates.'; $('formStatus').className='sub';
+    await refreshEvidence();
+  }catch(error){$('formStatus').textContent=error.message;$('formStatus').className='error';button.disabled=false;button.textContent='Assemble approved picture lock';}
+}
+
+function readReferenceFile(file){
+  return new Promise((resolve,reject)=>{
+    if(!file) return reject(new Error('No file selected.'));
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)) return reject(new Error('Use a PNG, JPEG, or WebP reference.'));
+    if(file.size>12*1024*1024) return reject(new Error('Reference image must be 12 MB or smaller.'));
+    const reader=new FileReader(); reader.onload=()=>resolve(String(reader.result||'')); reader.onerror=()=>reject(new Error('Reference image could not be read.')); reader.readAsDataURL(file);
+  });
 }
 
 async function loadOptions(){
@@ -220,30 +243,31 @@ async function loadOptions(){
   $('styleStrip').innerHTML = Object.values(options.visual_styles).filter(item=>item.label !== 'Custom Art Direction').map(item=>`<span class="style-chip">${esc(item.label)}</span>`).join('');
   $('shotCommandTemplates').innerHTML=(options.shot_editor?.commands || []).map(item=>`<option value="${esc(item.template)}"></option>`).join('');
   renderLookNotes();
-  await refreshRendererStatus();
 }
 
 $('mode').addEventListener('change',renderLookNotes);
 $('visualStyle').addEventListener('change',renderLookNotes);
+$('refreshRenderer').addEventListener('click',loadRendererStatus);
+$('referenceImage').addEventListener('change',async event=>{
+  try{
+    referenceImageDataUrl=await readReferenceFile(event.currentTarget.files?.[0]);
+    $('referenceStatus').textContent=`Reference loaded in browser memory · ${Math.round((event.currentTarget.files?.[0]?.size||0)/1024)} KB`;
+    $('referenceStatus').className='sub';
+    if(currentJob) renderJob(currentJob,{keepEvidence:true});
+  }catch(error){referenceImageDataUrl=null;$('referenceStatus').textContent=error.message;$('referenceStatus').className='error';}
+});
+
 $('jobForm').addEventListener('submit',async event=>{
-  event.preventDefault(); const button=$('generate'); button.disabled=true; button.textContent='Planning and rendering preview…'; $('formStatus').textContent=''; $('formStatus').className='sub';
+  event.preventDefault(); const button=$('generate'); button.disabled=true; button.textContent='Building production plan…'; $('formStatus').textContent=''; $('formStatus').className='sub';
   try{
     const body={workspace_id:$('workspaceId').value.trim(),mode:$('mode').value,visual_style:$('visualStyle').value,custom_style_prompt:$('customStylePrompt').value.trim(),quality:$('quality').value,aspect_ratio:$('aspectRatio').value};
-    if(isLiveAction()){
-      body.primary_subject=$('primarySubject').value.trim();
-      body.product_or_world=$('productOrWorld').value.trim();
-      body.viewer_takeaway=$('viewerTakeaway').value.trim();
-      body.action_beats=actionBeatValues();
-    }
+    if(isLiveAction()){body.primary_subject=$('primarySubject').value.trim();body.product_or_world=$('productOrWorld').value.trim();body.viewer_takeaway=$('viewerTakeaway').value.trim();body.action_beats=actionBeatValues();}
     const job=await api('/api/video-engine/jobs',{method:'POST',body:JSON.stringify(body)});
-    renderEvidence=null;
     renderJob(job);
-    $('formStatus').textContent=job.blueprint?.production_contract?.playable_video_required
-      ? 'Production preview created. Edit and validate the plan, then render the actual footage on the self-hosted GPU lane.'
-      : 'Free deterministic artifact created. Edit the shot strip or validate it as-is.';
+    $('formStatus').textContent=job.blueprint?.production_contract?.playable_video_required?'Production plan created. Validate it, then render real footage on the self-hosted lane.':'Deterministic preview plan created. Edit or validate it as-is.';
   }catch(error){$('formStatus').textContent=error.message;$('formStatus').className='error';}
-  finally{button.disabled=false;button.textContent='Generate Production Preview';}
+  finally{button.disabled=false;button.textContent='Generate Production Plan';}
 });
 
 const params=new URLSearchParams(location.search); if(params.get('workspace_id')) $('workspaceId').value=params.get('workspace_id');
-loadOptions().catch(error=>{$('formStatus').textContent=error.message;$('formStatus').className='error';});
+Promise.all([loadOptions(),loadRendererStatus()]).catch(error=>{$('formStatus').textContent=error.message;$('formStatus').className='error';});
