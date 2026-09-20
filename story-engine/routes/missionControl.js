@@ -17,6 +17,10 @@ function administratorOnly(handler) {
   return (req, res) => requireRole('administrator')(req, res, () => handler(req, res));
 }
 
+function creatorOrAbove(handler) {
+  return (req, res) => requireRole('creator')(req, res, () => handler(req, res));
+}
+
 export default function missionControlRoutes(router, db) {
   router.get('/api/mission-control/snapshot', administratorOnly((req, res) => {
     json(res, 200, getMissionControlSnapshot(db));
@@ -27,14 +31,14 @@ export default function missionControlRoutes(router, db) {
     json(res, 200, listDispatchQueue(db, limit));
   }));
 
-  router.post('/api/runtime/dispatch/:workspace_id', (req, res) => {
+  router.post('/api/runtime/dispatch/:workspace_id', creatorOrAbove((req, res) => {
     if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     const item = enqueueRuntime(db, req.params.workspace_id, req.body?.trigger_type || 'manual_dispatch');
     if (!item) return json(res, 404, { error: 'Workspace not found' });
     json(res, item.deduplicated ? 200 : 201, item);
-  });
+  }));
 
-  router.post('/api/runtime/dispatch/:dispatch_id/process', async (req, res) => {
+  router.post('/api/runtime/dispatch/:dispatch_id/process', creatorOrAbove(async (req, res) => {
     const item = getRuntimeDispatch(db, req.params.dispatch_id);
     if (!item) return json(res, 404, { error: 'Runtime dispatch not found' });
     if (!requireWorkspaceAccess(req, res, item.workspace_id)) return;
@@ -45,7 +49,7 @@ export default function missionControlRoutes(router, db) {
     } catch (error) {
       json(res, 500, { error: error instanceof Error ? error.message : String(error) });
     }
-  });
+  }));
 
   router.post('/api/runtime/drain', administratorOnly(async (req, res) => {
     const limit = Math.min(Number(req.body?.limit) || 5, 25);
