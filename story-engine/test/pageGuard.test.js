@@ -35,6 +35,7 @@ test('creator pages include the core story flow and shared browser clients', () 
   assert.ok(CREATOR_PAGES.has('/studio.html'));
   assert.ok(CREATOR_PAGES.has('/ip_studio.html'));
   assert.ok(CREATOR_PAGES.has('/video_studio.html'));
+  assert.ok(CREATOR_PAGES.has('/video_creation_os.html'));
   assert.ok(CREATOR_PAGES.has('/l99_auth.js'));
   assert.ok(CREATOR_PAGES.has('/video_control_room.js'));
 });
@@ -74,11 +75,13 @@ test('public bootstrap pages remain reachable without auth deadlock', () => {
 test('creator session can access creator pages but not operator pages', () => {
   const session = cookieFor('creator');
   try {
-    const creatorReq = { method: 'GET', headers: { cookie: session.cookie } };
-    const creatorRes = mockRes();
-    let creatorCalled = false;
-    assert.equal(enforcePageAccess('/story_engine.html', creatorReq, creatorRes, () => { creatorCalled = true; }), true);
-    assert.equal(creatorCalled, true);
+    for (const pathname of ['/story_engine.html', '/video_creation_os.html', '/video_creation_os.js']) {
+      const creatorReq = { method: 'GET', headers: { cookie: session.cookie } };
+      const creatorRes = mockRes();
+      let creatorCalled = false;
+      assert.equal(enforcePageAccess(pathname, creatorReq, creatorRes, () => { creatorCalled = true; }), true, pathname);
+      assert.equal(creatorCalled, true, pathname);
+    }
 
     const operatorReq = { method: 'GET', headers: { cookie: session.cookie } };
     const operatorRes = mockRes();
@@ -94,7 +97,7 @@ test('creator session can access creator pages but not operator pages', () => {
 test('administrator session can access creator and operator pages', () => {
   const session = cookieFor('administrator');
   try {
-    for (const pathname of ['/story_engine.html', '/control_room.html', '/control_room.js', '/mission_control.html']) {
+    for (const pathname of ['/story_engine.html', '/video_creation_os.html', '/control_room.html', '/control_room.js', '/mission_control.html']) {
       const req = { method: 'GET', headers: { cookie: session.cookie } };
       const res = mockRes();
       let called = false;
