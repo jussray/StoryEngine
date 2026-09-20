@@ -1,14 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 
+import { createStoryVideoJob, getStoryVideoJob } from '../lib/videoEngine.js';
 import {
   VIDEO_CONTINUITY_COOKIE_CONTRACT,
   VIDEO_PROOF_COOKIE_CONTRACT,
   classifyReceiptContinuity,
   createContinuityCookie,
   createProofCookie,
+  ensureStoryVideoContinuityGate,
   verifyContinuityCookie
 } from '../lib/videoContinuity.js';
+
+const schema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8');
 
 function job(overrides = {}) {
   return {
@@ -34,6 +40,18 @@ function job(overrides = {}) {
     },
     ...overrides
   };
+}
+
+function fixtureDb() {
+  const db = new DatabaseSync(':memory:');
+  db.exec(schema);
+  db.prepare(`INSERT INTO stories (workspace_id,title,genre,pitch) VALUES (?,?,?,?)`)
+    .run('workspace-continuity', 'Violet Door', 'fantasy', 'Mina crosses a storm toward a glowing door.');
+  db.prepare(`INSERT INTO chapters (workspace_id,chapter_id,title,content,position) VALUES (?,?,?,?,?)`)
+    .run('workspace-continuity', 'chapter-1', 'Storm', 'Mina crosses the street. Mina reaches for the glowing door.', 0);
+  db.prepare(`INSERT INTO memory_characters (workspace_id,char_id,name,role,traits,data_json) VALUES (?,?,?,?,?,?)`)
+    .run('workspace-continuity', 'mina', 'Mina', 'protagonist', JSON.stringify(['brave']), JSON.stringify({ locked_visuals: ['yellow raincoat'] }));
+  return db;
 }
 
 test('continuity cookie is deterministic, non-secret and non-authorizing', () => {
@@ -89,4 +107,48 @@ test('new evidence marks an old receipt stale instead of preserving false green 
   assert.equal(state.receipt_status, 'STALE');
   assert.equal(state.invalidates_old_green, true);
   assert.equal(state.authority_granted, false);
+});
+
+test('structural continuity migration rewrites authoritative prompts, invalidates old proof, and is idempotent', () => {
+  const db = fixtureDb();
+  try {
+    const created = createStoryVideoJob(db, {
+      workspace_id: 'workspace-continuity',
+      mode: 'cinematic_3d',
+      visual_style: 'cinematic_realism',
+      action_beats: [
+        'Mina crosses the rain-soaked street.',
+        'Mina reaches for the glowing door.'
+      ]
+    });
+    const before = getStoryVideoJob(db, created.job_id);
+    const beforeCookie = createContinuityCookie(before).value;
+    assert.notEqual(
+      before.blueprint.shots[1].shot_direction.opening_frame,
+      before.blueprint.shots[0].shot_direction.ending_frame
+    );
+
+    const migrated = ensureStoryVideoContinuityGate(db, created.job_id);
+    assert.equal(migrated.migrated, true);
+    assert.equal(migrated.gate.ready_for_render, true);
+    const after = getStoryVideoJob(db, created.job_id);
+    assert.equal(
+      after.blueprint.shots[1].shot_direction.opening_frame,
+      after.blueprint.shots[0].shot_direction.ending_frame
+    );
+    assert.match(
+      after.blueprint.shots[1].provider_prompt,
+      new RegExp(`OPENING FRAME: ${after.blueprint.shots[0].shot_direction.ending_frame.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
+    );
+    assert.equal(after.blueprint.continuity_gate_migration.reason, 'authoritative_shot_runtime_normalized');
+    assert.equal(after.blueprint.continuity_gate_migration.invalidates_prior_render_proof, true);
+    const afterCookie = createContinuityCookie(after).value;
+    assert.notEqual(afterCookie, beforeCookie);
+
+    const second = ensureStoryVideoContinuityGate(db, created.job_id);
+    assert.equal(second.migrated, false);
+    assert.equal(createContinuityCookie(second.job).value, afterCookie);
+  } finally {
+    db.close();
+  }
 });
