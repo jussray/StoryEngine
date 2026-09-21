@@ -38,6 +38,16 @@ import {
   reviewOpenVideoRender,
   submitOpenVideoShot
 } from '../lib/openVideoRenderer.js';
+import {
+  acquireRenderLease,
+  attachRenderLedger,
+  beginRenderAttempt,
+  recordMasterAssembly,
+  recordRenderAttemptFailure,
+  recordRenderReview,
+  recordRenderSubmission,
+  releaseRenderLease
+} from '../lib/videoRenderLedger.js';
 
 function publicFailures(error) {
   return Array.isArray(error?.failures) ? error.failures : [];
@@ -149,7 +159,9 @@ export default function videoEngineRoutes(router, db) {
       const job = getStoryVideoJob(db, req.params.job_id);
       if (!job) return json(res, 404, { error: 'Video job not found.' });
       if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
-      json(res, 200, listOpenVideoRenders(db, req.params.job_id));
+      const result = listOpenVideoRenders(db, req.params.job_id);
+      if (result?.renders) result.renders = result.renders.map(render => attachRenderLedger(db, render));
+      json(res, 200, result);
     } catch { json(res, 500, { error: 'Open-render evidence could not be read.' }); }
   });
 
@@ -176,6 +188,7 @@ export default function videoEngineRoutes(router, db) {
   });
 
   router.post('/api/video-engine/jobs/:job_id/open-render', async (req, res) => {
+    let attempt = null;
     try {
       const job = getStoryVideoJob(db, req.params.job_id);
       if (!job) return json(res, 404, { error: 'Video job not found.' });
@@ -183,19 +196,33 @@ export default function videoEngineRoutes(router, db) {
       const shotId = String(req.body?.shot_id || '').trim();
       if (!shotId) return json(res, 400, { error: 'shot_id is required.' });
       ensureStoryVideoContinuityGate(db, req.params.job_id);
+      attempt = beginRenderAttempt(db, { job, shot_id: shotId, input: req.body || {} });
       const submitted = await submitOpenVideoShot(db, req.params.job_id, shotId, req.body || {});
-      json(res, 202, submitted);
-    } catch (error) { openRenderError(res, error, 'Open video render could not be submitted.'); }
+      recordRenderSubmission(db, attempt.attempt_id, submitted);
+      json(res, 202, attachRenderLedger(db, submitted));
+    } catch (error) {
+      if (attempt?.attempt_id) recordRenderAttemptFailure(db, attempt.attempt_id, error);
+      openRenderError(res, error, 'Open video render could not be submitted.');
+    }
   });
 
   router.get('/api/video-engine/open-renders/:render_id', async (req, res) => {
+    let lease = null;
     try {
       const existing = getOpenVideoRender(db, req.params.render_id);
       if (!existing) return json(res, 404, { error: 'Open video render not found.' });
       if (!requireWorkspaceAccess(req, res, existing.workspace_id)) return;
-      const item = ['complete', 'failed'].includes(existing.status) ? existing : await pollOpenVideoRender(db, req.params.render_id);
-      json(res, 200, item);
-    } catch (error) { openRenderError(res, error, 'Open video render status could not be verified.'); }
+      let item = existing;
+      if (!['complete', 'failed'].includes(existing.status)) {
+        lease = acquireRenderLease(db, existing);
+        if (lease.acquired) item = await pollOpenVideoRender(db, req.params.render_id);
+      }
+      json(res, 200, attachRenderLedger(db, item));
+    } catch (error) {
+      openRenderError(res, error, 'Open video render status could not be verified.');
+    } finally {
+      if (lease?.acquired && lease?.lease?.lease_id) releaseRenderLease(db, req.params.render_id, lease.lease.lease_id);
+    }
   });
 
   router.post('/api/video-engine/open-renders/:render_id/review', (req, res) => {
@@ -203,7 +230,9 @@ export default function videoEngineRoutes(router, db) {
       const existing = getOpenVideoRender(db, req.params.render_id);
       if (!existing) return json(res, 404, { error: 'Open video render not found.' });
       if (!requireWorkspaceAccess(req, res, existing.workspace_id)) return;
-      json(res, 200, reviewOpenVideoRender(db, req.params.render_id, req.body || {}));
+      const reviewed = reviewOpenVideoRender(db, req.params.render_id, req.body || {});
+      recordRenderReview(db, reviewed);
+      json(res, 200, attachRenderLedger(db, reviewed));
     } catch (error) { openRenderError(res, error, 'Open video film review could not be saved.'); }
   });
 
@@ -213,7 +242,9 @@ export default function videoEngineRoutes(router, db) {
       if (!job) return json(res, 404, { error: 'Video job not found.' });
       if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
       ensureStoryVideoContinuityGate(db, req.params.job_id);
-      json(res, 201, assembleOpenVideoMaster(db, req.params.job_id));
+      const assembled = assembleOpenVideoMaster(db, req.params.job_id);
+      const ledger = recordMasterAssembly(db, assembled);
+      json(res, 201, { ...assembled, ledger });
     } catch (error) { openRenderError(res, error, 'Open video assembly could not complete.'); }
   });
 
