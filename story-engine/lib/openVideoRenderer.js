@@ -75,6 +75,7 @@ function safeMessage(error, fallback = 'Open video render failed.') {
 }
 
 function rendererBaseUrl() {
+  if (!text(process.env.LEEVIZE_RENDER_WORKER_ID)) return null;
   const raw = text(process.env.LEEVIZE_COMFYUI_URL || process.env.COMFYUI_URL);
   if (!raw) return null;
   let url;
@@ -130,7 +131,7 @@ function modelConfig() {
   }
   return {
     ...entry,
-    verified: entry.commercial_use_allowed === true && Boolean(text(entry.license)),
+    verified: entry.commercial_use_allowed === true && Boolean(text(entry.license)) && text(process.env.LEEVIZE_MODEL_LICENSE_STATUS) === 'verified-commercial',
     diffusion_model: text(process.env.LEEVIZE_WAN_MODEL, entry.diffusion_model),
     text_encoder: text(process.env.LEEVIZE_WAN_TEXT_ENCODER, entry.text_encoder),
     vae: text(process.env.LEEVIZE_WAN_VAE, entry.vae)
