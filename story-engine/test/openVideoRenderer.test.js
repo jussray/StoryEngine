@@ -28,6 +28,17 @@ function fixtureJob() {
   };
 }
 
+function captureEnv(names) {
+  return Object.fromEntries(names.map(name => [name, process.env[name]]));
+}
+
+function restoreEnv(previous) {
+  for (const [name, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+}
+
 test('ComfyUI workflow compilation binds canon, model files, reference image and continuity cookie', () => {
   const job = fixtureJob();
   const shot = job.blueprint.shots[0];
@@ -63,14 +74,19 @@ test('ComfyUI workflow compilation binds canon, model files, reference image and
 });
 
 test('renderer status never treats missing compute as a vendor-credit blocker', async () => {
-  const previous = {
-    url: process.env.LEEVIZE_COMFYUI_URL,
-    alt: process.env.COMFYUI_URL,
-    workflow: process.env.LEEVIZE_COMFYUI_WORKFLOW_PATH
-  };
+  const names = [
+    'LEEVIZE_COMFYUI_URL',
+    'COMFYUI_URL',
+    'LEEVIZE_COMFYUI_WORKFLOW_PATH',
+    'LEEVIZE_MODEL_LICENSE_STATUS',
+    'LEEVIZE_RENDER_WORKER_ID'
+  ];
+  const previous = captureEnv(names);
   delete process.env.LEEVIZE_COMFYUI_URL;
   delete process.env.COMFYUI_URL;
   delete process.env.LEEVIZE_COMFYUI_WORKFLOW_PATH;
+  process.env.LEEVIZE_MODEL_LICENSE_STATUS = 'verified-commercial';
+  process.env.LEEVIZE_RENDER_WORKER_ID = 'test-worker';
   try {
     const status = await probeOpenVideoRenderer();
     assert.equal(status.primary_lane, 'self_hosted_open_weight');
@@ -83,8 +99,49 @@ test('renderer status never treats missing compute as a vendor-credit blocker', 
     assert.equal(status.model.license, 'Apache-2.0');
     assert.equal(status.model.commercial_use_allowed, true);
   } finally {
-    if (previous.url === undefined) delete process.env.LEEVIZE_COMFYUI_URL; else process.env.LEEVIZE_COMFYUI_URL = previous.url;
-    if (previous.alt === undefined) delete process.env.COMFYUI_URL; else process.env.COMFYUI_URL = previous.alt;
-    if (previous.workflow === undefined) delete process.env.LEEVIZE_COMFYUI_WORKFLOW_PATH; else process.env.LEEVIZE_COMFYUI_WORKFLOW_PATH = previous.workflow;
+    restoreEnv(previous);
+  }
+});
+
+test('renderer fails closed when commercial license approval is not explicit', async () => {
+  const names = [
+    'LEEVIZE_COMFYUI_URL',
+    'COMFYUI_URL',
+    'LEEVIZE_MODEL_LICENSE_STATUS',
+    'LEEVIZE_RENDER_WORKER_ID'
+  ];
+  const previous = captureEnv(names);
+  delete process.env.LEEVIZE_COMFYUI_URL;
+  delete process.env.COMFYUI_URL;
+  delete process.env.LEEVIZE_MODEL_LICENSE_STATUS;
+  process.env.LEEVIZE_RENDER_WORKER_ID = 'test-worker';
+  try {
+    const status = await probeOpenVideoRenderer();
+    assert.equal(status.ready, false);
+    assert.ok(status.blockers.some(item => item.code === 'BLOCKED_LICENSE_REVIEW'));
+  } finally {
+    restoreEnv(previous);
+  }
+});
+
+test('renderer fails closed when worker identity is missing even if a compute URL is configured', async () => {
+  const names = [
+    'LEEVIZE_COMFYUI_URL',
+    'COMFYUI_URL',
+    'LEEVIZE_MODEL_LICENSE_STATUS',
+    'LEEVIZE_RENDER_WORKER_ID'
+  ];
+  const previous = captureEnv(names);
+  process.env.LEEVIZE_COMFYUI_URL = 'https://example.invalid';
+  delete process.env.COMFYUI_URL;
+  process.env.LEEVIZE_MODEL_LICENSE_STATUS = 'verified-commercial';
+  delete process.env.LEEVIZE_RENDER_WORKER_ID;
+  try {
+    const status = await probeOpenVideoRenderer();
+    assert.equal(status.ready, false);
+    assert.equal(status.configured, false);
+    assert.ok(status.blockers.some(item => item.code === 'OPEN_RENDER_COMPUTE_UNCONFIGURED'));
+  } finally {
+    restoreEnv(previous);
   }
 });
