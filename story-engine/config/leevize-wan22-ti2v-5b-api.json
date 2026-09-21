@@ -1,0 +1,112 @@
+{
+  "3": {
+    "inputs": {
+      "seed": "__LEEVIZE_SEED__",
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["48", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["55", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": { "title": "LEEVIZE sampler" }
+  },
+  "6": {
+    "inputs": {
+      "text": "__LEEVIZE_PROMPT__",
+      "clip": ["38", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "LEEVIZE positive prompt" }
+  },
+  "7": {
+    "inputs": {
+      "text": "__LEEVIZE_NEGATIVE_PROMPT__",
+      "clip": ["38", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "LEEVIZE negative prompt" }
+  },
+  "8": {
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["39", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": { "title": "Decode generated video frames" }
+  },
+  "37": {
+    "inputs": {
+      "unet_name": "__LEEVIZE_MODEL__",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": { "title": "Wan 2.2 TI2V diffusion model" }
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "__LEEVIZE_TEXT_ENCODER__",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Wan text encoder" }
+  },
+  "39": {
+    "inputs": {
+      "vae_name": "__LEEVIZE_VAE__"
+    },
+    "class_type": "VAELoader",
+    "_meta": { "title": "Wan 2.2 VAE" }
+  },
+  "48": {
+    "inputs": {
+      "shift": 8,
+      "model": ["37", 0]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": { "title": "Wan model sampling" }
+  },
+  "55": {
+    "inputs": {
+      "width": "__LEEVIZE_WIDTH__",
+      "height": "__LEEVIZE_HEIGHT__",
+      "length": "__LEEVIZE_FRAMES__",
+      "batch_size": 1,
+      "vae": ["39", 0],
+      "start_image": ["56", 0]
+    },
+    "class_type": "Wan22ImageToVideoLatent",
+    "_meta": { "title": "Wan 2.2 image-to-video latent" }
+  },
+  "56": {
+    "inputs": {
+      "image": "__LEEVIZE_INPUT_IMAGE__"
+    },
+    "class_type": "LoadImage",
+    "_meta": { "title": "Canonical continuity frame" }
+  },
+  "57": {
+    "inputs": {
+      "fps": "__LEEVIZE_FPS__",
+      "images": ["8", 0]
+    },
+    "class_type": "CreateVideo",
+    "_meta": { "title": "Create playable video" }
+  },
+  "58": {
+    "inputs": {
+      "filename_prefix": "video/leevize",
+      "format": "auto",
+      "codec": "auto",
+      "video-preview": "",
+      "video": ["57", 0]
+    },
+    "class_type": "SaveVideo",
+    "_meta": { "title": "Save playable video" }
+  }
+}

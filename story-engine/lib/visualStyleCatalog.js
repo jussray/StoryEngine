@@ -11,9 +11,9 @@ export const VIDEO_RENDER_MODES = Object.freeze({
   },
   live_action: {
     label: 'Live Action',
-    status: 'preview_ready_final_provider_required',
-    renderer: 'external_live_action_provider',
-    description: 'Action-first human or character footage. The deterministic preview proves the plan only; final delivery requires a playable rendered video.',
+    status: 'preview_ready_real_render_required',
+    renderer: 'leevize_replaceable_renderer',
+    description: 'Action-first human or character footage. The deterministic preview proves the plan only; final delivery requires verified playable footage. Self-hosted/open-weight rendering is primary and paid renderers are optional shot-level fallback.',
     negative: ['no concept-only completion', 'no slideshow-only delivery', 'no static dashboard montage', 'no generic hacker visuals', 'no fake product interaction']
   },
   cinematic_3d: {
