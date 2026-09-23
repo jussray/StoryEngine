@@ -108,8 +108,17 @@ const HANDLED_EVENTS = new Set([
   'customer.subscription.deleted',
   'invoice.payment_succeeded',
   'invoice.payment_failed',
-  'checkout.session.completed'
+  'checkout.session.completed',
+  'checkout.session.async_payment_succeeded'
 ]);
+
+function subscriptionPlan(subscription, payload) {
+  return subscription?.metadata?.plan
+    || payload?.plan
+    || subscription?.items?.data?.[0]?.price?.nickname
+    || subscription?.items?.data?.[0]?.plan?.nickname
+    || 'paid';
+}
 
 export function handleStripeWebhook(db, { stripe_event_id, event_type, payload = {} }) {
   ensureSchema(db);
@@ -143,20 +152,35 @@ export function handleStripeWebhook(db, { stripe_event_id, event_type, payload =
   const workspace_id = payload.workspace_id || sub.metadata?.workspace_id || null;
   let result = { handled: true, event_type, stripe_event_id };
 
-  if (workspace_id && (event_type.startsWith('customer.subscription') || event_type === 'checkout.session.completed')) {
+  // Entitlement authority belongs to Stripe's subscription lifecycle events.
+  // Checkout completion proves that the hosted flow completed; it must not by
+  // itself grant paid access because payment/subscription state can still be
+  // pending, trialing, incomplete, asynchronously settled, or later fail.
+  if (workspace_id && event_type.startsWith('customer.subscription')) {
     const updated = upsertSubscription(db, {
       workspace_id,
       stripe_customer_id: payload.customer || sub.customer || null,
       stripe_subscription_id: payload.subscription_id || sub.id || null,
-      plan: sub.plan?.nickname || sub.items?.data?.[0]?.plan?.nickname || 'paid',
-      status: event_type === 'customer.subscription.deleted' ? 'canceled' :
-              event_type === 'checkout.session.completed' ? 'active' :
-              sub.status || 'active',
+      plan: subscriptionPlan(sub, payload),
+      status: event_type === 'customer.subscription.deleted' ? 'canceled' : sub.status || 'inactive',
       current_period_end: sub.current_period_end ? sub.current_period_end * 1000 : null,
       cancel_at_period_end: Boolean(sub.cancel_at_period_end),
       metadata: sub.metadata || {}
     });
     result.subscription = updated;
+  }
+
+  if ((event_type === 'checkout.session.completed' || event_type === 'checkout.session.async_payment_succeeded') && workspace_id) {
+    log(db, {
+      workspace_id,
+      mode: 'revenue_engine',
+      event_type: 'checkout.completed',
+      payload: {
+        stripe_object_id: payload.stripe_object_id || null,
+        payment_status: payload.payment_status || null,
+        plan: payload.plan || null
+      }
+    });
   }
 
   if (event_type === 'invoice.payment_succeeded' && workspace_id) {
@@ -258,6 +282,7 @@ export function revenueOverview(db) {
     failed_payments: failedPayments,
     notifications_sent: notificationsSent,
     stripe_configured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+    stripe_checkout_configured: Boolean(process.env.STRIPE_SECRET_KEY && process.env.L99_STRIPE_PRICE_MAP_JSON && process.env.L99_PUBLIC_URL),
     resend_configured: Boolean(process.env.RESEND_API_KEY)
   };
 }
