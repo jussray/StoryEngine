@@ -1,13 +1,19 @@
 // routes/revenue.js
-// Revenue Engine routes: verified Stripe webhook receiver, subscription reads, notification log.
+// Revenue Engine routes: governed Stripe checkout, verified webhooks, subscription reads.
 
-import { requireRole } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
   handleStripeWebhook, getSubscription,
   revenueOverview
 } from '../lib/revenueEngine.js';
 import { listConversions as listIpConversions } from '../lib/ipStudio.js';
 import { verifyStripeWebhookSignature } from '../lib/stripeWebhookSignature.js';
+import { getStripeClient } from '../lib/stripeClient.js';
+import {
+  buildCheckoutIdempotencyKey,
+  buildSubscriptionCheckoutParams,
+  resolveStripePrice
+} from '../lib/stripeCheckout.js';
 
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -19,14 +25,17 @@ function normalizedStripePayload(event) {
   const eventType = String(event?.type || '');
   const metadata = object.metadata && typeof object.metadata === 'object' ? object.metadata : {};
   const subscription = eventType.startsWith('customer.subscription') ? object : {};
+  const subscriptionMetadata = subscription.metadata && typeof subscription.metadata === 'object' ? subscription.metadata : {};
   const amountCandidate = object.amount_paid ?? object.amount_total ?? object.amount_received ?? object.amount_due ?? null;
   const amount = Number(amountCandidate);
 
   return {
-    workspace_id: metadata.workspace_id || subscription.metadata?.workspace_id || null,
+    workspace_id: metadata.workspace_id || subscriptionMetadata.workspace_id || null,
+    plan: metadata.plan || subscriptionMetadata.plan || null,
     customer: object.customer || null,
     subscription_id: typeof object.subscription === 'string' ? object.subscription : subscription.id || null,
     subscription,
+    payment_status: typeof object.payment_status === 'string' ? object.payment_status : null,
     amount_cents: amountCandidate === null || !Number.isFinite(amount) ? null : amount,
     currency: typeof object.currency === 'string' ? object.currency : null,
     stripe_object_id: typeof object.id === 'string' ? object.id : null
@@ -34,6 +43,76 @@ function normalizedStripePayload(event) {
 }
 
 export default function revenueRoutes(router, db) {
+  // Authenticated creator checkout. Price authority remains server-side: the
+  // browser sends a plan name, never an arbitrary Stripe price or amount.
+  router.post('/api/revenue/checkout', requireRole('creator'), async (req, res) => {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const workspace_id = String(body.workspace_id || '').trim();
+    const requestedPlan = String(body.plan || '').trim().toLowerCase();
+
+    if (!workspace_id || !requestedPlan) {
+      json(res, 400, { error: 'workspace_id_and_plan_required' });
+      return;
+    }
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+
+    const stripe = getStripeClient();
+    if (!stripe) {
+      json(res, 503, { error: 'stripe_checkout_unconfigured' });
+      return;
+    }
+
+    let plan;
+    let priceId;
+    try {
+      ({ plan, priceId } = resolveStripePrice(requestedPlan));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'invalid_plan';
+      const status = message.startsWith('No Stripe price') ? 503 : 400;
+      json(res, status, { error: status === 503 ? 'stripe_price_unconfigured' : 'invalid_plan' });
+      return;
+    }
+
+    let params;
+    let idempotencyKey;
+    try {
+      params = buildSubscriptionCheckoutParams({
+        workspaceId: workspace_id,
+        plan,
+        priceId,
+        publicUrl: process.env.L99_PUBLIC_URL
+      });
+      idempotencyKey = buildCheckoutIdempotencyKey({
+        tenantId: req.auth?.tenant_id,
+        actorId: req.auth?.actor_id,
+        workspaceId: workspace_id,
+        plan,
+        attemptId: body.checkout_attempt_id || req.request_id
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const configError = message.includes('L99_PUBLIC_URL');
+      json(res, configError ? 503 : 400, { error: configError ? 'stripe_checkout_url_unconfigured' : 'invalid_checkout_request' });
+      return;
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create(params, { idempotencyKey });
+      if (!session.url) {
+        json(res, 502, { error: 'stripe_checkout_url_missing' });
+        return;
+      }
+      json(res, 201, {
+        checkout_session_id: session.id,
+        url: session.url,
+        workspace_id,
+        plan
+      });
+    } catch {
+      json(res, 502, { error: 'stripe_checkout_create_failed' });
+    }
+  });
+
   // Stripe webhook — authenticated by Stripe's signature, not the normal creator API key.
   router.post('/api/revenue/stripe/webhook', async (req, res) => {
     try {
@@ -96,7 +175,7 @@ export default function revenueRoutes(router, db) {
   router.get('/api/revenue/conversions/:workspace_id', (req, res) => {
     try {
       const conversions = listIpConversions(db, req.params.workspace_id);
-      json(res, 200, { conversions });
+      json(res, 200, { conversions: listIpConversions(db, req.params.workspace_id) });
     } catch (err) {
       json(res, 500, { error: err.message });
     }
