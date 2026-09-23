@@ -67,6 +67,9 @@ export default defineConfig({
           workspace_ids: ['*']
         }
       ]),
+      // Playwright proves the checkout authority membrane without making a live
+      // Stripe call. Provider activation remains a separate runtime gate.
+      STRIPE_SECRET_KEY: '',
       SOURCE_CANON_PROVIDER: process.env.SOURCE_CANON_PROVIDER || 'local',
       RUNTIME_SCAN_INTERVAL_MS: '3600000',
       RUNTIME_DRAIN_INTERVAL_MS: '3600000'
