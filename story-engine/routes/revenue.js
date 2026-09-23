@@ -175,7 +175,7 @@ export default function revenueRoutes(router, db) {
   router.get('/api/revenue/conversions/:workspace_id', (req, res) => {
     try {
       const conversions = listIpConversions(db, req.params.workspace_id);
-      json(res, 200, { conversions: listIpConversions(db, req.params.workspace_id) });
+      json(res, 200, { conversions });
     } catch (err) {
       json(res, 500, { error: err.message });
     }
