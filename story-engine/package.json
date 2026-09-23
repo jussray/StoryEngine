@@ -11,6 +11,9 @@
     "test:guardrails": "playwright test e2e/guardrails.spec.js e2e/creator_flow.spec.js",
     "test:domain": "playwright test e2e/domain-authority.spec.js"
   },
+  "dependencies": {
+    "stripe": "22.4.0"
+  },
   "devDependencies": {
     "@playwright/test": "^1.61.1"
   },
