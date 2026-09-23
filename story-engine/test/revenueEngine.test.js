@@ -48,16 +48,45 @@ test('handleStripeWebhook is idempotent on duplicate event', () => {
   assert.strictEqual(second.reason, 'already_processed');
 });
 
-test('handleStripeWebhook creates subscription on checkout.session.completed', () => {
+test('checkout.session.completed does not grant subscription entitlement by itself', () => {
   const db = makeDb();
   handleStripeWebhook(db, {
     stripe_event_id: 'evt_002',
     event_type: 'checkout.session.completed',
-    payload: { workspace_id: 'ws4', customer: 'cus_abc', subscription: { id: 'sub_xyz', status: 'active', metadata: { workspace_id: 'ws4' } } }
+    payload: {
+      workspace_id: 'ws4',
+      customer: 'cus_abc',
+      subscription_id: 'sub_xyz',
+      plan: 'pro',
+      payment_status: 'paid',
+      stripe_object_id: 'cs_123'
+    }
+  });
+  assert.strictEqual(getSubscription(db, 'ws4'), null);
+});
+
+test('customer.subscription.created grants entitlement from Stripe subscription state', () => {
+  const db = makeDb();
+  handleStripeWebhook(db, {
+    stripe_event_id: 'evt_002b',
+    event_type: 'customer.subscription.created',
+    payload: {
+      workspace_id: 'ws4',
+      customer: 'cus_abc',
+      subscription_id: 'sub_xyz',
+      subscription: {
+        id: 'sub_xyz',
+        customer: 'cus_abc',
+        status: 'active',
+        metadata: { workspace_id: 'ws4', plan: 'pro' },
+        items: { data: [{ price: { nickname: 'Pro' } }] }
+      }
+    }
   });
   const sub = getSubscription(db, 'ws4');
   assert.ok(sub);
   assert.strictEqual(sub.status, 'active');
+  assert.strictEqual(sub.plan, 'pro');
 });
 
 test('handleStripeWebhook marks subscription canceled on deletion', () => {
@@ -66,7 +95,7 @@ test('handleStripeWebhook marks subscription canceled on deletion', () => {
   handleStripeWebhook(db, {
     stripe_event_id: 'evt_003',
     event_type: 'customer.subscription.deleted',
-    payload: { workspace_id: 'ws5', subscription: { metadata: { workspace_id: 'ws5' } } }
+    payload: { workspace_id: 'ws5', subscription: { metadata: { workspace_id: 'ws5', plan: 'pro' } } }
   });
   const sub = getSubscription(db, 'ws5');
   assert.strictEqual(sub.status, 'canceled');
@@ -79,5 +108,6 @@ test('revenueOverview returns expected shape', () => {
   assert.ok('free_subscriptions' in overview);
   assert.ok('total_revenue_events' in overview);
   assert.ok('stripe_configured' in overview);
+  assert.ok('stripe_checkout_configured' in overview);
   assert.ok('resend_configured' in overview);
 });
