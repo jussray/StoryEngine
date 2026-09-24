@@ -15,7 +15,7 @@ This deliberately separates two facts:
 
 ## Required attack-flow bundle
 
-Every production handoff carries exactly one record for each gate:
+Every production handoff carries exactly one evidence-bound record for each gate:
 
 1. production council
 2. founder-value / GaryVee
@@ -24,13 +24,18 @@ Every production handoff carries exactly one record for each gate:
 5. L99
 6. Red Team II
 7. OODA
-8. Attack Ten
-9. Attack 20
-10. truthmode
-11. confess
-12. proof
+8. GoalFix
+9. Attack Ten
+10. Attack 20
+11. Attack 3000
+12. Attack 6000
+13. truthmode
+14. confess
+15. proof
 
-Any blocking verdict blocks routing. The bundle fingerprint is part of the handoff fingerprint, so changing governance evidence changes the executable handoff identity.
+Any blocking verdict blocks routing. Each pass must cite actual source records; a synthesized `pass` string is not proof. The bundle fingerprint is part of the handoff fingerprint, so changing governance evidence changes the executable handoff identity.
+
+Attack Ten challenges the selected plan before execution. Attack 20 is the executable adversarial/security floor. Attack 3000 and Attack 6000 remain independent higher-volume challenge passes rather than aliases for Attack 20.
 
 ## Publication boundary
 
