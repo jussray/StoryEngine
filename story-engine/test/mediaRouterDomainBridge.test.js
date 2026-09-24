@@ -104,16 +104,35 @@ test('release permission rejects weaker domain approval', () => {
   );
 });
 
-test('all attack flows including Attack Ten and Attack 20 are required exactly once', () => {
+test('all attack flows are required exactly once', () => {
   const bundle = passingAttackFlow();
   assert.equal(bundle.passed, true);
-  assert.ok(ATTACK_FLOW_IDS.includes('attack10'));
-  assert.ok(ATTACK_FLOW_IDS.includes('attack20'));
+  for (const required of [
+    'production_council',
+    'founder_value_garyvee',
+    'lindy',
+    'redteam_pre',
+    'l99',
+    'redteam_post',
+    'ooda',
+    'goalfix',
+    'attack10',
+    'attack20',
+    'attack3000',
+    'attack6000',
+    'truthmode',
+    'confess',
+    'proof'
+  ]) {
+    assert.ok(ATTACK_FLOW_IDS.includes(required), `missing ${required}`);
+  }
 
-  assert.throws(
-    () => createMediaAttackFlowBundle({ records: bundle.records.filter((r) => r.flow !== 'attack10') }),
-    /attack10 must appear exactly once/
-  );
+  for (const required of ['goalfix', 'attack10', 'attack20', 'attack3000', 'attack6000']) {
+    assert.throws(
+      () => createMediaAttackFlowBundle({ records: bundle.records.filter((r) => r.flow !== required) }),
+      new RegExp(`${required} must appear exactly once`)
+    );
+  }
 });
 
 test('a blocking attack verdict prevents the router handoff', () => {
