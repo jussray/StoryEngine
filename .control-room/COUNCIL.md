@@ -4,6 +4,14 @@ Status: active control-room documentation for `jussray/StoryEngine` / L99.
 
 The Council is a reasoning and review layer. It cannot override current repository/provider/runtime evidence, tenant/provenance policy, promotion gates, or founder authority.
 
+## Resident Council invariant
+
+The Council is resident in both the founder assistant host and this project Control Room. The host carries standing Council selection/challenge/reconciliation behavior for founder work; this repository carries the project-local machine contract at `.control-room/council-residency.contract.json`.
+
+These are two residences of the same logical Council, not one centralized executor. Invoke the smallest useful task-specific set of seats automatically when material. Project-user workflows may use the Council behind the scenes only when local policy allows; users receive the governed outcome, not raw deliberation, founder controls, provider credentials, or cross-project private data.
+
+A named seat is live only when an actual connector/API/runtime call is evidenced. Execution remains governed by this project's local authority membrane, and cross-project mutation must be handed to the owning Control Room.
+
 ## Members
 
 - **Founder**: final human authority for separately gated actions.
