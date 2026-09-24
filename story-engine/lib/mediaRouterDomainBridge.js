@@ -26,8 +26,11 @@ export const ATTACK_FLOW_IDS = Object.freeze([
   'l99',
   'redteam_post',
   'ooda',
+  'goalfix',
   'attack10',
   'attack20',
+  'attack3000',
+  'attack6000',
   'truthmode',
   'confess',
   'proof'
