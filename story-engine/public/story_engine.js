@@ -5,17 +5,36 @@ let currentRunId = null;
 let pollTimer = null;
 
 const ROLE_LABELS = {
-  writer: 'Writer',
-  co_writer: 'Co-Writer',
-  director: 'Director',
-  autonomous_studio: 'Autonomous Studio'
+  writer: 'I’ll write it',
+  co_writer: 'Create with me',
+  director: 'Draft it for me',
+  autonomous_studio: 'Build the first version'
 };
 
 const START_LABELS = {
-  writer: 'Start as Writer',
-  co_writer: 'Start Co-Writing',
-  director: 'Direct L99',
-  autonomous_studio: 'Launch Autonomous Studio'
+  writer: 'Start writing',
+  co_writer: 'Start creating together',
+  director: 'Draft a first version',
+  autonomous_studio: 'Build the first version'
+};
+
+const STAGE_LABELS = {
+  story_engine: 'Creative workspace',
+  intent_parser: 'Understanding your idea',
+  creative_profile: 'Creative direction',
+  ghost: 'Drafting',
+  lindymode: 'Voice & style',
+  ooda: 'Continuity check',
+  redteam_pre_runtime: 'Story challenge',
+  runtime: 'Building the work',
+  story_memory: 'Remembering the world',
+  learning_engine: 'Learning from changes',
+  playwright_validation: 'Preview check',
+  redteam_pre_release: 'Final story review',
+  artifacts: 'Packaging the work',
+  release_gate: 'Ready-to-release check',
+  control_room: 'Project status',
+  complete: 'Complete'
 };
 
 const TERMINAL_RUN_STATUSES = new Set([
@@ -36,6 +55,22 @@ function esc(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
+function creatorCopy(value) {
+  return String(value || '')
+    .replaceAll('L99', 'StoryEngine')
+    .replaceAll('pipeline', 'project flow')
+    .replaceAll('Pipeline', 'Project flow');
+}
+
+function enterStudioMode() {
+  document.body.classList.add('has-run');
+  $('creationCard')?.classList.add('hidden');
+  if ($('studioHeroTitle')) $('studioHeroTitle').textContent = 'Your story is taking shape.';
+  if ($('studioHeroCopy')) {
+    $('studioHeroCopy').textContent = 'Keep the original idea close, review what changes, and move toward release when the work feels right.';
+  }
+}
+
 function ensureUniverseLink(workspaceId) {
   if (!workspaceId) return;
   const links = document.querySelector('.links');
@@ -44,7 +79,7 @@ function ensureUniverseLink(workspaceId) {
   if (!link) {
     link = document.createElement('a');
     link.id = 'storyUniverseLink';
-    link.textContent = 'Story Universe';
+    link.textContent = 'Story World';
     link.dataset.testid = 'story-universe-link';
     links.prepend(link);
   }
@@ -97,13 +132,16 @@ function shouldPoll(run) {
 
 function renderRun(run) {
   currentRunId = run.run_id;
+  enterStudioMode();
   ensureUniverseLink(run.workspace_id);
   ensureArtifactLink(run.artifact);
   $('runPanel').classList.remove('hidden');
-  $('runTitle').textContent = run.intent?.title || 'L99 Pipeline Run';
+  $('runTitle').textContent = run.intent?.title || 'Story in progress';
   const role = run.assist_profile?.assist_mode;
   const assistLabel = role ? ROLE_LABELS[role] : null;
-  $('runMeta').textContent = `${assistLabel ? `${assistLabel} · ` : ''}${run.active_agent} · ${run.current_stage}`;
+  const stageLabel = STAGE_LABELS[run.current_stage] || 'In progress';
+  $('runMeta').textContent = `${assistLabel ? `${assistLabel} · ` : ''}${stageLabel}`;
+  // Keep the raw status value in this stable DOM contract for existing proof consumers.
   $('runStatus').textContent = run.status;
   $('approve').classList.toggle('hidden', run.status !== 'awaiting_approval');
 
@@ -114,28 +152,21 @@ function renderRun(run) {
     'redteam_pre_runtime','runtime','story_memory','learning_engine','playwright_validation',
     'redteam_pre_release','artifacts','release_gate','control_room','complete'
   ];
-  const labels = {
-    story_engine:'Story Engine',intent_parser:'Intent Parser',creative_profile:'Creative Profile',ghost:'Ghost',
-    lindymode:'Lindymode',ooda:'OODA',redteam_pre_runtime:'Redteam — Pre-Runtime',runtime:'Runtime',
-    story_memory:'Story Memory',learning_engine:'Learning Engine',playwright_validation:'Playwright',
-    redteam_pre_release:'Redteam — Pre-Release',artifacts:'Artifact',release_gate:'Release Gate',
-    control_room:'Control Room',complete:'Complete'
-  };
 
   $('pipeline').innerHTML = stages.map(stage => {
     const event = byStage.get(stage);
     const status = event?.status || (stage === run.current_stage ? run.status : 'pending');
     let waiting = 'Waiting for its turn.';
     if (run.status === 'writer_active' && stage === 'story_engine') {
-      waiting = 'You are writing. L99 stays advisory until you ask for support.';
+      waiting = 'Your canvas is ready. StoryEngine stays supportive until you ask for help.';
     } else if (run.status === 'co_writer_ready' && stage === 'story_engine') {
-      waiting = 'You and L99 share the workspace. Every proposed change still requires your acceptance.';
+      waiting = 'Your shared creative workspace is ready. You decide what becomes part of the work.';
     }
     return `<div class="stage ${esc(status)}">
       <div class="dot"></div>
-      <strong>${esc(labels[stage])}</strong>
-      <div class="summary">${esc(event?.summary || waiting)}</div>
-      <div class="agent">${esc(event?.agent || '')}</div>
+      <strong>${esc(STAGE_LABELS[stage] || stage)}</strong>
+      <div class="summary">${esc(creatorCopy(event?.summary || waiting))}</div>
+      <div class="agent"></div>
     </div>`;
   }).join('');
 
@@ -190,8 +221,9 @@ async function refreshRun() {
     renderRun(run);
     return run;
   } catch (error) {
+    enterStudioMode();
     $('runPanel').classList.remove('hidden');
-    $('runMeta').textContent = error.message;
+    $('runMeta').textContent = creatorCopy(error.message);
     return null;
   }
 }
@@ -217,7 +249,7 @@ async function loadDefaultAssistMode() {
 $('storyForm').addEventListener('submit', async event => {
   event.preventDefault();
   $('start').disabled = true;
-  $('start').textContent = 'Starting…';
+  $('start').textContent = 'Opening studio…';
   try {
     const payload = {
       story_vision: $('vision').value.trim(),
@@ -232,7 +264,7 @@ $('storyForm').addEventListener('submit', async event => {
     renderRun(run);
     if (shouldPoll(run)) startPolling();
   } catch (error) {
-    alert(error.message);
+    alert(creatorCopy(error.message));
   } finally {
     $('start').disabled = false;
     $('start').textContent = START_LABELS[assistMode] || START_LABELS.writer;
@@ -247,7 +279,7 @@ $('approve').addEventListener('click', async () => {
     renderRun(run);
     if (shouldPoll(run)) startPolling();
   } catch (error) {
-    alert(error.message);
+    alert(creatorCopy(error.message));
   } finally {
     $('approve').disabled = false;
   }
@@ -257,11 +289,13 @@ const initialParams = new URLSearchParams(window.location.search);
 const initialRunId = initialParams.get('run_id');
 const initialWorkspaceId = initialParams.get('workspace_id');
 ensureUniverseLink(initialWorkspaceId);
-loadDefaultAssistMode();
 
 if (initialRunId) {
+  enterStudioMode();
   currentRunId = initialRunId;
   refreshRun().then(run => {
     if (run && shouldPoll(run)) startPolling();
   });
+} else {
+  loadDefaultAssistMode();
 }

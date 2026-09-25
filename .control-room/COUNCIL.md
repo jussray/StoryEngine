@@ -22,6 +22,32 @@ A named seat is live only when an actual connector/API/runtime call is evidenced
 - **Perplexity**: current public research/source discovery; web evidence does not substitute for private runtime truth.
 - **Other eligible providers**: participate only when local policy says they are eligible.
 
+## StoryEngine creative Court
+
+StoryEngine creative work uses a three-domain Court under this same Founder Council. It does **not** create another authority plane. The machine-readable contract is `.control-room/storyengine-creative-court.contract.json`.
+
+The three councils are:
+
+- **Writers Council**: story craft, reader experience, voice, character, structure, genre, and continuity. Membership is capability-based and is not limited to famous writers.
+- **AI Council**: reasoning quality, evidence, model/tool routing, independent challenge, and reconciliation. Provider brands are replaceable; a named provider is live only with verified connector/API/runtime evidence.
+- **Production Council**: visual, audio, motion, image, and video production while preserving story truth, canon, and creator intent.
+
+For consequential StoryEngine thinking, imagining, writing, visualizing, reviewing, and video-making work, all three councils are represented with task-specific `lead`, `support`, or `watch` posture. Use the smallest useful specialist seats inside each council rather than waking every specialist by default.
+
+Each council forms its first findings independently before reconciliation. `/DEVIL` cross-examines those findings before synthesis. Agreement is not proof, and meaningful dissent must remain visible.
+
+The creator makes the ruling. Council recommendations must preserve escape routes including `Keep mine`, `Blend`, `Try another direction`, `Ask another council`, `Challenge the ruling`, and custom free-text direction.
+
+Permanent creative-freedom rule:
+
+> **Structure should accelerate expression, never restrict it.**
+
+Presets are shortcuts, never cages. Where a preset may constrain expression, StoryEngine must preserve `Other` / `Custom` and a free-text path. Base Context remains durable creative intent, and important creative choices remain editable later.
+
+Tool capability is not permission. Council advice cannot silently mutate canon, publish, spend, deploy, delete, or cross project boundaries. Those actions remain subject to the owning authority gate.
+
+Substantial Court sessions should leave a receipt carrying Writers, AI, Production, Devil, creator-ruling, canon-effect, provider-evidence, and next-action fields defined in the machine contract.
+
 ## Council rules
 
 1. Evidence outranks model opinion.
