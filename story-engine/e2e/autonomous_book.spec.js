@@ -5,7 +5,7 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
   await establishBrowserSession(page, TENANT_CREATOR_BOOTSTRAP_KEY);
   await page.goto('/story_engine.html');
 
-  await page.getByRole('button', { name: 'Book' }).click();
+  await page.locator('.type[data-medium="book"]').click();
   await page.locator('.assist-option[data-assist="autonomous_studio"]').click();
   await page.locator('#vision').fill(
     'A girl moves into an old house where one room contains objects from events that have not happened yet, and she must solve which future belongs to her family.'
