@@ -5,8 +5,8 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
   await establishBrowserSession(page, TENANT_CREATOR_BOOTSTRAP_KEY);
   await page.goto('/story_engine.html');
 
-  await page.getByRole('button', { name: 'Novel' }).click();
-  await page.getByRole('button', { name: /Autonomous Studio/ }).click();
+  await page.getByRole('button', { name: 'Book' }).click();
+  await page.locator('.assist-option[data-assist="autonomous_studio"]').click();
   await page.locator('#vision').fill(
     'A girl moves into an old house where one room contains objects from events that have not happened yet, and she must solve which future belongs to her family.'
   );
@@ -18,7 +18,8 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
     response.url().endsWith('/api/story-engine/runs')
       && response.request().method() === 'POST'
   );
-  await page.getByRole('button', { name: 'Launch Autonomous Studio' }).click();
+  await expect(page.locator('#start')).toHaveText('Build the first version');
+  await page.locator('#start').click();
   const createdResponse = await createdPromise;
   expect(createdResponse.status()).toBe(201);
   const created = await createdResponse.json();
