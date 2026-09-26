@@ -6,6 +6,7 @@ import {
   compileSyncAvenue,
   syncAvenueOptions
 } from '../lib/syncAvenue.js';
+import { bindSyncAvenueRendererDirections } from '../lib/syncAvenueRendererBridge.js';
 
 function failures(error) {
   return Array.isArray(error?.failures) ? error.failures : [];
@@ -30,8 +31,9 @@ export default function syncAvenueRoutes(router, db) {
 
   // Registered before the legacy video-engine route so every new /MAKEVIDEO job
   // is reality-bound before it is returned to a caller. The underlying video job
-  // remains the authoritative persistence object; Sync Avenue enriches its blueprint,
-  // artifact marker, and receipt chain without granting render or publish authority.
+  // remains the authoritative persistence object. Sync Avenue adds its world-state
+  // receipts, then the renderer bridge embeds the causal contract into the existing
+  // provider-neutral prompt without granting render or publication authority.
   router.post('/api/video-engine/jobs', (req, res) => {
     const workspaceId = String(req.body?.workspace_id || '').trim();
     if (!workspaceId) return json(res, 400, { error: 'workspace_id is required.' });
@@ -39,7 +41,8 @@ export default function syncAvenueRoutes(router, db) {
     try {
       const created = createStoryVideoJob(db, req.body || {});
       const enriched = attachSyncAvenueToStoryVideoJob(db, created, req.body || {});
-      json(res, 201, enriched);
+      const renderBound = bindSyncAvenueRendererDirections(db, enriched);
+      json(res, 201, renderBound);
     } catch (error) {
       json(res, /not found/i.test(error.message) ? 404 : 400, {
         error: error.message,
