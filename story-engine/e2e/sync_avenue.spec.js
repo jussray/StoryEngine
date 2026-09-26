@@ -136,8 +136,14 @@ test('MAKEVIDEO routes founder intent and perceived reality through Sync Avenue 
   expect(job.blueprint.sync_avenue.founder_intent.authority).toBe('FOUNDER_EXPLICIT');
   expect(job.blueprint.sync_avenue.truth_contract.external_provider_required).toBe(false);
   expect(job.blueprint.sync_avenue.shot_plan_count).toBe(job.blueprint.shot_count);
+  expect(job.blueprint.sync_avenue.renderer_bridge.bridge_version).toBe('sync-avenue-renderer-bridge/v0.1.0');
+  expect(job.blueprint.sync_avenue.renderer_bridge.authority_granted).toBe(false);
   expect(job.blueprint.shots.every(shot => shot.sync_avenue.binding_count >= 4)).toBe(true);
   expect(job.blueprint.shots.every(shot => shot.sync_avenue.world_state_fingerprint.startsWith('sha256:'))).toBe(true);
+  expect(job.blueprint.shots.every(shot => shot.sync_avenue.renderer_bridge.authority_granted === false)).toBe(true);
+  expect(job.blueprint.shots.every(shot => shot.provider_prompt.includes('SYNC AVENUE REALITY CONTRACT'))).toBe(true);
+  expect(job.blueprint.shots.every(shot => shot.provider_prompt.includes('cause:shared_force'))).toBe(true);
+  expect(job.blueprint.shots.every(shot => shot.provider_prompt.includes(founderIntent))).toBe(true);
 
   const artifactResponse = await request.get(`/api/video-engine/jobs/${encodeURIComponent(job.job_id)}/html`, { headers });
   expect(artifactResponse.status()).toBe(200);
