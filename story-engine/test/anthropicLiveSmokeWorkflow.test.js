@@ -84,9 +84,30 @@ test('failure diagnostics inspect the same bounded response clone and reduce it 
   assert.doesNotMatch(job, /error_message/);
 });
 
+test('external provider availability is a receipted plugin blocker, not a false core failure', () => {
+  const job = jobPrefix(workflow, 'anthropic-live-smoke');
+  assert.ok(job.includes("architecture_contract: 'juss/self-sufficient-architecture@v1'"));
+  assert.ok(job.includes("provider_role: 'plugin'"));
+  assert.ok(job.includes("status: 'blocked'"));
+  assert.ok(job.includes("blocker_reason: 'credential_unavailable'"));
+  assert.ok(job.includes("diagnostic?.reason === 'spending_limit'"));
+  assert.ok(job.includes("diagnostic?.reason === 'data_retention'"));
+  assert.ok(job.includes("return 'provider_unavailable'"));
+  assert.ok(job.includes("['llm_timeout', 'llm_provider_request_failed', 'llm_circuit_open']"));
+  assert.ok(job.includes("status: blockerReason ? 'blocked' : 'failed'"));
+});
+
+test('integration defects still fail closed even when provider blockers are scoped', () => {
+  const job = jobPrefix(workflow, 'anthropic-live-smoke');
+  assert.ok(job.includes("code: 'provider_provenance_mismatch'"));
+  assert.ok(job.includes("code: 'provider_empty_text'"));
+  assert.ok(job.includes("status: blockerReason ? 'blocked' : 'failed'"));
+  assert.ok(job.includes('process.exitCode = 1'));
+});
+
 test('failure receipt never serializes provider output or exception message', () => {
   const job = jobPrefix(workflow, 'anthropic-live-smoke');
-  assert.ok(job.includes("status: 'failed'"));
+  assert.ok(job.includes("'failed'"));
   assert.ok(job.includes('error_code: errorCode'));
   assert.ok(job.includes('http_status:'));
   assert.doesNotMatch(job, /message:\s*String\(error/);
