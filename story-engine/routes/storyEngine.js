@@ -194,6 +194,26 @@ export default function storyEngineRoutes(router, db) {
     }
   });
 
+  router.get('/api/story-engine/workspaces/:workspace_id/latest-run', async (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
+    try {
+      ensureStoryEngineSchema(db);
+      const latest = db.prepare(`
+        SELECT run_id
+        FROM story_engine_runs
+        WHERE workspace_id=?
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 1
+      `).get(req.params.workspace_id);
+      if (!latest) return json(res, 404, { error: 'No Story Engine run exists for this workspace.' });
+      const run = await getStoryEngineRun(db, latest.run_id, { resume: false });
+      if (!run) return json(res, 404, { error: 'Story Engine run not found.' });
+      json(res, 200, run);
+    } catch (error) {
+      json(res, 500, { error: error.message });
+    }
+  });
+
   router.get('/api/story-engine/brain', (req, res) => {
     try { json(res, 200, scopedBrain(db, req.auth)); }
     catch (error) { json(res, 500, { error: error.message }); }

@@ -27,14 +27,20 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
   expect(created.workspace_id).toBeTruthy();
   expect(created.dispatch_id).toBeTruthy();
 
-  const drainResponse = await page.context().request.post('/api/runtime/drain', {
+  const globalDrainDenied = await page.context().request.post('/api/runtime/drain', {
     data: { limit: 5 }
   });
-  expect(drainResponse.status()).toBe(200);
-  const drained = await drainResponse.json();
-  const dispatch = drained.processed.find(item => item.dispatch_id === created.dispatch_id);
-  expect(dispatch?.status).toBe('completed');
-  expect(dispatch?.manuscript).toMatchObject({ status: 'persisted', chapter_count: 6 });
+  expect(globalDrainDenied.status()).toBe(403);
+
+  const processResponse = await page.context().request.post(
+    `/api/runtime/dispatch/${encodeURIComponent(created.dispatch_id)}/process`,
+    { data: {} }
+  );
+  expect(processResponse.status()).toBe(200);
+  const dispatch = await processResponse.json();
+  expect(dispatch.dispatch_id).toBe(created.dispatch_id);
+  expect(dispatch.status).toBe('completed');
+  expect(dispatch.manuscript).toMatchObject({ status: 'persisted', chapter_count: 6 });
   expect(dispatch.manuscript.word_count).toBeGreaterThan(300);
 
   await expect(page.locator('#runStatus')).toHaveText('complete', { timeout: 30_000 });
@@ -68,4 +74,12 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
     non_empty_unit_count: 6,
     expected_unit_count: 6
   });
+
+  await page.goto(`/story_home.html?workspace_id=${encodeURIComponent(created.workspace_id)}`);
+  await expect(page.getByTestId('story-home-run-id')).toContainText(created.run_id);
+  await expect(page.getByTestId('story-home-status')).toHaveText('Complete');
+  await expect(page.getByRole('button', { name: 'Open in Story Engine' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open in Story Engine' }).click();
+  await expect(page).toHaveURL(new RegExp(`story_engine\\.html\\?.*run_id=${created.run_id}`));
+  await expect(page.locator('#runStatus')).toHaveText('complete');
 });
