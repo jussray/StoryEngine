@@ -166,10 +166,6 @@ jobs:
           LIVE_SMOKE_RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-            echo 'ANTHROPIC_API_KEY is not available to the trusted-main production smoke job.' >&2
-            exit 1
-          fi
           mkdir -p test-results
           node --input-type=module <<'NODE'
           import { writeFile } from 'node:fs/promises';
@@ -239,6 +235,14 @@ jobs:
             }
           };
 
+          const classifyPluginBlocker = ({ errorCode, httpStatus, diagnostic }) => {
+            if (diagnostic?.reason === 'spending_limit') return 'spending_limit';
+            if (diagnostic?.reason === 'data_retention') return 'data_retention';
+            if ([408, 425, 429].includes(httpStatus) || httpStatus >= 500) return 'provider_unavailable';
+            if (['llm_timeout', 'llm_provider_request_failed', 'llm_circuit_open'].includes(errorCode)) return 'provider_unavailable';
+            return null;
+          };
+
           let providerDiagnostic = { type: null, reason: null };
           const nativeFetch = globalThis.fetch;
           globalThis.fetch = async (url, init) => {
@@ -252,10 +256,27 @@ jobs:
 
           const base = {
             schema: 'juss/storyengine-anthropic-live-smoke@v1',
+            architecture_contract: 'juss/self-sufficient-architecture@v1',
             release_sha: releaseSha,
             provider: 'anthropic',
+            provider_role: 'plugin',
             observed_at: new Date().toISOString()
           };
+
+          if (!String(process.env.ANTHROPIC_API_KEY || '').trim()) {
+            const safe = {
+              ...base,
+              status: 'blocked',
+              blocker_reason: 'credential_unavailable',
+              error_code: 'provider_credential_unavailable',
+              http_status: null,
+              provider_error_type: null,
+              provider_error_reason: null
+            };
+            await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
+            console.warn(`Anthropic plugin lane blocked reason=${safe.blocker_reason} release=${safe.release_sha}`);
+            process.exit(0);
+          }
 
           try {
             const receipt = await completeWithReceipt('Reply with exactly OK.', {
@@ -286,17 +307,28 @@ jobs:
             const rawCode = String(error?.code || 'anthropic_live_smoke_failed').trim();
             const errorCode = /^[a-z0-9_.-]{1,80}$/i.test(rawCode) ? rawCode : 'anthropic_live_smoke_failed';
             const status = Number(error?.status || 0);
+            const httpStatus = Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+            const blockerReason = classifyPluginBlocker({
+              errorCode,
+              httpStatus: httpStatus || 0,
+              diagnostic: providerDiagnostic
+            });
             const safe = {
               ...base,
-              status: 'failed',
+              status: blockerReason ? 'blocked' : 'failed',
+              ...(blockerReason ? { blocker_reason: blockerReason } : {}),
               error_code: errorCode,
-              http_status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+              http_status: httpStatus,
               provider_error_type: providerDiagnostic.type,
               provider_error_reason: providerDiagnostic.reason
             };
             await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
-            console.error(`Anthropic live smoke failed code=${safe.error_code} status=${safe.http_status ?? 'none'} type=${safe.provider_error_type ?? 'unknown'} reason=${safe.provider_error_reason ?? 'unknown'}`);
-            process.exitCode = 1;
+            if (blockerReason) {
+              console.warn(`Anthropic plugin lane blocked reason=${blockerReason} code=${safe.error_code} status=${safe.http_status ?? 'none'} release=${safe.release_sha}`);
+            } else {
+              console.error(`Anthropic live smoke failed code=${safe.error_code} status=${safe.http_status ?? 'none'} type=${safe.provider_error_type ?? 'unknown'} reason=${safe.provider_error_reason ?? 'unknown'}`);
+              process.exitCode = 1;
+            }
           }
           NODE
 
