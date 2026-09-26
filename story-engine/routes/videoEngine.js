@@ -48,6 +48,8 @@ import {
   recordRenderSubmission,
   releaseRenderLease
 } from '../lib/videoRenderLedger.js';
+import { attachSyncAvenueToStoryVideoJob } from '../lib/syncAvenue.js';
+import { bindSyncAvenueRendererDirections } from '../lib/syncAvenueRendererBridge.js';
 
 function publicFailures(error) {
   return Array.isArray(error?.failures) ? error.failures : [];
@@ -129,8 +131,18 @@ export default function videoEngineRoutes(router, db) {
     const workspaceId = String(req.body?.workspace_id || '').trim();
     if (!workspaceId) return json(res, 400, { error: 'workspace_id is required.' });
     if (!requireWorkspaceAccess(req, res, workspaceId)) return;
-    try { json(res, 201, createStoryVideoJob(db, req.body || {})); }
-    catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message, code: error.code || null, failures: publicFailures(error) }); }
+    try {
+      const created = createStoryVideoJob(db, req.body || {});
+      const synchronized = attachSyncAvenueToStoryVideoJob(db, created, req.body || {});
+      const renderBound = bindSyncAvenueRendererDirections(db, synchronized);
+      json(res, 201, renderBound);
+    } catch (error) {
+      json(res, /not found/i.test(error.message) ? 404 : 400, {
+        error: error.message,
+        code: error.code || null,
+        failures: publicFailures(error)
+      });
+    }
   });
 
   router.get('/api/video-engine/jobs/:job_id/html', (req, res) => {

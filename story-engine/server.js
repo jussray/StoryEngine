@@ -52,6 +52,7 @@ import bootstrapEngineRoutes from './routes/bootstrapEngine.js';
 import ipSeedRoutes from './routes/ipSeed.js';
 import artifactRoutes from './routes/artifacts.js';
 import revenueRoutes from './routes/revenue.js';
+import syncAvenueRoutes from './routes/syncAvenue.js';
 import videoEngineRoutes from './routes/videoEngine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -132,6 +133,7 @@ bootstrapEngineRoutes(router, db);
 ipSeedRoutes(router, db);
 artifactRoutes(router, db);
 revenueRoutes(router, db);
+syncAvenueRoutes(router, db);
 videoEngineRoutes(router, db);
 
 const oodaClients = new Set();
