@@ -1,0 +1,76 @@
+name: Sync Avenue Proof
+
+on:
+  pull_request:
+    paths:
+      - 'story-engine/lib/syncAvenue.js'
+      - 'story-engine/routes/syncAvenue.js'
+      - 'story-engine/server.js'
+      - 'story-engine/test/syncAvenue.test.js'
+      - 'story-engine/e2e/sync_avenue.spec.js'
+      - '.github/workflows/sync-avenue-proof.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'story-engine/lib/syncAvenue.js'
+      - 'story-engine/routes/syncAvenue.js'
+      - 'story-engine/server.js'
+      - 'story-engine/test/syncAvenue.test.js'
+      - 'story-engine/e2e/sync_avenue.spec.js'
+      - '.github/workflows/sync-avenue-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  prove:
+    name: Reality engine + Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: story-engine/package-lock.json
+
+      - name: Install
+        working-directory: story-engine
+        run: npm ci
+
+      - name: Focused causal engine proof
+        working-directory: story-engine
+        run: node --test test/syncAvenue.test.js
+
+      - name: Install Chromium
+        working-directory: story-engine
+        run: npx playwright install --with-deps chromium
+
+      - name: Real API + Playwright proof
+        working-directory: story-engine
+        run: npx playwright test e2e/sync_avenue.spec.js
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-avenue-proof-${{ github.run_attempt }}
+          path: |
+            story-engine/playwright-report/
+            story-engine/test-results/
+          if-no-files-found: ignore
