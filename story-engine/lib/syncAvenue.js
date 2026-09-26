@@ -538,12 +538,6 @@ export function compileStorySyncAvenue(blueprint, input = {}) {
     const explicit = explicitPerceptionForShot(input, shot.shot_id);
     const plan = compileSyncAvenue({
       ...input,
-      founder_intent: {
-        modality: founderIntent.modality,
-        content: founderIntent.content,
-        source_ref: founderIntent.source_ref,
-        audio_fingerprint: founderIntent.audio_fingerprint
-      },
       duration_ms: durationMs,
       reality_perception: explicit || derivedStoryPerception(blueprint, shot),
       perception_origin: explicit ? explicit.origin : 'derived_story_context'
