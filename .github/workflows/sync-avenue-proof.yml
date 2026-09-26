@@ -4,9 +4,11 @@ on:
   pull_request:
     paths:
       - 'story-engine/lib/syncAvenue.js'
+      - 'story-engine/lib/syncAvenueRendererBridge.js'
       - 'story-engine/routes/syncAvenue.js'
       - 'story-engine/server.js'
       - 'story-engine/test/syncAvenue.test.js'
+      - 'story-engine/test/syncAvenueRendererBridge.test.js'
       - 'story-engine/e2e/sync_avenue.spec.js'
       - '.github/workflows/sync-avenue-proof.yml'
   push:
@@ -14,9 +16,11 @@ on:
       - main
     paths:
       - 'story-engine/lib/syncAvenue.js'
+      - 'story-engine/lib/syncAvenueRendererBridge.js'
       - 'story-engine/routes/syncAvenue.js'
       - 'story-engine/server.js'
       - 'story-engine/test/syncAvenue.test.js'
+      - 'story-engine/test/syncAvenueRendererBridge.test.js'
       - 'story-engine/e2e/sync_avenue.spec.js'
       - '.github/workflows/sync-avenue-proof.yml'
   workflow_dispatch:
@@ -30,7 +34,7 @@ env:
 
 jobs:
   prove:
-    name: Reality engine + Playwright
+    name: Reality engine + renderer + Playwright
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -53,9 +57,9 @@ jobs:
         working-directory: story-engine
         run: npm ci
 
-      - name: Focused causal engine proof
+      - name: Focused causal and renderer-bound proof
         working-directory: story-engine
-        run: node --test test/syncAvenue.test.js
+        run: node --test test/syncAvenue.test.js test/syncAvenueRendererBridge.test.js
 
       - name: Install Chromium
         working-directory: story-engine
