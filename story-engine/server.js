@@ -11,6 +11,7 @@ import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
 import { requestContext, requireAuth, enforceWorkspaceAccess, enforceOperatorApiBoundary, securitySnapshot } from './lib/securityContext.js';
 import { enforcePageAccess } from './lib/pageGuard.js';
+import { resolvePublicPath } from './lib/staticPath.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
@@ -240,7 +241,12 @@ const server = createServer((req, res) => {
   let urlPath = req.url.split('?')[0];
   if (urlPath === '/') urlPath = '/front_door.html';
 
-  const filePath = join(__dirname, 'public', urlPath);
+  const filePath = resolvePublicPath(join(__dirname, 'public'), urlPath);
+  if (!filePath) {
+    res.writeHead(404);
+    res.end('Not found');
+    return;
+  }
   const ext = extname(filePath);
 
   if (ext === '.html' || ext === '.js') {
