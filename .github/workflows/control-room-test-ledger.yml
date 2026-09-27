@@ -45,6 +45,9 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Verify protected intelligence and live-proof contract
+        run: node scripts/verify-protected-intelligence-contract.mjs
+
       - name: Run Control Room test-ledger contracts
         run: node --test test/control-room-test-ledger.test.mjs
 
