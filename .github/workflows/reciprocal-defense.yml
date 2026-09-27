@@ -6,8 +6,10 @@ on:
     paths:
       - security/reciprocal-defense.mjs
       - security/reciprocal-ingress.mjs
+      - security/full-attack-unit.mjs
       - test/reciprocal-defense.test.mjs
       - test/reciprocal-ingress.test.mjs
+      - test/full-attack-unit.test.mjs
       - story-engine/server.js
       - .github/workflows/reciprocal-defense.yml
   workflow_dispatch:
@@ -22,9 +24,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Verify reciprocal defense and ingress invariants
-        run: node --test test/reciprocal-defense.test.mjs test/reciprocal-ingress.test.mjs
+      - name: Verify reciprocal defense, ingress, and full-unit invariants
+        run: node --test test/reciprocal-defense.test.mjs test/reciprocal-ingress.test.mjs test/full-attack-unit.test.mjs
       - name: Verify StoryEngine ingress wiring
         run: |
           grep -q "observeNodeRequest(req, process.env, 'story-engine')" story-engine/server.js
           grep -q 'writeSyntheticNodeResponse(res, reciprocal)' story-engine/server.js
+          grep -q "runFullAttackUnit" security/reciprocal-ingress.mjs
+          node --check story-engine/server.js
