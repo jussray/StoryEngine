@@ -17,6 +17,11 @@ import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
 import { publicL99GuardrailSnapshot, renderL99GuardrailPage } from './lib/guardrails.js';
 import { runtimeIdentitySnapshot } from './lib/runtimeIdentity.js';
+import {
+  emitReciprocalTelemetry,
+  observeNodeRequest,
+  writeSyntheticNodeResponse,
+} from '../security/reciprocal-ingress.mjs';
 
 import authSessionRoutes from './routes/authSession.js';
 import storyRoutes from './routes/story.js';
@@ -193,7 +198,11 @@ function serveStatic(filePath, ext, res) {
   res.end(readFileSync(filePath));
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
+  const reciprocal = await observeNodeRequest(req, process.env, 'story-engine');
+  emitReciprocalTelemetry(reciprocal);
+  if (writeSyntheticNodeResponse(res, reciprocal)) return;
+
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   if (url.pathname === '/healthz') {
