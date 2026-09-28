@@ -1,6 +1,8 @@
 // lib/llmClient.js
 // Single LLM boundary for L99. Engine modules should call complete() or completeJson().
 
+import { completeMuseWithReceipt } from './museClient.js';
+
 const DEFAULT_TASK_PROVIDERS = Object.freeze({
   chapter_generation: 'anthropic',
   conflict_explanation: 'anthropic',
@@ -17,7 +19,8 @@ const DEFAULT_MODELS = Object.freeze({
   anthropic_fast: process.env.ANTHROPIC_FAST_MODEL || 'claude-haiku-4-5-20251001',
   anthropic_deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-opus-5',
   openai: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-  openrouter: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
+  openrouter: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
+  muse: process.env.MUSE_MODEL || 'muse-spark-1.3'
 });
 
 const LLM_CLIENT_STARTED_AT = Date.now();
@@ -355,6 +358,7 @@ export async function completeWithReceipt(prompt, options = {}) {
   if (provider === 'anthropic') return completeAnthropicWithReceipt(prompt, { ...options, provider });
   if (provider === 'openrouter') return completeOpenAIWithReceipt(prompt, { ...options, provider });
   if (provider === 'openai') return completeOpenAIWithReceipt(prompt, { ...options, provider });
+  if (provider === 'muse') return completeMuseWithReceipt(prompt, { ...options, provider, model: pickModel('muse', options) });
   throw new Error(`Unsupported LLM provider: ${provider}.`);
 }
 
