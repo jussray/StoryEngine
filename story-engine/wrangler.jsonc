@@ -1,0 +1,11 @@
+// Cloudflare Workers Builds deploys this folder with `npx wrangler deploy`.
+// Front door only — no static assets, so operator pages in public/ are never
+// published without the runtime behind them. Set STORYENGINE_RUNTIME_ORIGIN
+// (https origin of the stateful runtime) in the Cloudflare dashboard; until
+// then every request returns 503.
+{
+  "name": "storyengine",
+  "main": "./cloudflare-frontdoor/worker.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true
+}

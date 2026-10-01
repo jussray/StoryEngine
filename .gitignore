@@ -27,3 +27,4 @@ story-engine/artifacts/container-runtime/
 # Local OS/editor noise
 .DS_Store
 *.swp
+story-engine/.wrangler/
