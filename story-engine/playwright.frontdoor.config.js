@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   workers: 1,
-  reporter: [['list'], ['html', { outputFolder: 'playwright-report/frontdoor', open: 'never' }]],
+  reporter: [['list'], ['html', { outputFolder: 'playwright-report/frontdoor', open: 'never' }], ...(process.env.CI ? [['github']] : [])],
   outputDir: 'test-results/frontdoor',
   use: {
     baseURL: 'http://127.0.0.1:8787',
