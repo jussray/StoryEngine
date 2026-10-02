@@ -32,7 +32,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   # Before merge Railway must serve the current base, not the undeployed PR.
-  EXPECTED_RUNTIME_SHA: ${{ github.event.pull_request.base.sha || inputs.expected_runtime_sha || '4ec29c1821de8c7bb8c381df31e3f98d0c6016f4' }}
+  # A dispatch input is an exact demand; otherwise the target is the PR base or
+  # live main, and the live release may lag it only by edge/test/CI-only commits.
+  RUNTIME_TARGET_SHA: ${{ github.event.pull_request.base.sha || '' }}
+  EXPECTED_RUNTIME_SHA: ${{ inputs.expected_runtime_sha || '' }}
 
 jobs:
   frontdoor-live:
@@ -45,6 +48,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 0
       - name: Verify immutable head
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - uses: actions/setup-node@v4
@@ -62,6 +66,11 @@ jobs:
         run: python runtime/founder_truth_gate.py
       - name: Dry run actual Worker configuration
         run: npx --no-install wrangler deploy --dry-run
+      - name: Resolve runtime-equivalent Railway release
+        if: env.EXPECTED_RUNTIME_SHA == ''
+        run: |
+          target="${RUNTIME_TARGET_SHA:-$(git rev-parse origin/main)}"
+          node cloudflare-frontdoor/proof/resolve-runtime-sha.js "$target" >> "$GITHUB_ENV"
       - run: npx playwright install --with-deps chromium
       - name: Prove actual Worker runtime against Railway
         run: npx playwright test --config=playwright.frontdoor.config.js
