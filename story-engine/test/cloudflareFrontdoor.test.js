@@ -149,3 +149,13 @@ test('wrangler config deploys the front door only with a first-class API rate-li
     simple: { limit: 120, period: 60 }
   }]);
 });
+
+test('deployed runtime origin matches canonical production domain authority', () => {
+  const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+  const authority = JSON.parse(readFileSync(new URL('../config/domain-authority.json', import.meta.url), 'utf8'));
+  assert.equal(authority.mode, 'production');
+  assert.equal(config.vars.STORYENGINE_RUNTIME_ORIGIN, authority.productionOrigin);
+  assert.equal(new URL(authority.productionOrigin).protocol, 'https:');
+  assert.equal(new URL(authority.productionOrigin).origin, authority.productionOrigin);
+});

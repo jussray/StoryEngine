@@ -1,0 +1,87 @@
+name: Cloudflare Frontdoor Proof
+
+on:
+  pull_request:
+    paths:
+      - 'story-engine/cloudflare-frontdoor/**'
+      - 'story-engine/wrangler.jsonc'
+      - 'story-engine/config/domain-authority.json'
+      - 'story-engine/test/cloudflareFrontdoor.test.js'
+      - 'story-engine/playwright.frontdoor.config.js'
+      - '.github/workflows/cloudflare-frontdoor-proof.yml'
+  push:
+    branches: ['fix/cloudflare-runtime-origin']
+    paths:
+      - 'story-engine/cloudflare-frontdoor/**'
+      - 'story-engine/wrangler.jsonc'
+      - 'story-engine/config/domain-authority.json'
+      - 'story-engine/test/cloudflareFrontdoor.test.js'
+      - 'story-engine/playwright.frontdoor.config.js'
+      - '.github/workflows/cloudflare-frontdoor-proof.yml'
+  workflow_dispatch:
+    inputs:
+      expected_runtime_sha:
+        description: Exact deployed Railway SHA expected by this read-only proof
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  # Before merge Railway must serve the current base, not the undeployed PR.
+  # A dispatch input is an exact demand; otherwise the target is the PR base or
+  # live main, and the live release may lag it only by edge/test/CI-only commits.
+  RUNTIME_TARGET_SHA: ${{ github.event.pull_request.base.sha || '' }}
+  EXPECTED_RUNTIME_SHA: ${{ inputs.expected_runtime_sha || '' }}
+
+jobs:
+  frontdoor-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: story-engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 0
+      - name: Verify immutable head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: story-engine/package-lock.json
+      - run: npm ci
+      - name: Install exact Cloudflare deploy tooling without changing the lockfile
+        run: npm install --no-save --package-lock=false wrangler@4.142.0
+      - name: Verify front-door contracts
+        run: node --test test/cloudflareFrontdoor.test.js
+      - name: Run founder truth gate
+        working-directory: .
+        run: python runtime/founder_truth_gate.py
+      - name: Dry run actual Worker configuration
+        run: npx --no-install wrangler deploy --dry-run
+      - name: Resolve runtime-equivalent Railway release
+        if: env.EXPECTED_RUNTIME_SHA == ''
+        run: |
+          target="${RUNTIME_TARGET_SHA:-$(git rev-parse origin/main)}"
+          node cloudflare-frontdoor/proof/resolve-runtime-sha.js "$target" >> "$GITHUB_ENV"
+      - run: npx playwright install --with-deps chromium
+      - name: Prove actual Worker runtime against Railway
+        run: npx playwright test --config=playwright.frontdoor.config.js
+      - name: Retain exact-head proof including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-frontdoor-${{ env.EXPECTED_HEAD_SHA }}-${{ github.run_attempt }}
+          path: |
+            artifacts/founder-truth/
+            story-engine/playwright-report/frontdoor/
+            story-engine/test-results/frontdoor/
+          if-no-files-found: warn
+          retention-days: 30
