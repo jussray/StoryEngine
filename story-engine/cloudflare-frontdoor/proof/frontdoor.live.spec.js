@@ -53,5 +53,13 @@ test('unauthenticated API passes the actual rate limiter and preserves auth deni
   expect([401, 403]).toContain(direct.status());
   expect(edge.status()).toBe(direct.status());
   expect(edge.headers()['x-storyengine-edge']).toBeUndefined();
-  expect(await edge.json()).toEqual(await direct.json());
+  const { request_id: directId, ...directPayload } = await direct.json();
+  const { request_id: edgeId, ...edgePayload } = await edge.json();
+  // Separate requests receive separate trace IDs; compare the auth contract
+  // while requiring a real runtime-generated ID on each response.
+  expect(directId).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(edgeId).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(edgeId).not.toBe(directId);
+  expect(edgePayload).toEqual(directPayload);
+  expect(edgePayload.error).toBe('unauthorized');
 });
