@@ -67,7 +67,7 @@ export async function rateLimitKey(request) {
 
 async function enforceApiRateLimit(request, env) {
   const pathname = new URL(request.url).pathname;
-  if (!pathname.startsWith(API_PREFIX)) return null;
+  if (pathname !== '/api' && !pathname.startsWith(API_PREFIX)) return null;
 
   const limiter = env?.[RATE_LIMIT_BINDING];
   if (!limiter || typeof limiter.limit !== 'function') {
