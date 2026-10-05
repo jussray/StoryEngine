@@ -21,8 +21,8 @@ on:
   workflow_dispatch:
     inputs:
       expected_runtime_sha:
-        description: Exact deployed Railway SHA expected by this read-only proof
-        required: true
+        description: Optional exact Railway SHA override; leave blank to prove runtime equivalence to the target commit
+        required: false
         type: string
 
 permissions:
@@ -32,8 +32,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   # Before merge Railway must serve the current base, not the undeployed PR.
-  # A dispatch input is an exact demand; otherwise the target is the PR base or
-  # live main, and the live release may lag it only by edge/test/CI-only commits.
+  # A non-empty dispatch input is an exact demand; when blank, resolve the live
+  # Railway SHA and accept it only if every intervening path is proven non-runtime.
   RUNTIME_TARGET_SHA: ${{ github.event.pull_request.base.sha || '' }}
   EXPECTED_RUNTIME_SHA: ${{ inputs.expected_runtime_sha || '' }}
 
