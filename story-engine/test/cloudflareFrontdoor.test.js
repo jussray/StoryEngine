@@ -159,3 +159,9 @@ test('deployed runtime origin matches canonical production domain authority', ()
   assert.equal(new URL(authority.productionOrigin).protocol, 'https:');
   assert.equal(new URL(authority.productionOrigin).origin, authority.productionOrigin);
 });
+
+test('manual front-door proof defaults to runtime-equivalence mode', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/cloudflare-frontdoor-proof.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /expected_runtime_sha:\s*\n\s+description:.*\n\s+required: false\s*\n\s+type: string/);
+  assert.match(workflow, /Resolve runtime-equivalent Railway release[\s\S]*?if: env\.EXPECTED_RUNTIME_SHA == ''/);
+});
