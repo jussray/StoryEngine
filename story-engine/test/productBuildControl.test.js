@@ -187,3 +187,62 @@ test('product-build execution fails closed when an outer deferred transaction co
     db.close();
   }
 });
+
+
+test('production product-build exact-head binding follows provider-native Railway identity', () => {
+  const directive = validDirective();
+  const prior = {
+    NODE_ENV: process.env.NODE_ENV,
+    EXPECTED_HEAD_SHA: process.env.EXPECTED_HEAD_SHA,
+    RAILWAY_GIT_COMMIT_SHA: process.env.RAILWAY_GIT_COMMIT_SHA,
+    L99_RELEASE_SHA: process.env.L99_RELEASE_SHA,
+  };
+  try {
+    process.env.NODE_ENV = 'production';
+    process.env.EXPECTED_HEAD_SHA = 'f'.repeat(40);
+    process.env.RAILWAY_GIT_COMMIT_SHA = expectedHeadSha;
+    process.env.L99_RELEASE_SHA = 'e'.repeat(40);
+
+    // A stale CI marker cannot override provider-native production identity.
+    assert.deepEqual(validateProductBuildDirective(directive), []);
+
+    process.env.RAILWAY_GIT_COMMIT_SHA = 'f'.repeat(40);
+    assert.ok(validateProductBuildDirective(directive)
+      .includes('product build directive expectedHeadSha does not match this exact runtime head'));
+
+    process.env.RAILWAY_GIT_COMMIT_SHA = 'not-a-sha';
+    assert.ok(validateProductBuildDirective(directive)
+      .includes('trusted runtime head must be an exact 40-character Git SHA'));
+  } finally {
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('production product-build exact-head binding uses configured fallback only without Railway identity and otherwise fails closed', () => {
+  const directive = validDirective();
+  const prior = {
+    NODE_ENV: process.env.NODE_ENV,
+    EXPECTED_HEAD_SHA: process.env.EXPECTED_HEAD_SHA,
+    RAILWAY_GIT_COMMIT_SHA: process.env.RAILWAY_GIT_COMMIT_SHA,
+    L99_RELEASE_SHA: process.env.L99_RELEASE_SHA,
+  };
+  try {
+    process.env.NODE_ENV = 'production';
+    delete process.env.EXPECTED_HEAD_SHA;
+    delete process.env.RAILWAY_GIT_COMMIT_SHA;
+    process.env.L99_RELEASE_SHA = expectedHeadSha;
+    assert.deepEqual(validateProductBuildDirective(directive), []);
+
+    delete process.env.L99_RELEASE_SHA;
+    assert.ok(validateProductBuildDirective(directive)
+      .includes('product build execution requires trusted runtime exact-head identity'));
+  } finally {
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
