@@ -228,6 +228,34 @@ test('OpenAI-compatible malformed success envelope counts as failure instead of 
   }
 });
 
+test('OpenAI-compatible blank assistant text counts as failure instead of success', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  try {
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.LLM_BASE_URL;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      id: 'chatcmpl_test_blank',
+      model: 'gpt-test',
+      choices: [{ message: { role: 'assistant', content: '   ' } }]
+    }), { status: 200 });
+
+    const { complete, llmRoutingSnapshot } = await freshClient();
+    await assert.rejects(
+      () => complete('hello', { provider: 'openai', maxRetries: 0 }),
+      error => error.code === 'llm_provider_empty_text' && /no text output/.test(error.message)
+    );
+    const state = llmRoutingSnapshot().circuits.openai;
+    assert.equal(state.calls, 1);
+    assert.equal(state.successes, 0);
+    assert.equal(state.failures, 1);
+  } finally {
+    globalThis.fetch = priorFetch;
+    restoreEnv(priorEnv);
+  }
+});
+
 test('Opus 5 request omits deprecated temperature even when supplied by a caller', { concurrency: false }, async () => {
   const priorEnv = captureEnv();
   const priorFetch = globalThis.fetch;
