@@ -69,6 +69,17 @@ jobs:
       - name: Verify portable Juss OS command contract
         run: node scripts/verify-juss-os-commands.mjs
 
+      - name: Reject tracked runtime database artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked="$(git ls-files 'story-engine/db/*.db' 'story-engine/db/*.db-*' 'story-engine/db/*.sqlite' 'story-engine/db/*.sqlite-*' 'story-engine/db/*.sqlite3' 'story-engine/db/*.sqlite3-*')"
+          if [ -n "$tracked" ]; then
+            printf '%s\n' "$tracked" >&2
+            echo 'Runtime database artifacts must never be tracked in Git.' >&2
+            exit 1
+          fi
+
       - name: Ensure deterministic MP4 renderer is available
         working-directory: story-engine
         run: |
