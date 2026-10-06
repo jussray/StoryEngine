@@ -199,7 +199,7 @@ function safeProviderErrorType(rawBody) {
 
 function safeFetchError(provider, error) {
   if (error?.code === 'llm_provider_http_error') return error;
-  if (['llm_provider_response_too_large', 'llm_provider_invalid_json'].includes(error?.code)) return error;
+  if (['llm_provider_response_too_large', 'llm_provider_invalid_json', 'llm_provider_invalid_envelope', 'llm_provider_empty_text'].includes(error?.code)) return error;
   if (error?.code === 'llm_timeout' || error?.name === 'AbortError') {
     const timeout = new Error(`LLM provider request timed out for ${provider}.`);
     timeout.name = 'AbortError';
@@ -269,7 +269,7 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
 
   const baseUrl = process.env.LLM_BASE_URL || (useOpenRouter ? 'https://openrouter.ai/api/v1' : 'https://api.openai.com/v1');
   const model = pickModel(provider, options);
-  const response = await fetchWithPolicy(provider, `${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+  const { data, text } = await fetchWithPolicy(provider, `${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: headers({ Authorization: `Bearer ${apiKey}` }),
     body: JSON.stringify({
@@ -282,16 +282,21 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
         { role: 'user', content: prompt }
       ].filter(Boolean)
     })
-  }, options);
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error('OpenAI-compatible response was not valid JSON.');
-  }
-  const text = data?.choices?.[0]?.message?.content;
-  if (typeof text !== 'string') throw new Error('OpenAI-compatible response is missing assistant text.');
+  }, options, async response => {
+    const data = await readBoundedJsonResponse(response, 'OpenAI-compatible', options);
+    const text = data?.choices?.[0]?.message?.content;
+    if (typeof text !== 'string') {
+      const error = new Error('OpenAI-compatible response is missing assistant text.');
+      error.code = 'llm_provider_invalid_envelope';
+      throw error;
+    }
+    if (!text.trim()) {
+      const error = new Error('OpenAI-compatible response contained no text output.');
+      error.code = 'llm_provider_empty_text';
+      throw error;
+    }
+    return { data, text };
+  });
 
   return Object.freeze({
     text,
@@ -321,7 +326,7 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
     body.temperature = options.temperature;
   }
 
-  const data = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
+  const { data, text } = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: headers({
       'x-api-key': apiKey,
@@ -329,16 +334,25 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
       ...(workspaceId ? { 'anthropic-workspace-id': workspaceId } : {})
     }),
     body: JSON.stringify(body)
-  }, options, response => readBoundedJsonResponse(response, 'Anthropic', options));
-  if (data?.type !== 'message' || data?.role !== 'assistant' || !Array.isArray(data.content)) {
-    throw new Error('Anthropic response is not a valid Messages API assistant envelope.');
-  }
-  const text = data.content
-    .filter(part => part?.type === 'text' && typeof part.text === 'string')
-    .map(part => part.text)
-    .join('\n')
-    .trim();
-  if (!text) throw new Error('Anthropic response contained no text output.');
+  }, options, async response => {
+    const data = await readBoundedJsonResponse(response, 'Anthropic', options);
+    if (data?.type !== 'message' || data?.role !== 'assistant' || !Array.isArray(data.content)) {
+      const error = new Error('Anthropic response is not a valid Messages API assistant envelope.');
+      error.code = 'llm_provider_invalid_envelope';
+      throw error;
+    }
+    const text = data.content
+      .filter(part => part?.type === 'text' && typeof part.text === 'string')
+      .map(part => part.text)
+      .join('\n')
+      .trim();
+    if (!text) {
+      const error = new Error('Anthropic response contained no text output.');
+      error.code = 'llm_provider_empty_text';
+      throw error;
+    }
+    return { data, text };
+  });
 
   return Object.freeze({
     text,
