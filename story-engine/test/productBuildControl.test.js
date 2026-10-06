@@ -199,10 +199,11 @@ test('production product-build exact-head binding follows provider-native Railwa
   };
   try {
     process.env.NODE_ENV = 'production';
-    delete process.env.EXPECTED_HEAD_SHA;
+    process.env.EXPECTED_HEAD_SHA = 'f'.repeat(40);
     process.env.RAILWAY_GIT_COMMIT_SHA = expectedHeadSha;
     process.env.L99_RELEASE_SHA = 'e'.repeat(40);
 
+    // A stale CI marker cannot override provider-native production identity.
     assert.deepEqual(validateProductBuildDirective(directive), []);
 
     process.env.RAILWAY_GIT_COMMIT_SHA = 'f'.repeat(40);
