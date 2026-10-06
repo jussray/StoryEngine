@@ -290,6 +290,11 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
       error.code = 'llm_provider_invalid_envelope';
       throw error;
     }
+    if (!text.trim()) {
+      const error = new Error('OpenAI-compatible response contained no text output.');
+      error.code = 'llm_provider_empty_text';
+      throw error;
+    }
     return { data, text };
   });
 
