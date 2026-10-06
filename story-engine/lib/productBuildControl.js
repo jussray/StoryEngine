@@ -73,11 +73,14 @@ function normalizedDirective(input = {}) {
 }
 
 function trustedRuntimeHead(options = {}) {
+  const explicit = text(options.expectedHeadSha).toLowerCase();
+  if (explicit) return explicit;
+
+  const production = process.env.NODE_ENV === 'production';
   return text(
-    options.expectedHeadSha
-      || process.env.EXPECTED_HEAD_SHA
-      || process.env.RAILWAY_GIT_COMMIT_SHA
-      || process.env.L99_RELEASE_SHA
+    production
+      ? (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.L99_RELEASE_SHA)
+      : (process.env.EXPECTED_HEAD_SHA || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.L99_RELEASE_SHA)
   ).toLowerCase();
 }
 
