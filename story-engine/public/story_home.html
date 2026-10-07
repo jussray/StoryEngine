@@ -100,19 +100,9 @@
     .convert-card:hover { border-color: #555; }
     .convert-card-title { font-size: 0.9rem; color: #f0ede8; }
     .convert-card-desc { font-size: 0.78rem; color: #666; margin-top: 0.25rem; }
-    .empty-state { font-size: 0.9rem; color: #555; padding: 1rem 0; }
     .status { font-size: 0.82rem; color: #888; min-height: 1em; }
     .status.error { color: #e05555; }
     .status.ok { color: #5aab6e; }
-    .score-pill {
-      display: inline-block;
-      font-size: 0.72rem;
-      letter-spacing: 0.06em;
-      padding: 0.15rem 0.5rem;
-      border-radius: 20px;
-      border: 1px solid #2a2a2a;
-      color: #888;
-    }
   </style>
 </head>
 <body>
@@ -125,23 +115,24 @@
     <div>
       <h1 id="storyTitle">Loading…</h1>
       <p class="meta" id="storyMeta"></p>
+      <p class="meta" id="runIdentity" data-testid="story-home-run-id"></p>
     </div>
 
     <section id="progressSection" style="display:none">
-      <p class="section-label">Progress</p>
+      <p class="section-label">Story Engine run</p>
       <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
-      <p class="progress-meta" id="progressMeta"></p>
+      <p class="progress-meta" id="progressMeta" data-testid="story-home-status"></p>
     </section>
 
     <section id="draftSection" style="display:none">
-      <p class="section-label">Ready for your review</p>
+      <p class="section-label">Draft preview</p>
       <div class="draft-card">
         <p class="draft-label" id="draftLabel">Draft</p>
         <div class="draft-preview" id="draftPreview"></div>
         <div class="draft-actions">
-          <button class="btn btn-primary" id="acceptBtn">Accept this draft</button>
-          <button class="btn" id="rejectBtn">Try again</button>
-          <button class="btn" id="editBtn">Open in writer</button>
+          <button class="btn btn-primary" id="acceptBtn">Open in Story Engine</button>
+          <button class="btn" id="rejectBtn">Review options</button>
+          <button class="btn" id="editBtn">Open chapters</button>
         </div>
         <p class="status" id="draftStatus"></p>
       </div>
@@ -159,15 +150,64 @@
     const params = new URLSearchParams(location.search);
     const workspaceId = params.get('workspace_id') || '';
     const headers = { 'Content-Type': 'application/json' };
+    let runId = null;
+
+    const PIPELINE_STAGES = [
+      'story_engine', 'intent_parser', 'creative_profile', 'ghost', 'lindymode', 'ooda',
+      'redteam_pre_runtime', 'runtime', 'story_memory', 'learning_engine',
+      'playwright_validation', 'redteam_pre_release', 'artifacts', 'release_gate',
+      'control_room', 'complete'
+    ];
 
     const CONVERT_OPTIONS = [
-      { title: 'Turn into a movie', format: 'movie', desc: 'Write a screenplay version' },
-      { title: 'TV series bible', format: 'tv', desc: 'Expand into episodes' },
-      { title: 'Picture book', format: 'picture_book', desc: 'Simplify for young readers' },
-      { title: 'Graphic novel', format: 'comic', desc: 'Page-by-page breakdown' },
-      { title: 'Game concept', format: 'game', desc: 'Build into a playable world' },
-      { title: 'Song seed', format: 'song', desc: 'Extract a lyric prompt' }
+      { title: 'Turn into a movie', format: 'movie', desc: 'Build a screenplay production pack' },
+      { title: 'TV series bible', format: 'tv', desc: 'Build a series-bible production pack' },
+      { title: 'Picture book', format: 'picture_book', desc: 'Build a picture-book production pack' },
+      { title: 'Graphic novel', format: 'comic', desc: 'Build a comic production pack' },
+      { title: 'Game concept', format: 'game', desc: 'Build a game production pack' },
+      { title: 'Song seed', format: 'song', desc: 'Build a song production pack' }
     ];
+
+    function storyEngineHref() {
+      const next = new URLSearchParams({ workspace_id: workspaceId });
+      if (runId) next.set('run_id', runId);
+      return `/story_engine.html?${next.toString()}`;
+    }
+
+    function renderConversions() {
+      const grid = document.getElementById('convertGrid');
+      grid.textContent = '';
+      CONVERT_OPTIONS.forEach(opt => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'convert-card';
+        card.innerHTML = `<div class="convert-card-title">${opt.title}</div><div class="convert-card-desc">${opt.desc}</div>`;
+        card.addEventListener('click', () => startConversion(opt.format));
+        grid.appendChild(card);
+      });
+      document.getElementById('convertSection').style.display = '';
+    }
+
+    function renderRun(run) {
+      runId = run.run_id || null;
+      const intent = run.intent || {};
+      const stageIndex = Math.max(0, PIPELINE_STAGES.indexOf(run.current_stage));
+      const complete = run.status === 'complete' || run.current_stage === 'complete';
+      const pct = complete ? 100 : Math.round((stageIndex / (PIPELINE_STAGES.length - 1)) * 100);
+      document.getElementById('progressFill').style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      document.getElementById('progressMeta').textContent = complete
+        ? 'Complete'
+        : `${run.status || 'in progress'} · ${run.current_stage || 'story_engine'}`;
+      document.getElementById('progressSection').style.display = '';
+      document.getElementById('runIdentity').textContent = runId ? `Run ${runId}` : '';
+
+      const draft = run.ghost_plan?.draft?.draft_unit || '';
+      if (draft) {
+        document.getElementById('draftLabel').textContent = intent.medium ? `First ${intent.medium} draft` : 'Draft preview';
+        document.getElementById('draftPreview').textContent = draft;
+        document.getElementById('draftSection').style.display = '';
+      }
+    }
 
     async function load() {
       if (!workspaceId) {
@@ -175,42 +215,26 @@
         document.getElementById('pageStatus').textContent = 'Return to the home page to start a story.';
         return;
       }
+
       try {
-        const res = await fetch(`/api/story-engine/runs/${encodeURIComponent(workspaceId)}`, { headers });
-        if (!res.ok) throw new Error(`Status ${res.status}`);
-        const data = await res.json();
-        const run = data.run || data;
+        const storyResponse = await fetch(`/api/story/${encodeURIComponent(workspaceId)}`, { headers });
+        const story = await storyResponse.json();
+        if (!storyResponse.ok) throw new Error(story.error || `Status ${storyResponse.status}`);
+        document.getElementById('storyTitle').textContent = story.title || 'Your story';
+        document.getElementById('storyMeta').textContent = [story.genre, story.mode].filter(Boolean).join(' · ');
 
-        document.getElementById('storyTitle').textContent = run.title || run.story_vision || 'Your story';
-        document.getElementById('storyMeta').textContent =
-          [run.medium, run.audience].filter(Boolean).join(' · ') +
-          (run.created_at ? ' · started ' + new Date(run.created_at).toLocaleDateString() : '');
-
-        const totalStages = 6;
-        const completedStages = Number(run.completed_stages || 0);
-        const pct = Math.round((completedStages / totalStages) * 100);
-        document.getElementById('progressFill').style.width = pct + '%';
-        document.getElementById('progressMeta').textContent =
-          pct < 100 ? `${pct}% — ${run.current_stage || 'building your story'}` : 'Complete';
-        document.getElementById('progressSection').style.display = '';
-
-        const draft = run.ghost_draft || run.draft_unit;
-        if (draft) {
-          document.getElementById('draftLabel').textContent =
-            run.medium ? `First ${run.medium} draft` : 'First draft';
-          document.getElementById('draftPreview').textContent = draft;
-          document.getElementById('draftSection').style.display = '';
+        const runResponse = await fetch(`/api/story-engine/workspaces/${encodeURIComponent(workspaceId)}/latest-run`, { headers });
+        if (runResponse.ok) {
+          renderRun(await runResponse.json());
+        } else if (runResponse.status === 404) {
+          document.getElementById('progressMeta').textContent = 'Workspace ready · no Story Engine run yet';
+          document.getElementById('progressSection').style.display = '';
+        } else {
+          const error = await runResponse.json().catch(() => ({}));
+          throw new Error(error.error || `Run status ${runResponse.status}`);
         }
 
-        const grid = document.getElementById('convertGrid');
-        CONVERT_OPTIONS.forEach(opt => {
-          const card = document.createElement('div');
-          card.className = 'convert-card';
-          card.innerHTML = `<div class="convert-card-title">${opt.title}</div><div class="convert-card-desc">${opt.desc}</div>`;
-          card.addEventListener('click', () => startConversion(opt.format));
-          grid.appendChild(card);
-        });
-        document.getElementById('convertSection').style.display = '';
+        renderConversions();
       } catch (err) {
         document.getElementById('storyTitle').textContent = 'Could not load your story.';
         document.getElementById('pageStatus').textContent = err.message;
@@ -219,42 +243,33 @@
     }
 
     async function startConversion(format) {
-      document.getElementById('pageStatus').textContent = `Starting ${format} conversion…`;
-      document.getElementById('pageStatus').className = 'status';
+      const status = document.getElementById('pageStatus');
+      status.textContent = `Building ${format} production pack…`;
+      status.className = 'status';
       try {
-        const res = await fetch('/api/ip-studio/convert', {
+        const res = await fetch(`/api/ip-studio/${encodeURIComponent(workspaceId)}/production-pack`, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ workspace_id: workspaceId, target_format: format })
+          body: JSON.stringify({ target_medium: format })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Status ${res.status}`);
-        document.getElementById('pageStatus').textContent = `${format} conversion started. Check IP Studio for results.`;
-        document.getElementById('pageStatus').className = 'status ok';
+        status.textContent = `${format} production pack created. Open IP Studio to inspect the result.`;
+        status.className = 'status ok';
       } catch (err) {
-        document.getElementById('pageStatus').textContent = err.message;
-        document.getElementById('pageStatus').className = 'status error';
+        status.textContent = err.message;
+        status.className = 'status error';
       }
     }
 
-    document.getElementById('acceptBtn')?.addEventListener('click', async () => {
-      document.getElementById('draftStatus').textContent = 'Saving…';
-      try {
-        const res = await fetch(`/api/story-engine/runs/${encodeURIComponent(workspaceId)}/accept-draft`, {
-          method: 'POST', headers, body: JSON.stringify({})
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed');
-        document.getElementById('draftStatus').textContent = 'Draft accepted. Your story is growing.';
-        document.getElementById('draftStatus').className = 'status ok';
-      } catch (err) {
-        document.getElementById('draftStatus').textContent = err.message;
-        document.getElementById('draftStatus').className = 'status error';
-      }
-    });
+    function openStoryEngine() {
+      location.href = storyEngineHref();
+    }
 
-    document.getElementById('editBtn')?.addEventListener('click', () => {
-      location.href = `/story_engine.html?workspace_id=${encodeURIComponent(workspaceId)}`;
+    document.getElementById('acceptBtn').addEventListener('click', openStoryEngine);
+    document.getElementById('rejectBtn').addEventListener('click', openStoryEngine);
+    document.getElementById('editBtn').addEventListener('click', () => {
+      location.href = `/chapters.html?workspace_id=${encodeURIComponent(workspaceId)}`;
     });
 
     load();
