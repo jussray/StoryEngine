@@ -307,13 +307,13 @@ def self_test():
         planted["supabase_service_role_jwt"] = service_jwt
         # A secret that exists ONLY on a side branch must still be found.
         run("checkout", "-qb", "side")
-        side_secret = "xox" + "b-" + "-".join(alnum(12) for _ in range(3))
+        side_canary = "xox" + "b-" + "-".join(alnum(12) for _ in range(3))
         with open(os.path.join(tmp, "side.txt"), "w") as fh:
-            fh.write(side_secret + "\n")
+            fh.write(side_canary + "\n")
         run("add", "-A")
         run("commit", "-qm", "side-branch only")
         run("checkout", "-q", "-")
-        planted["slack_token"] = side_secret
+        planted["slack_token"] = side_canary
         result = scan(tmp)
         found = {f["rule"] for f in result["findings"]}
         failures = [f"missed {r}" for r in planted if r not in found]
