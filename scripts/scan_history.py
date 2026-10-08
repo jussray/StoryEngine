@@ -31,7 +31,7 @@ means rotate the credential first, then decide whether history rewrite is worth 
 import argparse, hashlib, json, math, os, re, subprocess, sys, tempfile
 from collections import defaultdict
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 MAX_BLOB = 3_000_000
 
 # BLOCK: high-confidence credential formats. REVIEW: plausible, often public-by-design or noisy.
@@ -115,7 +115,8 @@ def jwt_role(token):
 
 
 def redact(s):
-    return s if len(s) <= 10 else f"{s[:6]}…{s[-4:]} (len {len(s)})"
+    """Show only the leading format prefix and the length; never any trailing secret characters."""
+    return f"{s[:6]}… (len {len(s)})" if len(s) > 6 else f"… (len {len(s)})"
 
 
 def fingerprint(rule, value):
@@ -234,9 +235,11 @@ def receipt(repo, result, verdict):
     tool_hash = hashlib.sha256(open(os.path.abspath(__file__), "rb").read()).hexdigest()
     ident = head_identity(repo)
     body = {"tool": "scan_history.py", "version": VERSION, "repository": os.environ.get("GITHUB_REPOSITORY") or os.path.abspath(repo),
-            **ident, **result, "verdict": verdict,
+            **ident, **{k: v for k, v in result.items() if k != "findings"}, "verdict": verdict,
+            # Persisted/published evidence carries no secret-derived text: fingerprints identify findings.
+            "findings": [{k: v for k, v in f.items() if k != "redacted"} for f in result["findings"]],
             "proofCookie": "sha256:" + tool_hash,
-            "note": "Values are redacted; fingerprints identify findings without revealing them. A green scan is evidence about committed history only, not about secrets stored elsewhere."}
+            "note": "No values or partial values are stored; fingerprints identify findings without revealing them. A green scan is evidence about committed history only, not about secrets stored elsewhere."}
     body["fingerprint"] = "sha256:" + hashlib.sha256(json.dumps(
         {k: body[k] for k in ("repository", "head", "refs", "commits", "verdict", "proofCookie")}, sort_keys=True).encode()).hexdigest()
     return body
