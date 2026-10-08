@@ -31,7 +31,7 @@ means rotate the credential first, then decide whether history rewrite is worth 
 import argparse, hashlib, json, math, os, re, subprocess, sys, tempfile
 from collections import defaultdict
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 MAX_BLOB = 3_000_000
 
 # BLOCK: high-confidence credential formats. REVIEW: plausible, often public-by-design or noisy.
@@ -64,8 +64,33 @@ SAFE_SUFFIX = re.compile(r"(?i)\.(?:example|sample|template|dist|defaults?)$")
 COMPILED = {name: (sev, re.compile(rx)) for name, (sev, rx) in RULES.items()}
 
 
+def die(msg):
+    """Usage/config error: exit 2 so callers can tell it apart from a BLOCK finding (exit 1)."""
+    print(f"scan_history: {msg}", file=sys.stderr)
+    raise SystemExit(2)
+
+
 def git(repo, *args):
+    # Argument-vector exec (no shell). `repo` is an operator-chosen local path validated by
+    # cli_dir(); args are fixed git subcommands. No shell interpolation is possible.
+    # bearer:disable python_lang_os_command_injection
     return subprocess.run(["git", "-C", repo, *args], capture_output=True, check=True).stdout
+
+
+def cli_dir(path):
+    """Resolve an operator-supplied repository path; it must be an existing local directory."""
+    resolved = os.path.realpath(path)
+    if not os.path.isdir(resolved):
+        die(f"repository path is not a directory: {path}")
+    return resolved
+
+
+def cli_output(path):
+    """Resolve an operator-supplied output path; its parent directory must already exist."""
+    resolved = os.path.realpath(path)
+    if not os.path.isdir(os.path.dirname(resolved)):
+        die(f"receipt directory does not exist: {path}")
+    return resolved
 
 
 def entropy(s):
@@ -86,6 +111,8 @@ def fingerprint(rule, value):
 def load_allow(path):
     allowed = {}
     if path and os.path.isfile(path):
+        # Read-only open of the repository's own allowlist file (operator-chosen local path).
+        # bearer:disable python_lang_path_traversal
         for raw in open(path, encoding="utf-8"):
             line = raw.strip()
             if not line or line.startswith("#"):
@@ -93,7 +120,7 @@ def load_allow(path):
             fp, _, reason = line.partition("#")
             fp, reason = fp.strip(), reason.strip()
             if not re.fullmatch(r"fp:[0-9a-f]{16}", fp) or not reason:
-                raise SystemExit(f"scan_history: invalid allowlist line (need 'fp:<16 hex>  # reason'): {line}")
+                die(f"invalid allowlist line (need 'fp:<16 hex>  # reason'): {line}")
             allowed[fp] = reason
     return allowed
 
@@ -126,6 +153,8 @@ def scan(repo, allow_path=None):
                          "blob": sha[:12], "path": path, "line": line_no,
                          "allowed": fp in allowed, "allowReason": allowed.get(fp)})
 
+    # Argument-vector exec (no shell) of `git cat-file --batch` against the validated repo path.
+    # bearer:disable python_lang_os_command_injection
     batch = subprocess.Popen(["git", "-C", repo, "cat-file", "--batch"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     for sha, ps in paths.items():
         path = sorted(ps)[0]
@@ -271,17 +300,22 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.self_test:
         return self_test()
+    repo = cli_dir(a.repo)
     try:
-        git(a.repo, "rev-parse", "--git-dir")
+        git(repo, "rev-parse", "--git-dir")
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(f"scan_history: not a git repository or git missing: {a.repo} ({e})", file=sys.stderr)
         return 2
-    allow = a.allow if a.allow is not None else os.path.join(a.repo, ".secret-scan-allow")
-    result = scan(a.repo, allow)
-    verdict = report(a.repo, result)
+    # Allowlist/receipt paths are operator-chosen local CLI arguments, resolved by cli_*().
+    # bearer:disable python_lang_path_traversal
+    allow = os.path.realpath(a.allow) if a.allow is not None else os.path.join(repo, ".secret-scan-allow")
+    result = scan(repo, allow)
+    verdict = report(repo, result)
     if a.receipt:
-        with open(a.receipt, "w", encoding="utf-8") as fh:
-            json.dump(receipt(a.repo, result, verdict), fh, indent=2)
+        out = cli_output(a.receipt)
+        # bearer:disable python_lang_path_traversal
+        with open(out, "w", encoding="utf-8") as fh:
+            json.dump(receipt(repo, result, verdict), fh, indent=2)
     print(f"verdict: {verdict}")
     return 1 if verdict == "BLOCKED" else 0
 
