@@ -31,7 +31,7 @@ means rotate the credential first, then decide whether history rewrite is worth 
 import argparse, hashlib, json, math, os, re, subprocess, sys, tempfile
 from collections import defaultdict
 
-VERSION = "1.1.2"
+VERSION = "1.2.0"
 MAX_BLOB = 3_000_000
 
 # BLOCK: high-confidence credential formats. REVIEW: plausible, often public-by-design or noisy.
@@ -100,6 +100,20 @@ def entropy(s):
     return -sum(n / len(s) * math.log2(n / len(s)) for n in counts.values())
 
 
+SECRET_JWT_ROLES = {"service_role", "supabase_admin"}
+
+
+def jwt_role(token):
+    """Return the `role` claim of a JWT payload (claims are not secret), or None."""
+    import base64
+    try:
+        part = token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+        return claims.get("role") if isinstance(claims, dict) else None
+    except (IndexError, ValueError):
+        return None
+
+
 def redact(s):
     return s if len(s) <= 10 else f"{s[:6]}…{s[-4:]} (len {len(s)})"
 
@@ -142,10 +156,13 @@ def scan(repo, allow_path=None):
         sha, _, p = line.partition(" ")
         if p:
             paths[sha].add(p)
-    findings, seen, blobs, scanned = [], set(), 0, 0
+    findings, seen, blobs, scanned, skipped = [], set(), 0, 0, []
 
-    def add(sev, rule, value, sha, path, line_no):
-        fp = fingerprint(rule, value)
+    def add(sev, rule, value, sha, path, line_no, key=None):
+        # `key` overrides what the fingerprint hashes: blob-bound for committed files (each
+        # version is judged and allowlisted on its own content) and for DB URLs (no offline
+        # guessing oracle for weak passwords).
+        fp = fingerprint(rule, value if key is None else key)
         if fp in seen:
             return
         seen.add(fp)
@@ -172,24 +189,35 @@ def scan(repo, allow_path=None):
         binary = size > MAX_BLOB or b"\0" in data[:8000]
         for p in ps:
             if SENSITIVE_PATH.search(p) and not SAFE_SUFFIX.search(p):
-                add(env_file_severity(p, None if binary else data), "sensitive_file_committed", p, sha, p, 0)
+                add(env_file_severity(p, None if binary else data), "sensitive_file_committed", p, sha, p, 0,
+                    key=f"{p}@{sha}")
         if binary:
+            skipped.append({"path": path, "blob": sha[:12], "bytes": size,
+                            "reason": "over size limit" if size > MAX_BLOB else "binary or UTF-16"})
             continue
         scanned += 1
         text = data.decode(errors="replace")
         for rule, (sev, rx) in COMPILED.items():
             for m in rx.finditer(text):
-                if "host" in rx.groupindex and (m.group("host") or "").lower() in LOCAL_HOSTS:
-                    continue  # local-development database default, not a deployable credential
-                add(sev, rule, m.group(0), sha, path, text.count("\n", 0, m.start()) + 1)
+                line_no = text.count("\n", 0, m.start()) + 1
+                if "host" in rx.groupindex:
+                    if (m.group("host") or "").lower() in LOCAL_HOSTS:
+                        continue  # local-development database default, not a deployable credential
+                    add(sev, rule, m.group(0), sha, path, line_no, key=f"{sha}:{line_no}")
+                elif rule == "jwt" and jwt_role(m.group(0)) in SECRET_JWT_ROLES:
+                    add("BLOCK", "supabase_service_role_jwt", m.group(0), sha, path, line_no)
+                else:
+                    add(sev, rule, m.group(0), sha, path, line_no)
         for m in GENERIC.finditer(text):
             value = m.group(2)
             if PLACEHOLDER.search(value) or entropy(value) < 3.5:
                 continue
             add("REVIEW", f"generic:{m.group(1)}", value, sha, path, text.count("\n", 0, m.start()) + 1)
     batch.stdin.close()
-    batch.wait()
-    return {"blobs": blobs, "textBlobsScanned": scanned, "findings": findings, "allowlistEntries": len(allowed)}
+    if batch.wait() != 0:
+        die(f"git cat-file exited {batch.returncode}; object store unreadable")
+    return {"blobs": blobs, "textBlobsScanned": scanned, "skipped": skipped, "findings": findings,
+            "allowlistEntries": len(allowed)}
 
 
 def head_identity(repo):
@@ -218,6 +246,10 @@ def report(repo, result):
     blocking = [f for f in result["findings"] if f["severity"] == "BLOCK" and not f["allowed"]]
     print(f"scan_history {VERSION}: blobs={result['blobs']} text_scanned={result['textBlobsScanned']} "
           f"findings={len(result['findings'])} blocking={len(blocking)} allowlisted={sum(f['allowed'] for f in result['findings'])}")
+    if result["skipped"]:
+        print(f"  NOT SCANNED {len(result['skipped'])} blob(s) (binary, UTF-16 or over {MAX_BLOB} bytes):")
+        for sk in result["skipped"][:20]:
+            print(f"    {sk['path']} ({sk['bytes']} bytes, {sk['reason']}, blob {sk['blob']})")
     for f in sorted(result["findings"], key=lambda f: (f["severity"] != "BLOCK", f["rule"], f["path"])):
         tag = "ALLOWED" if f["allowed"] else f["severity"]
         print(f"  {tag:7} {f['rule']:28} {f['redacted']:30} {f['fingerprint']}  {f['path']}:{f['line']} (blob {f['blob']})")
@@ -259,6 +291,26 @@ def self_test():
         run("commit", "-qm", "plant")
         run("rm", "-q", "config.js", ".env")
         run("commit", "-qm", "delete planted secrets (must still be found in history)")
+        # An OLDER version of an env file holds a server secret; the newest version is public-only.
+        b64 = lambda o: __import__("base64").urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+        service_jwt = b64({"alg": "HS256", "typ": "JWT"}) + "." + b64({"iss": "supabase", "role": "service_role"}) + "." + alnum(43)
+        with open(os.path.join(tmp, "app", ".env.local"), "w") as fh:
+            fh.write(f"SUPABASE_SERVICE_ROLE_KEY={service_jwt}\n")
+        run("add", "-A")
+        run("commit", "-qm", "server secret in env file")
+        with open(os.path.join(tmp, "app", ".env.local"), "w") as fh:
+            fh.write("EXPO_PUBLIC_URL=https://example.invalid\n")
+        run("commit", "-qam", "env file now public-only")
+        planted["supabase_service_role_jwt"] = service_jwt
+        # A secret that exists ONLY on a side branch must still be found.
+        run("checkout", "-qb", "side")
+        side_secret = "xox" + "b-" + "-".join(alnum(12) for _ in range(3))
+        with open(os.path.join(tmp, "side.txt"), "w") as fh:
+            fh.write(side_secret + "\n")
+        run("add", "-A")
+        run("commit", "-qm", "side-branch only")
+        run("checkout", "-q", "-")
+        planted["slack_token"] = side_secret
         result = scan(tmp)
         found = {f["rule"] for f in result["findings"]}
         failures = [f"missed {r}" for r in planted if r not in found]
@@ -271,6 +323,31 @@ def self_test():
             failures.append("non-public .env not BLOCK")
         if sev.get("app/.env.production") != "REVIEW":
             failures.append("client-public-only .env.production not downgraded to REVIEW")
+        env_local = [f["severity"] for f in result["findings"]
+                     if f["rule"] == "sensitive_file_committed" and f["path"] == "app/.env.local"]
+        if sorted(env_local) != ["BLOCK", "REVIEW"]:
+            failures.append(f"each .env.local version must be judged on its own content, got {env_local}")
+        # Exit-code contract through main(): dirty history -> 1, clean history -> 0, bad path -> 2.
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()):
+            if main([tmp]) != 1:
+                failures.append("main() did not exit 1 on BLOCK findings")
+            with tempfile.TemporaryDirectory() as clean:
+                subprocess.run(["git", "-C", clean, "init", "-q"], check=True)
+                with open(os.path.join(clean, "README.md"), "w") as fh:
+                    fh.write("nothing secret\n")
+                subprocess.run(["git", "-C", clean, "add", "-A"], check=True)
+                subprocess.run(["git", "-C", clean, "-c", "user.email=c@example.invalid", "-c", "user.name=c",
+                                "commit", "-qm", "clean"], check=True)
+                if main([clean]) != 0:
+                    failures.append("main() did not exit 0 on a clean history")
+        with contextlib.redirect_stderr(io.StringIO()):
+            try:
+                main([os.path.join(tmp, "does-not-exist")])
+                failures.append("main() accepted a missing repository path")
+            except SystemExit as e:
+                if e.code != 2:
+                    failures.append(f"usage error exited {e.code}, expected 2")
         leaked = [f for f in result["findings"] if any(v in f["redacted"] for v in planted.values())]
         failures += ["unredacted value in output"] if leaked else []
         # allowlist suppresses exactly the listed fingerprint
@@ -285,9 +362,10 @@ def self_test():
     if failures:
         print("scan_history self-test FAILED: " + "; ".join(failures))
         return 1
-    print(f"scan_history self-test PASSED: {len(planted)} planted secrets + committed .env found in deleted history; "
+    print(f"scan_history self-test PASSED: {len(planted)} planted secrets (incl. side-branch-only and service-role JWT) "
+          "+ committed .env found in deleted history; each env-file version judged on its own content; "
           "no false positives on .env.example/placeholders/local DB URL; client-public env downgraded to REVIEW; "
-          "output redacted; allowlist scoped to one fingerprint")
+          "output redacted; allowlist scoped to one fingerprint; exit codes 1/0/2 via main()")
     return 0
 
 
@@ -310,7 +388,10 @@ def main(argv=None):
     # bearer:disable python_lang_path_traversal
     allow = os.path.realpath(a.allow) if a.allow is not None else os.path.join(repo, ".secret-scan-allow")
     # bearer:disable python_lang_path_traversal
-    result = scan(repo, allow)
+    try:
+        result = scan(repo, allow)
+    except (subprocess.CalledProcessError, UnicodeDecodeError, OSError) as e:
+        die(f"scan failed (git/IO/encoding error, not a finding): {e}")
     verdict = report(repo, result)
     if a.receipt:
         out = cli_output(a.receipt)
