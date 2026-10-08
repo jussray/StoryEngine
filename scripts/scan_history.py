@@ -31,7 +31,7 @@ means rotate the credential first, then decide whether history rewrite is worth 
 import argparse, hashlib, json, math, os, re, subprocess, sys, tempfile
 from collections import defaultdict
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 MAX_BLOB = 3_000_000
 
 # BLOCK: high-confidence credential formats. REVIEW: plausible, often public-by-design or noisy.
@@ -309,6 +309,7 @@ def main(argv=None):
     # Allowlist/receipt paths are operator-chosen local CLI arguments, resolved by cli_*().
     # bearer:disable python_lang_path_traversal
     allow = os.path.realpath(a.allow) if a.allow is not None else os.path.join(repo, ".secret-scan-allow")
+    # bearer:disable python_lang_path_traversal
     result = scan(repo, allow)
     verdict = report(repo, result)
     if a.receipt:
