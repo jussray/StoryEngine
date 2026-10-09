@@ -1,11 +1,14 @@
 // routes/releaseGate.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 import { evaluateReleaseGate, persistReleaseGate, assertReleaseAllowed } from '../lib/releaseGate.js';
 
 export default function releaseGateRoutes(router, db) {
   router.get('/api/release/gate/:workspace_id', (req, res) => {
-    const gate = evaluateReleaseGate(db, req.params.workspace_id, {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const gate = evaluateReleaseGate(db, workspace_id, {
       confidenceThreshold: req.query.confidence_threshold,
       p99Limit: req.query.p99_limit
     });
@@ -14,7 +17,9 @@ export default function releaseGateRoutes(router, db) {
   });
 
   router.post('/api/release/gate/:workspace_id/audit', (req, res) => {
-    const gate = persistReleaseGate(db, req.params.workspace_id, req.body?.operation || 'release_check', {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const gate = persistReleaseGate(db, workspace_id, req.body?.operation || 'release_check', {
       confidenceThreshold: req.body?.confidence_threshold,
       p99Limit: req.body?.p99_limit
     });
@@ -23,7 +28,9 @@ export default function releaseGateRoutes(router, db) {
   });
 
   router.post('/api/release/authorize/:workspace_id', (req, res) => {
-    const result = assertReleaseAllowed(db, req.params.workspace_id, req.body?.operation || 'release', {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const result = assertReleaseAllowed(db, workspace_id, req.body?.operation || 'release', {
       confidenceThreshold: req.body?.confidence_threshold,
       p99Limit: req.body?.p99_limit,
       allowWarning: req.body?.allow_warning !== false

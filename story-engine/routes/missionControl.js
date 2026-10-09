@@ -1,6 +1,7 @@
 // routes/missionControl.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { enqueueRuntime, drainRuntimeQueue, listDispatchQueue, scanChangedWorkspaces } from '../lib/runtimeDispatcher.js';
 import { runEventRetention } from '../lib/eventRetention.js';
@@ -16,7 +17,9 @@ export default function missionControlRoutes(router, db) {
   });
 
   router.post('/api/runtime/dispatch/:workspace_id', (req, res) => {
-    const item = enqueueRuntime(db, req.params.workspace_id, req.body?.trigger_type || 'manual_dispatch');
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const item = enqueueRuntime(db, workspace_id, req.body?.trigger_type || 'manual_dispatch');
     if (!item) return json(res, 404, { error: 'Workspace not found' });
     json(res, item.deduplicated ? 200 : 201, item);
   });

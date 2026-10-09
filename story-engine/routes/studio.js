@@ -1,6 +1,7 @@
 // routes/studio.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 import { forgeIdeas, listIdeas, getIdea, selectIdea } from '../lib/ideaForge.js';
 import { buildStoryArchitecture, getArchitecture } from '../lib/storyArchitect.js';
 import { buildChapterDraft, buildAllChapterDrafts } from '../lib/chapterBuilder.js';
@@ -49,7 +50,9 @@ export default function studioRoutes(router, db) {
   });
 
   router.get('/api/studio/architect/:workspace_id', (req, res) => {
-    const architecture = getArchitecture(db, req.params.workspace_id);
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const architecture = getArchitecture(db, workspace_id);
     if (!architecture) return json(res, 404, { error: 'Story architecture not found.' });
     json(res, 200, architecture);
   });

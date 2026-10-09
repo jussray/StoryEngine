@@ -1,7 +1,7 @@
 // routes/revenue.js
 // Revenue Engine routes: verified Stripe webhook receiver, subscription reads, notification log.
 
-import { requireRole } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
   handleStripeWebhook, getSubscription,
   revenueOverview
@@ -75,8 +75,10 @@ export default function revenueRoutes(router, db) {
 
   // Subscription state for a workspace
   router.get('/api/revenue/subscription/:workspace_id', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
-      const sub = getSubscription(db, req.params.workspace_id);
+      const sub = getSubscription(db, workspace_id);
       json(res, 200, { subscription: sub });
     } catch (err) {
       json(res, 500, { error: err.message });
@@ -94,8 +96,10 @@ export default function revenueRoutes(router, db) {
 
   // IP conversions for a workspace
   router.get('/api/revenue/conversions/:workspace_id', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
-      const conversions = listIpConversions(db, req.params.workspace_id);
+      const conversions = listIpConversions(db, workspace_id);
       json(res, 200, { conversions });
     } catch (err) {
       json(res, 500, { error: err.message });
