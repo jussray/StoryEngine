@@ -10,12 +10,15 @@ import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function lindymodeRoutes(router, db) {
   router.get('/api/lindymode/state/:workspace_id', (req, res) => {
-    const state = Lindy.getState(db, req.params.workspace_id);
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const state = Lindy.getState(db, workspace_id);
     json(res, state ? 200 : 404, state || { error: 'Lindymode state not found' });
   });
 
   router.put('/api/lindymode/state/:workspace_id', (req, res) => {
     const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const state = Lindy.upsertState(db, workspace_id, req.body || {});
     log(db, {
       workspace_id,
@@ -34,9 +37,11 @@ export default function lindymodeRoutes(router, db) {
   });
 
   router.get('/api/lindymode/incidents/:workspace_id', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const status = req.query.status || null;
     const limit = Math.min(Number(req.query.limit) || 100, 500);
-    json(res, 200, Lindy.listIncidents(db, req.params.workspace_id, status, limit));
+    json(res, 200, Lindy.listIncidents(db, workspace_id, status, limit));
   });
 
   router.post('/api/lindymode/recover/:incident_id', (req, res) => {
