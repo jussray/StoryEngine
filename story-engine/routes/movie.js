@@ -12,11 +12,13 @@ import videoEngineRoutes from './videoEngine.js';
 
 export default function movieRoutes(router, db) {
   router.get('/api/movie/beats/:workspace_id', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     json(res, 200, Movie.listBeats(db, req.params.workspace_id));
   });
 
   router.post('/api/movie/beats/generate/:workspace_id', (req, res) => {
     const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const release = createReleaseAttempt(db, workspace_id, 'movie_beats_generate', {
       allowWarning: req.body?.allow_warning === true,
       staleAfterMs: req.body?.stale_after_ms
