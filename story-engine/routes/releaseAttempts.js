@@ -42,6 +42,7 @@ function requireWorkspaceReleaseReconcileAuthority(req, res, workspaceId) {
 
 export default function releaseAttemptRoutes(router, db) {
   router.post('/api/release/attempt/:workspace_id', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     try {
       const result = createReleaseAttempt(
         db,
@@ -89,6 +90,7 @@ export default function releaseAttemptRoutes(router, db) {
   });
 
   router.get('/api/release/attempts/:workspace_id', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     json(res, 200, listReleaseAttempts(db, req.params.workspace_id, req.query.limit));
   });
 
