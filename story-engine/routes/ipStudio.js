@@ -3,7 +3,7 @@
 import { json } from '../lib/miniRouter.js';
 import { IP_STUDIO_PACK_TYPES, buildProductionPack, listProductionPacks, getProductionPack, ipStudioOverview } from '../lib/ipStudio.js';
 import { attachCreditsToProductionPack } from '../lib/visualLineage.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function ipStudioRoutes(router, db) {
   router.get('/api/ip-studio/options', (req, res) => {
@@ -14,7 +14,7 @@ export default function ipStudioRoutes(router, db) {
     });
   });
 
-  router.get('/api/ip-studio/overview', (req, res) => {
+  router.get('/api/ip-studio/overview', requireRole('administrator'), (req, res) => {
     try { json(res, 200, ipStudioOverview(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
