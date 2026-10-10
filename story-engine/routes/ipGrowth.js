@@ -1,13 +1,13 @@
 // routes/ipGrowth.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import { evaluateIpGrowth, getLatestIpGrowth, listIpGrowthActions, startIpExpansion, ipGrowthOverview } from '../lib/ipGrowthEngine.js';
 import * as Story from '../models/storyModel.js';
 import { canCreateDerivedWorkspace, derivedWorkspaceCreationDenial } from '../lib/workspaceCreationAuthority.js';
 
 export default function ipGrowthRoutes(router, db) {
-  router.get('/api/ip-growth/overview', (req, res) => {
+  router.get('/api/ip-growth/overview', requireRole('administrator'), (req, res) => {
     try { json(res, 200, ipGrowthOverview(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
