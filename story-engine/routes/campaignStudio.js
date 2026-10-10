@@ -12,7 +12,6 @@ import {
   campaignStudioOverview
 } from '../lib/campaignStudio.js';
 import { attachCreditsToCampaign, buildVisualEndCredit } from '../lib/visualLineage.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function campaignStudioRoutes(router, db) {
   router.get('/api/campaign-studio/options', (req, res) => {
