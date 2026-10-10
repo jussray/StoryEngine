@@ -31,11 +31,13 @@ export default function ipStudioRoutes(router, db) {
   });
 
   router.get('/api/ip-studio/:workspace_id/production-packs', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     try { json(res, 200, listProductionPacks(db, req.params.workspace_id).map(pack => attachCreditsToProductionPack(pack))); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
 
   router.post('/api/ip-studio/:workspace_id/production-pack', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     try {
       const pack = buildProductionPack(db, req.params.workspace_id, req.body || {});
       json(res, 201, attachCreditsToProductionPack(pack, req.body || {}));
