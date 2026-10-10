@@ -9,6 +9,9 @@ import { buildChapterDraft, buildAllChapterDrafts } from '../lib/chapterBuilder.
 export default function studioRoutes(router, db) {
   router.post('/api/studio/ideas/generate', (req, res) => {
     try {
+      const workspaceId = req.body?.workspace_id;
+      if (!workspaceId) return json(res, 400, { error: 'workspace_id required' });
+      if (!requireWorkspaceAccess(req, res, workspaceId)) return;
       const ideas = forgeIdeas(db, req.body || {});
       json(res, 201, { ideas });
     } catch (error) {
@@ -18,6 +21,9 @@ export default function studioRoutes(router, db) {
 
   router.get('/api/studio/ideas', (req, res) => {
     try {
+      const workspaceId = req.query.workspace_id;
+      if (!workspaceId) return json(res, 400, { error: 'workspace_id required' });
+      if (!requireWorkspaceAccess(req, res, workspaceId)) return;
       json(res, 200, listIdeas(db, {
         workspace_id: req.query.workspace_id || null,
         limit: req.query.limit
@@ -30,17 +36,25 @@ export default function studioRoutes(router, db) {
   router.get('/api/studio/ideas/:idea_id', (req, res) => {
     const idea = getIdea(db, req.params.idea_id);
     if (!idea) return json(res, 404, { error: 'Idea not found.' });
+    if (!idea.workspace_id) return json(res, 403, { error: 'Idea has no authorized workspace.' });
+    if (!requireWorkspaceAccess(req, res, idea.workspace_id)) return;
     json(res, 200, idea);
   });
 
   router.post('/api/studio/ideas/:idea_id/select', (req, res) => {
+    const existing = getIdea(db, req.params.idea_id);
+    if (!existing) return json(res, 404, { error: 'Idea not found.' });
+    if (!existing.workspace_id) return json(res, 403, { error: 'Idea has no authorized workspace.' });
+    if (!requireWorkspaceAccess(req, res, existing.workspace_id)) return;
     const idea = selectIdea(db, req.params.idea_id);
-    if (!idea) return json(res, 404, { error: 'Idea not found.' });
     json(res, 200, idea);
   });
 
   router.post('/api/studio/architect/generate', (req, res) => {
     try {
+      const workspaceId = req.body?.workspace_id;
+      if (!workspaceId) return json(res, 400, { error: 'workspace_id required' });
+      if (!requireWorkspaceAccess(req, res, workspaceId)) return;
       const result = buildStoryArchitecture(db, req.body || {});
       json(res, result.validation.passed ? 201 : 202, result);
     } catch (error) {
@@ -59,6 +73,9 @@ export default function studioRoutes(router, db) {
 
   router.post('/api/studio/chapters/build', (req, res) => {
     try {
+      const workspaceId = req.body?.workspace_id;
+      if (!workspaceId) return json(res, 400, { error: 'workspace_id required' });
+      if (!requireWorkspaceAccess(req, res, workspaceId)) return;
       const result = buildChapterDraft(db, req.body || {});
       json(res, result.action === 'created' ? 201 : 200, result);
     } catch (error) {
@@ -69,6 +86,9 @@ export default function studioRoutes(router, db) {
 
   router.post('/api/studio/chapters/build-all', (req, res) => {
     try {
+      const workspaceId = req.body?.workspace_id;
+      if (!workspaceId) return json(res, 400, { error: 'workspace_id required' });
+      if (!requireWorkspaceAccess(req, res, workspaceId)) return;
       const results = buildAllChapterDrafts(db, req.body || {});
       json(res, 201, { chapters: results });
     } catch (error) {
