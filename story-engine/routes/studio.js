@@ -55,6 +55,10 @@ export default function studioRoutes(router, db) {
       const workspaceId = req.body?.workspace_id;
       if (!workspaceId) return json(res, 400, { error: 'workspace_id required' });
       if (!requireWorkspaceAccess(req, res, workspaceId)) return;
+      if (req.body?.idea_id) {
+        const sourceIdea = getIdea(db, req.body.idea_id);
+        if (!sourceIdea || sourceIdea.workspace_id !== workspaceId) return json(res, 403, { error: 'idea_workspace_forbidden' });
+      }
       const result = buildStoryArchitecture(db, req.body || {});
       json(res, result.validation.passed ? 201 : 202, result);
     } catch (error) {
