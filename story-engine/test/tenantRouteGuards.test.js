@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import learningRoutes from '../routes/learning.js';
 import ipStudioRoutes from '../routes/ipStudio.js';
+import missionControlRoutes from '../routes/missionControl.js';
+import eventRetentionRoutes from '../routes/eventRetention.js';
 
 function registerRoutes(install) {
   const routes = new Map();
@@ -27,6 +29,8 @@ function response() {
 
 const learning = registerRoutes(learningRoutes);
 const ipStudio = registerRoutes(ipStudioRoutes);
+const missionControl = registerRoutes(missionControlRoutes);
+const eventRetention = registerRoutes(eventRetentionRoutes);
 
 const cases = [
   [learning, 'GET /api/ooda/episodes/:workspace_id'],
@@ -56,7 +60,14 @@ for (const [routes, endpoint] of cases) {
 
 for (const [routes, endpoint] of [
   [learning, 'GET /api/ooda/learned-recoveries'],
-  [ipStudio, 'GET /api/ip-studio/overview']
+  [ipStudio, 'GET /api/ip-studio/overview'],
+  [missionControl, 'GET /api/mission-control/snapshot'],
+  [missionControl, 'GET /api/runtime/dispatch-queue'],
+  [missionControl, 'POST /api/runtime/drain'],
+  [missionControl, 'POST /api/runtime/scan'],
+  [missionControl, 'POST /api/mission-control/retention/run'],
+  [eventRetention, 'GET /api/events/retention/status'],
+  [eventRetention, 'POST /api/events/retention/run']
 ]) {
   test(endpoint + ' rejects non-admin callers', () => {
     const handler = routes.get(endpoint);
