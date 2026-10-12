@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { TENANT_CREATOR_BOOTSTRAP_KEY, establishBrowserSession } from './session.js';
 
+const OPERATOR_TEST_KEY = 'playwright-test-key';
+
 test('creator can answer StoryEngine questions and receive a persisted six-chapter book artifact', async ({ page }) => {
   await establishBrowserSession(page, TENANT_CREATOR_BOOTSTRAP_KEY);
   await page.goto('/story_engine.html');
@@ -27,7 +29,11 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
   expect(created.workspace_id).toBeTruthy();
   expect(created.dispatch_id).toBeTruthy();
 
+  // Runtime drain is an administrator-only system operation. The creator
+  // remains scoped to their own workspace; use the test operator credential
+  // only for the queue-drain step.
   const drainResponse = await page.context().request.post('/api/runtime/drain', {
+    headers: { 'x-api-key': OPERATOR_TEST_KEY },
     data: { limit: 5 }
   });
   expect(drainResponse.status()).toBe(200);
