@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { TENANT_CREATOR_BOOTSTRAP_KEY, establishBrowserSession } from './session.js';
+import { ADMIN_BOOTSTRAP_KEY, TENANT_CREATOR_BOOTSTRAP_KEY, establishBrowserSession } from './session.js';
 
 test('creator can answer StoryEngine questions and receive a persisted six-chapter book artifact', async ({ page }) => {
   await establishBrowserSession(page, TENANT_CREATOR_BOOTSTRAP_KEY);
@@ -27,7 +27,9 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
   expect(created.workspace_id).toBeTruthy();
   expect(created.dispatch_id).toBeTruthy();
 
+  // Queue draining requires administrator authorization; preserve creator session scope.
   const drainResponse = await page.context().request.post('/api/runtime/drain', {
+    headers: { 'x-api-key': ADMIN_BOOTSTRAP_KEY },
     data: { limit: 5 }
   });
   expect(drainResponse.status()).toBe(200);
