@@ -1,0 +1,43 @@
+name: StoryEngine Tenant Security Proof
+
+on:
+  pull_request:
+    paths:
+      - 'story-engine/routes/learning.js'
+      - 'story-engine/routes/ipStudio.js'
+      - 'story-engine/lib/securityContext.js'
+      - 'story-engine/test/tenantRouteGuards.test.js'
+      - '.github/workflows/storyengine-tenant-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tenant-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact checkout
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: story-engine/package-lock.json
+      - name: Install locked dependencies
+        working-directory: story-engine
+        run: npm ci
+      - name: Cross-workspace route regression
+        working-directory: story-engine
+        run: node --test test/tenantRouteGuards.test.js test/securityContext.test.js
+      - name: Full Node regression suite
+        working-directory: story-engine
+        run: npm test
