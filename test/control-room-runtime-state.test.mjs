@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { buildRuntimeStateReceipt, trackedConfigFingerprint } from '../scripts/control-room-runtime-state.mjs';
+import { buildTestLedger } from '../scripts/control-room-test-ledger.mjs';
 
 const SHA = 'a'.repeat(40);
 const EPOCH = `sha256:${'b'.repeat(64)}`;
@@ -50,4 +51,10 @@ test('the ledger workflow exposes the external-state invalidation trigger', () =
   const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const workflow = fs.readFileSync(path.join(repositoryRoot, '.github', 'workflows', 'control-room-test-ledger.yml'), 'utf8');
   for (const expected of ['repository_dispatch:', 'types: [runtime_state_changed]', 'external_state_epoch:', 'CONTROL_ROOM_EXTERNAL_STATE_EPOCH:', 'CONTROL_ROOM_EXTERNAL_STATE_SOURCE:', 'node --test test/control-room-runtime-state.test.mjs', 'node scripts/control-room-runtime-state.mjs', 'artifacts/control-room-runtime-state.json']) assert.ok(workflow.includes(expected), `workflow missing ${expected}`);
+});
+
+test('the exact-head ledger binds the runtime-state receipt into its proof surface', () => {
+  const runtimeState = {repository: 'jussray/example', sourceSha: SHA, trackedConfig: {sha256: EPOCH, paths: ['package.json']}};
+  const bound = buildTestLedger({repository: 'jussray/example', sha: SHA, branch: 'main', runId: '1', checks: [], runtimeState});
+  assert.deepEqual(bound.runtimeState, runtimeState);
 });
