@@ -1,10 +1,18 @@
 // routes/eventRetention.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireRole } from '../lib/securityContext.js';
 import { getRetentionStatus, runEventRetention } from '../lib/eventRetention.js';
+
+function requireAdministrator(req, res) {
+  let allowed = false;
+  requireRole('administrator')(req, res, () => { allowed = true; });
+  return allowed;
+}
 
 export default function eventRetentionRoutes(router, db) {
   router.get('/api/events/retention/status', (req, res) => {
+    if (!requireAdministrator(req, res)) return;
     try {
       const keepMs = req.query.keep_ms == null ? undefined : Number(req.query.keep_ms);
       json(res, 200, getRetentionStatus(db, keepMs));
@@ -14,6 +22,7 @@ export default function eventRetentionRoutes(router, db) {
   });
 
   router.post('/api/events/retention/run', (req, res) => {
+    if (!requireAdministrator(req, res)) return;
     try {
       const result = runEventRetention(db, {
         keepMs: req.body?.keep_ms == null ? undefined : Number(req.body.keep_ms),
