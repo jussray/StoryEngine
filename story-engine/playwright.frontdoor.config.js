@@ -18,7 +18,9 @@ export default defineConfig({
     command: 'npx --no-install wrangler dev --config wrangler.jsonc --ip 127.0.0.1 --port 8787',
     // Any response at root means the Worker booted. The tests must prove the
     // upstream outcome; waiting for health would hide a broken origin at startup.
-    url: 'http://127.0.0.1:8787',
+    // Wait for Wrangler's local listener, not a proxied Railway root response.
+    // Browser assertions remain responsible for proving the real upstream.
+    wait: { stdout: /Ready on http:\/\/127\.0\.0\.1:8787/ },
     reuseExistingServer: false,
     timeout: 60_000
   }
