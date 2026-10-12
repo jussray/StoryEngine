@@ -38,7 +38,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  runtime-state-contract:
+    name: Runtime-state proof contract
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact head for runtime-state contract
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          persist-credentials: false
+      - name: Set up Node for runtime-state contract
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prove runtime-state invalidation contract before ledger observation
+        run: node --test test/control-room-runtime-state.test.mjs
+
   ledger:
+    needs: runtime-state-contract
     name: Verify test-ledger contract
     runs-on: ubuntu-22.04
     timeout-minutes: 30
