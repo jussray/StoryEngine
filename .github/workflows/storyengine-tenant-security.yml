@@ -37,6 +37,14 @@ jobs:
       - name: Install locked dependencies
         working-directory: story-engine
         run: npm ci
+      - name: Install required media tools
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
       - name: Cross-workspace route regression
         working-directory: story-engine
         run: node --test test/tenantRouteGuards.test.js test/securityContext.test.js
