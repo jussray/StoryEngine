@@ -1,17 +1,25 @@
 // routes/missionControl.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { enqueueRuntime, drainRuntimeQueue, listDispatchQueue, scanChangedWorkspaces } from '../lib/runtimeDispatcher.js';
 import { runEventRetention } from '../lib/eventRetention.js';
 
+function requireAdministrator(req, res) {
+  let allowed = false;
+  requireRole('administrator')(req, res, () => { allowed = true; });
+  return allowed;
+}
+
 export default function missionControlRoutes(router, db) {
   router.get('/api/mission-control/snapshot', (req, res) => {
+    if (!requireAdministrator(req, res)) return;
     json(res, 200, getMissionControlSnapshot(db));
   });
 
   router.get('/api/runtime/dispatch-queue', (req, res) => {
+    if (!requireAdministrator(req, res)) return;
     const limit = Math.min(Number(req.query.limit) || 100, 500);
     json(res, 200, listDispatchQueue(db, limit));
   });
@@ -25,6 +33,7 @@ export default function missionControlRoutes(router, db) {
   });
 
   router.post('/api/runtime/drain', async (req, res) => {
+    if (!requireAdministrator(req, res)) return;
     const limit = Math.min(Number(req.body?.limit) || 5, 25);
     try {
       json(res, 200, { processed: await drainRuntimeQueue(db, limit) });
@@ -34,10 +43,12 @@ export default function missionControlRoutes(router, db) {
   });
 
   router.post('/api/runtime/scan', (req, res) => {
+    if (!requireAdministrator(req, res)) return;
     json(res, 200, { enqueued: scanChangedWorkspaces(db) });
   });
 
   router.post('/api/mission-control/retention/run', (req, res) => {
+    if (!requireAdministrator(req, res)) return;
     try {
       json(res, 200, runEventRetention(db, {
         keepMs: req.body?.keep_ms ? Number(req.body.keep_ms) : undefined,
