@@ -5,6 +5,8 @@ on:
     paths:
       - 'story-engine/routes/learning.js'
       - 'story-engine/routes/ipStudio.js'
+      - 'story-engine/routes/missionControl.js'
+      - 'story-engine/routes/eventRetention.js'
       - 'story-engine/lib/securityContext.js'
       - 'story-engine/test/tenantRouteGuards.test.js'
       - '.github/workflows/storyengine-tenant-security.yml'
