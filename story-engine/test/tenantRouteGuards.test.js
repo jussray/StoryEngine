@@ -7,6 +7,10 @@ import eventRetentionRoutes from '../routes/eventRetention.js';
 import oodaRoutes, { requireOodaIncidentStreamAdmin } from '../routes/ooda.js';
 import movieRoutes from '../routes/movie.js';
 import bootstrapEngineRoutes from '../routes/bootstrapEngine.js';
+import auditRoutes from '../routes/audit.js';
+import campaignStudioRoutes from '../routes/campaignStudio.js';
+import ipGrowthRoutes from '../routes/ipGrowth.js';
+import ipSeedRoutes from '../routes/ipSeed.js';
 
 function registerRoutes(install) {
   const routes = new Map();
@@ -39,6 +43,10 @@ const eventRetention = registerRoutes(eventRetentionRoutes);
 const ooda = registerRoutes(oodaRoutes);
 const movie = registerRoutes(movieRoutes);
 const bootstrapEngine = registerRoutes(bootstrapEngineRoutes);
+const continuityAudit = registerRoutes(auditRoutes);
+const campaignStudio = registerRoutes(campaignStudioRoutes);
+const ipGrowth = registerRoutes(ipGrowthRoutes);
+const ipSeeds = registerRoutes(ipSeedRoutes);
 
 const cases = [
   [learning, 'GET /api/ooda/episodes/:workspace_id'],
@@ -81,7 +89,11 @@ for (const [routes, endpoint] of [
   [ooda, 'GET /api/ooda/snapshot'],
   [ooda, 'GET /api/ooda/timeline/:correlation_id'],
   [bootstrapEngine, 'GET /api/bootstrap-engine/providers'],
-  [bootstrapEngine, 'GET /api/bootstrap-engine/overview']
+  [bootstrapEngine, 'GET /api/bootstrap-engine/overview'],
+  [campaignStudio, 'GET /api/campaign-studio/overview'],
+  [ipGrowth, 'GET /api/ip-growth/overview'],
+  [ipSeeds, 'GET /api/ip-seeds/overview'],
+  [ipSeeds, 'GET /api/ip-seeds']
 ]) {
   test(endpoint + ' rejects non-admin callers', () => {
     const handler = routes.get(endpoint);
@@ -116,4 +128,25 @@ test('live OODA incident stream allows an administrator to open SSE', () => {
   );
   assert.equal(opened, true);
   assert.equal(res.status, null);
+});
+
+test('series continuity audit rejects foreign body workspace before writes', () => {
+  const handler = continuityAudit.get('POST /api/audit/series-continuity');
+  assert.equal(typeof handler, 'function');
+  const res = response();
+  handler({
+    params: {}, query: {}, body: { workspace_id: 'workspace_other', manuscript: 'private input' },
+    request_id: 'audit-tenant-guard',
+    auth: { actor_id: 'actor-a', tenant_id: 'tenant-a', role: 'creator', workspace_ids: ['workspace_allowed'] }
+  }, res);
+  assert.equal(res.status, 403);
+  assert.equal(res.body.error, 'workspace_forbidden');
+});
+
+test('series continuity audit rejects missing body workspace without writes', () => {
+  const handler = continuityAudit.get('POST /api/audit/series-continuity');
+  const res = response();
+  handler({ params: {}, query: {}, body: { manuscript: 'text' }, auth: { role: 'creator' } }, res);
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error, 'workspace_id is required.');
 });
