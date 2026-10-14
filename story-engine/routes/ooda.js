@@ -12,6 +12,9 @@ function parsePayload(value) {
   }
 }
 
+// Shared with server.js because the live incident SSE endpoint bypasses miniRouter.
+export const requireOodaIncidentStreamAdmin = requireRole('administrator');
+
 export default function oodaRoutes(router, db) {
   router.get('/api/ooda/snapshot', requireRole('administrator'), (req, res) => {
     json(res, 200, {
