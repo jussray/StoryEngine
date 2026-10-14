@@ -57,6 +57,8 @@ Source checks also confirmed that `GET /api/stories` and the StoryEngine runs/br
 
 **Upstream reconciliation:** PR branch merged `main@809d30ae2ef57dce6d4fee9a3b6afa24bfa83497` in history-preserving commit `819d4198a7ed52d5312bfec97c135428fd0e378c`. GitHub reported 14 successful checks and 2 conditional skips for that commit. Newer repairs must obtain their own exact-head checks. No force push, PR merge, or production deploy.
 
+**Router integration proof (2026-10-14):** Cloudflare build `4a91f692-f6c0-4450-ba15-843553cd6ca2` at `cd6f20c5c9a299cea9697d297adaf5a6e1914cc9` ran the focused route, authentication, **and real HTTP middleware** suites: **38 passed, 0 failed, 0 skipped**. It exercised cross-tenant body writes, global admin-only reads, allowed catalog behavior, and unauthenticated denial with database access poisoned for denied requests. This reduces, but does not eliminate, the need for live multi-tenant and resource-ID tests.
+
 ### Remaining independent release blockers
 
 1. **AUTH-INVENTORY:** Re-enumerate *all actual routes including direct `server.js` handlers*, middleware and resource-by-ID lookups. Reclassify each original finding. The old 186-route total is unverified for the current branch.
