@@ -17,6 +17,7 @@ on:
       - 'story-engine/routes/eventRetention.js'
       - 'story-engine/lib/securityContext.js'
       - 'story-engine/test/tenantRouteGuards.test.js'
+      - 'story-engine/test/tenantHttpBoundary.test.js'
       - '.github/workflows/storyengine-tenant-security.yml'
   workflow_dispatch:
 
@@ -55,7 +56,7 @@ jobs:
           ffprobe -version | head -n 1
       - name: Cross-workspace route regression
         working-directory: story-engine
-        run: node --test test/tenantRouteGuards.test.js test/securityContext.test.js
+        run: node --test test/tenantRouteGuards.test.js test/tenantHttpBoundary.test.js test/securityContext.test.js
       - name: Full Node regression suite
         working-directory: story-engine
         run: npm test
