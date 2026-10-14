@@ -41,6 +41,22 @@
 | AUTH-027 | `POST /api/revenue/stripe/webhook` | DISTINCT EXTERNAL AUTH: exempt from normal API key, signature checked before event handling | `routes/revenue.js`; deployed Stripe delivery and replay proof not established |
 | AUTH-028 | `/api/audience-lenses`, `/api/assist/options`, `/api/validation-seeds/:medium`, `/api/bootstrap-engine/options` | INTENTIONALLY CATALOG/CONFIG OPTIONS: no workspace DB read established by reviewed handlers | Preserve creator-facing experience; do not add arbitrary admin gates |
 
+### 2026-10-14 supplemental route enumeration and repairs
+
+Automated source inventory enumerated **186 `router.get/post/put/delete` registrations across 38 route files** (including one module with no direct registrations). That inventory does not cover standalone HTTP server branches; `/api/ooda/incidents` is a separately authorized server-side SSE route. The existence of an `:id` parameter alone is not proof of a gap: resource-ID handlers must be assessed against the owning workspace lookup and global middleware. Scope here is source auditing plus targeted tests, not a claim of universal runtime validation.
+
+| ID | Endpoint | Assessment | Evidence |
+|---|---|---|---|
+| AUTH-029 | `POST /api/audit/series-continuity` | REPAIRED: caller body `workspace_id` must be present and accessible **before chapter/memory writes** | `76f510d`; foreign and missing workspace denial tests at `f4e59b0`; latest-head run pending |
+| AUTH-030 | `GET /api/campaign-studio/overview` | REPAIRED: administrator-only global campaign aggregate | `49dd7d0`; creator denial test at `f4e59b0`; latest-head run pending |
+| AUTH-031 | `GET /api/ip-growth/overview` | REPAIRED: administrator-only global IP growth aggregate | `ac4b544`; creator denial test at `f4e59b0`; latest-head run pending |
+| AUTH-032 | `GET /api/ip-seeds/overview` | REPAIRED: administrator-only global IP seed aggregate | `ed2c54c`; creator denial test at `f4e59b0`; latest-head run pending |
+| AUTH-033 | `GET /api/ip-seeds` | REPAIRED: administrator-only cross-workspace IP seed list | `ed2c54c`; creator denial test at `f4e59b0`; latest-head run pending |
+
+Source checks also confirmed that `GET /api/stories` and the StoryEngine runs/brain lists filter by the authenticated actor's authorized workspaces, `POST /api/story` checks workspace creation authority, and `/api/release/attempts/reconcile` uses a separate administrator plus wildcard-workspace authority helper. `GET /api/control-room/operator/assist-default` intentionally returns a nonsecret default configuration needed by creators. These are **not** repaired or relabeled as vulnerabilities solely due to route-path shape.
+
+**Upstream reconciliation:** PR branch merged `main@809d30ae2ef57dce6d4fee9a3b6afa24bfa83497` in history-preserving commit `819d4198a7ed52d5312bfec97c135428fd0e378c`. GitHub reported 14 successful checks and 2 conditional skips for that commit. Newer repairs must obtain their own exact-head checks. No force push, PR merge, or production deploy.
+
 ### Remaining independent release blockers
 
 1. **AUTH-INVENTORY:** Re-enumerate *all actual routes including direct `server.js` handlers*, middleware and resource-by-ID lookups. Reclassify each original finding. The old 186-route total is unverified for the current branch.
