@@ -5,7 +5,18 @@ on:
     branches: [main]
   push:
     branches: [main]
+  repository_dispatch:
+    types: [runtime_state_changed]
   workflow_dispatch:
+    inputs:
+      external_state_epoch:
+        description: Non-secret sha256 state epoch from the provider or authority that observed runtime state movement
+        required: false
+        type: string
+      external_state_source:
+        description: Provider or authority identifier for the observed runtime state movement
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -17,13 +28,35 @@ env:
   EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   CONTROL_ROOM_LEDGER_SELF_CHECK: Verify test-ledger contract
   CONTROL_ROOM_TEST_LEDGER_PATH: artifacts/control-room-test-ledger.json
+  CONTROL_ROOM_RUNTIME_STATE_PATH: artifacts/control-room-runtime-state.json
+  CONTROL_ROOM_EXTERNAL_STATE_ACTION: ${{ github.event.action || '' }}
+  CONTROL_ROOM_EXTERNAL_STATE_EPOCH: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.external_state_epoch || inputs.external_state_epoch || '' }}
+  CONTROL_ROOM_EXTERNAL_STATE_SOURCE: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.source || inputs.external_state_source || '' }}
 
 concurrency:
   group: control-room-test-ledger-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  runtime-state-contract:
+    name: Runtime-state proof contract
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact head for runtime-state contract
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          persist-credentials: false
+      - name: Set up Node for runtime-state contract
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prove runtime-state invalidation contract before ledger observation
+        run: node --test test/control-room-runtime-state.test.mjs
+
   ledger:
+    needs: runtime-state-contract
     name: Verify test-ledger contract
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -32,6 +65,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_HEAD_SHA }}
+          persist-credentials: false
 
       - name: Record and verify exact head
         shell: bash
@@ -51,6 +85,13 @@ jobs:
       - name: Run Control Room test-ledger contracts
         run: node --test test/control-room-test-ledger.test.mjs
 
+
+      - name: Verify runtime-state invalidation contract
+        run: node --test test/control-room-runtime-state.test.mjs
+
+      - name: Record tracked config and runtime-state proof boundary
+        run: node scripts/control-room-runtime-state.mjs
+
       - name: Observe every exact-head check lane
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -61,6 +102,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: control-room-test-ledger-${{ env.EXPECTED_HEAD_SHA }}
-          path: artifacts/control-room-test-ledger.json
+          path: |
+            artifacts/control-room-test-ledger.json
+            artifacts/control-room-runtime-state.json
           if-no-files-found: error
           retention-days: 14
