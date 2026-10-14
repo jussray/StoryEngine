@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'story-engine/routes/learning.js'
+      - 'story-engine/routes/ooda.js'
+      - 'story-engine/routes/movie.js'
       - 'story-engine/routes/ipStudio.js'
       - 'story-engine/routes/missionControl.js'
       - 'story-engine/routes/eventRetention.js'
