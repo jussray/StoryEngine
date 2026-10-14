@@ -6,6 +6,7 @@ import missionControlRoutes from '../routes/missionControl.js';
 import eventRetentionRoutes from '../routes/eventRetention.js';
 import oodaRoutes from '../routes/ooda.js';
 import movieRoutes from '../routes/movie.js';
+import bootstrapEngineRoutes from '../routes/bootstrapEngine.js';
 
 function registerRoutes(install) {
   const routes = new Map();
@@ -37,6 +38,7 @@ const missionControl = registerRoutes(missionControlRoutes);
 const eventRetention = registerRoutes(eventRetentionRoutes);
 const ooda = registerRoutes(oodaRoutes);
 const movie = registerRoutes(movieRoutes);
+const bootstrapEngine = registerRoutes(bootstrapEngineRoutes);
 
 const cases = [
   [learning, 'GET /api/ooda/episodes/:workspace_id'],
@@ -77,7 +79,9 @@ for (const [routes, endpoint] of [
   [eventRetention, 'GET /api/events/retention/status'],
   [eventRetention, 'POST /api/events/retention/run'],
   [ooda, 'GET /api/ooda/snapshot'],
-  [ooda, 'GET /api/ooda/timeline/:correlation_id']
+  [ooda, 'GET /api/ooda/timeline/:correlation_id'],
+  [bootstrapEngine, 'GET /api/bootstrap-engine/providers'],
+  [bootstrapEngine, 'GET /api/bootstrap-engine/overview']
 ]) {
   test(endpoint + ' rejects non-admin callers', () => {
     const handler = routes.get(endpoint);
