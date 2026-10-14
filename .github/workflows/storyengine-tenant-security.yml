@@ -5,6 +5,7 @@ on:
     paths:
       - 'story-engine/routes/learning.js'
       - 'story-engine/routes/ooda.js'
+      - 'story-engine/server.js'
       - 'story-engine/routes/movie.js'
       - 'story-engine/routes/bootstrapEngine.js'
       - 'story-engine/routes/ipStudio.js'
