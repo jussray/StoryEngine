@@ -1,5 +1,59 @@
 # StoryEngine Authorization Evidence Ledger
 
+## 2026-10-14 exact-head authorization reconciliation
+
+**Authority:** The 2026-10-10 inventory below is a historical snapshot, NOT the current count or merge gate. Its 142/44 and 37-gap figures have not been recomputed against the current branch; do not treat those numbers as current, and do not silently convert a `GAP` into `VERIFIED` based solely on a static name-match.
+
+**Carrier:** `jussray/StoryEngine`, PR #131, `fix/storyengine-tenant-guards-20261012`. This addendum travels with the same PR; no replacement PR or production deploy authorized.
+
+**Execution proof:** Cloudflare non-production build `0c2c7ee1-54be-459d-8f83-afe7186b76c3` ran `node --test test/tenantRouteGuards.test.js test/securityContext.test.js` on exact SHA `b3b341f1925c5b68c50e8cbf31bbe82ade1482c3`: 29 passed, 0 failed, 0 skipped. It uploaded a Worker VERSION, not a production deployment. Later SSE gate/CI edits require new exact-head proof. The last six green GitHub Actions runs were for old SHA `e224089`; their success is not inherited by newer commits. Supabase Preview is skipped, not a passing check.
+
+### Distinct route receipts (do not collapse findings)
+
+| ID | Endpoint | Assessment on current branch | Evidence / remaining gate |
+|---|---|---|---|
+| AUTH-001 | `GET /api/movie/beats/:workspace_id` | REPAIRED: workspace check before data read | `403c6c3`; cross-tenant denial test 29/29 build |
+| AUTH-002 | `POST /api/movie/beats/generate/:workspace_id` | REPAIRED: workspace check before release attempt | `403c6c3`; cross-tenant denial test 29/29 build |
+| AUTH-003 | `GET /api/ooda/snapshot` | REPAIRED: administrator guard | `fe3640f`; creator denial test 29/29 build |
+| AUTH-004 | `GET /api/ooda/timeline/:correlation_id` | REPAIRED: administrator guard before global queries | `fe3640f`; creator denial test 29/29 build |
+| AUTH-005 | `GET /api/ooda/incidents` (server SSE) | REPAIRED: shared administrator guard after authentication | `95463f0`; direct stream-guard tests added at `a547e4d`; **latest-head build pending** |
+| AUTH-006 | `GET /api/bootstrap-engine/providers` | REPAIRED: administrator-only provider metadata | `c41cc95`; creator denial test 29/29 build |
+| AUTH-007 | `GET /api/bootstrap-engine/overview` | REPAIRED: administrator-only founder economics | `c41cc95`; creator denial test 29/29 build |
+| AUTH-008 | `GET /api/ooda/episodes/:workspace_id` | REPAIRED: workspace check | PR #131; cross-tenant denial test 29/29 build |
+| AUTH-009 | `POST /api/ooda/predict/:workspace_id` | REPAIRED: workspace check | PR #131; cross-tenant denial test 29/29 build |
+| AUTH-010 | `GET /api/ooda/risk-history/:workspace_id` | REPAIRED: workspace check | PR #131; cross-tenant denial test 29/29 build |
+| AUTH-011 | `GET /api/ooda/learned-recoveries` | REPAIRED: administrator-only global data | PR #131; creator denial test 29/29 build |
+| AUTH-012 | `GET /api/ip-studio/:workspace_id/production-packs` | REPAIRED: workspace check | PR #131; cross-tenant denial test 29/29 build |
+| AUTH-013 | `POST /api/ip-studio/:workspace_id/production-pack` | REPAIRED: workspace check | PR #131; cross-tenant denial test 29/29 build |
+| AUTH-014 | `GET /api/ip-studio/overview` | REPAIRED: administrator-only global IP overview | PR #131; creator denial test 29/29 build |
+| AUTH-015 | `GET /api/mission-control/snapshot` | REPAIRED: administrator-only global snapshot | PR #131; creator denial test 29/29 build |
+| AUTH-016 | `GET /api/runtime/dispatch-queue` | REPAIRED: administrator-only global queue | PR #131; creator denial test 29/29 build |
+| AUTH-017 | `POST /api/runtime/drain` | REPAIRED: administrator-only global mutation | PR #131; creator denial test 29/29 build |
+| AUTH-018 | `POST /api/runtime/scan` | REPAIRED: administrator-only global action | PR #131; creator denial test 29/29 build |
+| AUTH-019 | `POST /api/mission-control/retention/run` | REPAIRED: administrator-only global retention | PR #131; creator denial test 29/29 build |
+| AUTH-020 | `GET /api/events/retention/status` | REPAIRED: administrator-only retention metadata | PR #131; creator denial test 29/29 build |
+| AUTH-021 | `POST /api/events/retention/run` | REPAIRED: administrator-only retention mutation | PR #131; creator denial test 29/29 build |
+| AUTH-022 | `GET /api/performance/stream` | SOURCE VERIFIED: administrator middleware present | `routes/performance.js`; direct streaming denial test not recorded |
+| AUTH-023 | `GET /api/control-room/stream` | SOURCE VERIFIED: administrator check present inside handler | `routes/controlRoom.js`; full route integration test not recorded |
+| AUTH-024 | `GET /api/control-room/overview` | SOURCE VERIFIED: administrator check inside handler | `routes/controlRoom.js`; full integration test not recorded |
+| AUTH-025 | `GET /api/revenue/overview` | SOURCE VERIFIED: administrator middleware present | `routes/revenue.js`; full integration test not recorded |
+| AUTH-026 | `/api/auth/session`, `/api/auth/me`, `/api/auth/logout` | AUTHENTICATED: `server.js` applies `requireAuth` before routes; no workspace data read in route | Auth-session tests exist; not a cross-workspace exposure solely for lacking a `workspace_id` parameter |
+| AUTH-027 | `POST /api/revenue/stripe/webhook` | DISTINCT EXTERNAL AUTH: exempt from normal API key, signature checked before event handling | `routes/revenue.js`; deployed Stripe delivery and replay proof not established |
+| AUTH-028 | `/api/audience-lenses`, `/api/assist/options`, `/api/validation-seeds/:medium`, `/api/bootstrap-engine/options` | INTENTIONALLY CATALOG/CONFIG OPTIONS: no workspace DB read established by reviewed handlers | Preserve creator-facing experience; do not add arbitrary admin gates |
+
+### Remaining independent release blockers
+
+1. **AUTH-INVENTORY:** Re-enumerate *all actual routes including direct `server.js` handlers*, middleware and resource-by-ID lookups. Reclassify each original finding. The old 186-route total is unverified for the current branch.
+2. **AUTH-LIVE:** Run authenticated multi-tenant integration scenarios including event streaming, resource-by-ID access and creator happy paths. Focused denial tests are necessary, not sufficient.
+3. **CI-EXACT:** Run required full Node/Playwright checks on the final HEAD; do not inherit the six older green checks.
+4. **PROVIDER-RUNTIME:** Prove the intended production origin/runtime behavior and deploy credentials against approved release authority. Version upload alone does not authorize production.
+5. **REVIEW/DECISION:** Obtain independent review and project-specific release authorization. Keep PR #131 draft and unmerged until gates close.
+
+**Current gate:** `AUTH=BLOCKED; DEPLOY=HOLD; MERGE_APPROVED=false` pending the above. Historical information follows unchanged.
+
+---
+
+
 **Date:** 2026-10-10  
 **Audit Scope:** Complete API route inventory (186 routes across 37 route modules)  
 **Authority Classification:** Per-route authorization implementation status  
