@@ -4,7 +4,7 @@ import learningRoutes from '../routes/learning.js';
 import ipStudioRoutes from '../routes/ipStudio.js';
 import missionControlRoutes from '../routes/missionControl.js';
 import eventRetentionRoutes from '../routes/eventRetention.js';
-import oodaRoutes from '../routes/ooda.js';
+import oodaRoutes, { requireOodaIncidentStreamAdmin } from '../routes/ooda.js';
 import movieRoutes from '../routes/movie.js';
 import bootstrapEngineRoutes from '../routes/bootstrapEngine.js';
 
@@ -92,3 +92,28 @@ for (const [routes, endpoint] of [
     assert.equal(res.body.error, 'forbidden');
   });
 }
+
+test('live OODA incident stream denies creator before opening SSE', () => {
+  const res = response();
+  let opened = false;
+  requireOodaIncidentStreamAdmin(
+    { auth: { role: 'creator' }, request_id: 'ooda-stream-guard' },
+    res,
+    () => { opened = true; }
+  );
+  assert.equal(opened, false);
+  assert.equal(res.status, 403);
+  assert.equal(res.body.error, 'forbidden');
+});
+
+test('live OODA incident stream allows an administrator to open SSE', () => {
+  const res = response();
+  let opened = false;
+  requireOodaIncidentStreamAdmin(
+    { auth: { role: 'administrator' }, request_id: 'ooda-stream-guard' },
+    res,
+    () => { opened = true; }
+  );
+  assert.equal(opened, true);
+  assert.equal(res.status, null);
+});
