@@ -1,6 +1,7 @@
 // routes/ooda.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireRole } from '../lib/securityContext.js';
 import { collectActiveIncidents } from '../lib/oodaProcessor.js';
 
 function parsePayload(value) {
@@ -12,14 +13,14 @@ function parsePayload(value) {
 }
 
 export default function oodaRoutes(router, db) {
-  router.get('/api/ooda/snapshot', (req, res) => {
+  router.get('/api/ooda/snapshot', requireRole('administrator'), (req, res) => {
     json(res, 200, {
       generated_at: Date.now(),
       incidents: collectActiveIncidents(db)
     });
   });
 
-  router.get('/api/ooda/timeline/:correlation_id', (req, res) => {
+  router.get('/api/ooda/timeline/:correlation_id', requireRole('administrator'), (req, res) => {
     const correlationId = req.params.correlation_id;
 
     const incidents = db.prepare(`
