@@ -4,12 +4,16 @@ import learningRoutes from '../routes/learning.js';
 import ipStudioRoutes from '../routes/ipStudio.js';
 import missionControlRoutes from '../routes/missionControl.js';
 import eventRetentionRoutes from '../routes/eventRetention.js';
+import oodaRoutes from '../routes/ooda.js';
+import movieRoutes from '../routes/movie.js';
 
 function registerRoutes(install) {
   const routes = new Map();
   const router = {
     get(path, handler) { routes.set('GET ' + path, handler); },
-    post(path, handler) { routes.set('POST ' + path, handler); }
+    post(path, handler) { routes.set('POST ' + path, handler); },
+    put(path, handler) { routes.set('PUT ' + path, handler); },
+    delete(path, handler) { routes.set('DELETE ' + path, handler); }
   };
   install(router, {
     prepare() { throw new Error('DENIED REQUEST MUST NOT ACCESS DATABASE'); }
@@ -31,13 +35,17 @@ const learning = registerRoutes(learningRoutes);
 const ipStudio = registerRoutes(ipStudioRoutes);
 const missionControl = registerRoutes(missionControlRoutes);
 const eventRetention = registerRoutes(eventRetentionRoutes);
+const ooda = registerRoutes(oodaRoutes);
+const movie = registerRoutes(movieRoutes);
 
 const cases = [
   [learning, 'GET /api/ooda/episodes/:workspace_id'],
   [learning, 'POST /api/ooda/predict/:workspace_id'],
   [learning, 'GET /api/ooda/risk-history/:workspace_id'],
   [ipStudio, 'GET /api/ip-studio/:workspace_id/production-packs'],
-  [ipStudio, 'POST /api/ip-studio/:workspace_id/production-pack']
+  [ipStudio, 'POST /api/ip-studio/:workspace_id/production-pack'],
+  [movie, 'GET /api/movie/beats/:workspace_id'],
+  [movie, 'POST /api/movie/beats/generate/:workspace_id']
 ];
 
 for (const [routes, endpoint] of cases) {
@@ -67,7 +75,9 @@ for (const [routes, endpoint] of [
   [missionControl, 'POST /api/runtime/scan'],
   [missionControl, 'POST /api/mission-control/retention/run'],
   [eventRetention, 'GET /api/events/retention/status'],
-  [eventRetention, 'POST /api/events/retention/run']
+  [eventRetention, 'POST /api/events/retention/run'],
+  [ooda, 'GET /api/ooda/snapshot'],
+  [ooda, 'GET /api/ooda/timeline/:correlation_id']
 ]) {
   test(endpoint + ' rejects non-admin callers', () => {
     const handler = routes.get(endpoint);
