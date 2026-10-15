@@ -9,6 +9,10 @@ on:
       - fix/makevideo-storyengine-handoff
     paths:
       - 'story-engine/.dockerignore'
+      - 'story-engine/lib/pageGuard.js'
+      - 'story-engine/public/makevideo_storyboard_import.js'
+      - 'story-engine/test/makevideoImport.test.js'
+      - 'story-engine/test/pageGuard.test.js'
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/openVideoRenderer.js'
@@ -43,6 +47,10 @@ on:
   pull_request:
     paths:
       - 'story-engine/.dockerignore'
+      - 'story-engine/lib/pageGuard.js'
+      - 'story-engine/public/makevideo_storyboard_import.js'
+      - 'story-engine/test/makevideoImport.test.js'
+      - 'story-engine/test/pageGuard.test.js'
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/openVideoRenderer.js'
