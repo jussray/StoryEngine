@@ -6,6 +6,7 @@ on:
       - agent/story-video-engine-mvp
       - fix/leevize-self-hosted-renderer
       - fix/leevize-renderer-product-design-v2
+      - fix/makevideo-storyengine-handoff
     paths:
       - 'story-engine/.dockerignore'
       - 'story-engine/lib/videoEngine.js'
