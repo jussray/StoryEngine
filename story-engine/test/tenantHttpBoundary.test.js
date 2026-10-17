@@ -59,7 +59,29 @@ test('real HTTP middleware rejects cross-tenant writes and global metadata reads
     workspace_ids: ['workspace-a']
   }]);
   try {
-    const db = { prepare() { throw Error('DENIED REQUEST REACHED DATABASE'); } };
+    const db = {
+      prepare(sql) {
+        // Allow only the authorization lookups needed to prove a viewer
+        // with legitimate workspace membership still cannot enqueue work.
+        if (sql.includes('FROM workspace_memberships')) {
+          return {
+            get(workspaceId, tenantId, actorId) {
+              return workspaceId === 'workspace-a' && tenantId === 'tenant-a' && actorId === 'viewer-a'
+                ? { allowed: 1 }
+                : undefined;
+            }
+          };
+        }
+        if (sql.includes('SELECT tenant_id FROM stories')) {
+          return {
+            get(workspaceId) {
+              return workspaceId === 'workspace-a' ? { tenant_id: 'tenant-a' } : undefined;
+            }
+          };
+        }
+        throw Error('DENIED REQUEST REACHED APPLICATION DATA');
+      }
+    };
     const router = createRouter();
     router.use('/api', requestContext);
     router.use('/api', (req, res, next) => { req.db = db; next(); });
