@@ -24,7 +24,7 @@ export default function missionControlRoutes(router, db) {
     json(res, 200, listDispatchQueue(db, limit));
   });
 
-  router.post('/api/runtime/dispatch/:workspace_id', (req, res) => {
+  router.post('/api/runtime/dispatch/:workspace_id', requireRole('creator'), (req, res) => {
     const { workspace_id } = req.params;
     if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const item = enqueueRuntime(db, workspace_id, req.body?.trigger_type || 'manual_dispatch');
