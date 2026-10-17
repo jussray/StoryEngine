@@ -1,7 +1,7 @@
 // routes/campaignStudio.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
   CAMPAIGN_PLATFORMS,
   buildCampaignPack,
@@ -22,7 +22,7 @@ export default function campaignStudioRoutes(router, db) {
     });
   });
 
-  router.get('/api/campaign-studio/overview', (req, res) => {
+  router.get('/api/campaign-studio/overview', requireRole('administrator'), (req, res) => {
     try { json(res, 200, campaignStudioOverview(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });

@@ -3,7 +3,7 @@
 import { json } from '../lib/miniRouter.js';
 import { IP_STUDIO_PACK_TYPES, buildProductionPack, listProductionPacks, getProductionPack, ipStudioOverview } from '../lib/ipStudio.js';
 import { attachCreditsToProductionPack } from '../lib/visualLineage.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function ipStudioRoutes(router, db) {
   router.get('/api/ip-studio/options', (req, res) => {
@@ -15,8 +15,10 @@ export default function ipStudioRoutes(router, db) {
   });
 
   router.get('/api/ip-studio/overview', (req, res) => {
-    try { json(res, 200, ipStudioOverview(db)); }
-    catch (error) { json(res, 500, { error: error.message }); }
+    requireRole('administrator')(req, res, () => {
+      try { json(res, 200, ipStudioOverview(db)); }
+      catch (error) { json(res, 500, { error: error.message }); }
+    });
   });
 
   router.get('/api/ip-studio/packs/:pack_id', (req, res) => {
@@ -31,11 +33,13 @@ export default function ipStudioRoutes(router, db) {
   });
 
   router.get('/api/ip-studio/:workspace_id/production-packs', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     try { json(res, 200, listProductionPacks(db, req.params.workspace_id).map(pack => attachCreditsToProductionPack(pack))); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
 
   router.post('/api/ip-studio/:workspace_id/production-pack', (req, res) => {
+    if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     try {
       const pack = buildProductionPack(db, req.params.workspace_id, req.body || {});
       json(res, 201, attachCreditsToProductionPack(pack, req.body || {}));

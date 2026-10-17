@@ -22,7 +22,7 @@ export default function bootstrapEngineRoutes(router, db) {
     });
   });
 
-  router.get('/api/bootstrap-engine/providers', (req, res) => {
+  router.get('/api/bootstrap-engine/providers', requireRole('administrator'), (req, res) => {
     try { json(res, 200, listBootstrapProviders(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
@@ -41,7 +41,7 @@ export default function bootstrapEngineRoutes(router, db) {
     });
   });
 
-  router.get('/api/bootstrap-engine/overview', (req, res) => {
+  router.get('/api/bootstrap-engine/overview', requireRole('administrator'), (req, res) => {
     try { json(res, 200, founderEconomicsOverview(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
