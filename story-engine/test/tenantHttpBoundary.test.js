@@ -10,6 +10,7 @@ import campaignStudioRoutes from '../routes/campaignStudio.js';
 import ipGrowthRoutes from '../routes/ipGrowth.js';
 import ipSeedRoutes from '../routes/ipSeed.js';
 import movieRoutes from '../routes/movie.js';
+import missionControlRoutes from '../routes/missionControl.js';
 import oodaRoutes from '../routes/ooda.js';
 
 function recordResponse() {
@@ -50,6 +51,12 @@ test('real HTTP middleware rejects cross-tenant writes and global metadata reads
     tenant_id: 'tenant-a',
     role: 'creator',
     workspace_ids: ['workspace-a']
+  }, {
+    key: 'tenant-http-viewer-a',
+    actor_id: 'viewer-a',
+    tenant_id: 'tenant-a',
+    role: 'viewer',
+    workspace_ids: ['workspace-a']
   }]);
   try {
     const db = { prepare() { throw Error('DENIED REQUEST REACHED DATABASE'); } };
@@ -64,6 +71,7 @@ test('real HTTP middleware rejects cross-tenant writes and global metadata reads
     ipGrowthRoutes(router, db);
     ipSeedRoutes(router, db);
     movieRoutes(router, db);
+    missionControlRoutes(router, db);
     oodaRoutes(router, db);
 
     const denials = [
@@ -82,6 +90,12 @@ test('real HTTP middleware rejects cross-tenant writes and global metadata reads
       assert.equal(res.statusCode, 403, path);
       assert.equal(JSON.parse(res.body).error === 'forbidden' || JSON.parse(res.body).error === 'workspace_forbidden', true, path);
     }
+
+    const blockedViewerDispatch = request(router, 'POST', '/api/runtime/dispatch/workspace-a', 'tenant-http-viewer-a', {
+      trigger_type: 'manual_dispatch'
+    });
+    assert.equal(blockedViewerDispatch.statusCode, 403, 'viewer must not enqueue runtime work');
+    assert.equal(JSON.parse(blockedViewerDispatch.body).error, 'forbidden');
 
     const blockedAudit = request(router, 'POST', '/api/audit/series-continuity', 'tenant-http-creator-a', {
       workspace_id: 'workspace-b', manuscript: 'Foreign manuscript must never be written.'
