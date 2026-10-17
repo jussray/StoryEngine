@@ -322,3 +322,39 @@ test('Story Video Studio product design exposes canon, replaceable compute and s
     await expect(page.getByTestId('renderer-blocker').first()).toBeVisible();
   }
 });
+
+test('MakeVideo JSON handoff populates draft production beats without creating a job', async ({ page }) => {
+  await establishBrowserSession(page, ADMIN_BOOTSTRAP_KEY);
+  let createRequests = 0;
+  page.on('request', request => {
+    if (request.method()==='POST' && new URL(request.url()).pathname==='/api/video-engine/jobs') createRequests += 1;
+  });
+  await page.goto('/video_studio.html');
+  await expect(page.getByTestId('makevideo-import')).toBeVisible();
+  const file = (shots) => ({
+    name: 'makevideo.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      schema:'makevideo/storyboard/v1',
+      title:'Imported concept',
+      format:'9:16',
+      goal:'Real action on screen',
+      shots
+    }))
+  });
+  await page.getByTestId('makevideo-file').setInputFiles(file([
+    {id:'a',title:'Arrival',visual:'Creator walks through a city street',duration:4},
+    {id:'b',title:'Decision',visual:'Creator reaches the studio door',duration:5}
+  ]));
+  await expect(page.locator('#makeVideoImportStatus')).toContainText('Imported 2 draft beats');
+  await expect(page.locator('#actionBeats')).toHaveValue('Creator walks through a city street\nCreator reaches the studio door');
+  await expect(page.locator('#aspectRatio')).toHaveValue('9:16');
+  await expect(page.locator('#viewerTakeaway')).toHaveValue('Real action on screen');
+  await expect(page.locator('#mode')).toHaveValue('live_action');
+  await expect(page.locator('#makeVideoImportStatus')).toContainText('No job submitted');
+  expect(createRequests).toBe(0);
+  await page.getByTestId('makevideo-file').setInputFiles(file(Array.from({length:13},(_,i)=>({id:String(i),title:'Shot',duration:3}))));
+  await expect(page.locator('#makeVideoImportStatus')).toContainText('Import rejected');
+  await expect(page.locator('#actionBeats')).toHaveValue('Creator walks through a city street\nCreator reaches the studio door');
+  expect(createRequests).toBe(0);
+});

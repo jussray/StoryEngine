@@ -280,6 +280,26 @@ $('referenceImage').addEventListener('change',async event=>{
   }catch(error){referenceImageDataUrl=null;$('referenceStatus').textContent=error.message;$('referenceStatus').className='error';}
 });
 
+// Import only draft directions into authenticated StoryEngine's existing planning form.
+$('importMakeVideoFile').addEventListener('change', async event => {
+  const file = event.currentTarget.files?.[0];
+  event.currentTarget.value = '';
+  if (!file) return;
+  const status = $('makeVideoImportStatus');
+  if (file.size > 150000) { status.textContent = 'Import rejected: file must be 150 KB or smaller.'; status.className = 'error'; return; }
+  try {
+    const imported = window.MakeVideoStoryboardImport.importStoryboard(JSON.parse(await file.text()));
+    if (!options?.modes?.live_action) throw new Error('Production mode options are unavailable. Reload when connected.');
+    $('mode').value = 'live_action';
+    $('mode').dispatchEvent(new Event('change', { bubbles: true }));
+    $('aspectRatio').value = imported.aspect_ratio;
+    $('actionBeats').value = imported.action_beats.join('\n');
+    $('viewerTakeaway').value = imported.viewer_takeaway;
+    status.textContent = `Imported ${imported.count} draft beats from "${imported.project_title}" (${imported.total_seconds}s planned). Review your workspace, primary subject, product/world, and shots before generating. No job submitted.`;
+    status.className = 'sub';
+  } catch(error) { status.textContent = `Import rejected: ${error.message}`; status.className = 'error'; }
+});
+
 $('jobForm').addEventListener('submit',async event=>{
   event.preventDefault(); const button=$('generate'); button.disabled=true; button.textContent='Building production plan…'; $('formStatus').textContent=''; $('formStatus').className='sub';
   try{

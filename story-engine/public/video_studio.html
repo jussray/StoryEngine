@@ -26,6 +26,13 @@
       <button id="refreshRenderer" class="btn" type="button">Refresh infrastructure</button>
     </section>
 
+    <section class="card" data-testid="makevideo-import">
+      <div class="eyebrow">MakeVideo handoff · local file</div>
+      <h3>Bring in your storyboard</h3>
+      <p class="sub">Import a MakeVideo JSON file to fill draft action beats. Nothing is submitted until you review and generate a plan in an authorized workspace. This does not preserve one-to-one rendering timing.</p>
+      <div class="field"><label for="importMakeVideoFile">MakeVideo storyboard JSON</label><input id="importMakeVideoFile" type="file" accept=".json,application/json" data-testid="makevideo-file"></div>
+      <div id="makeVideoImportStatus" class="sub" role="status" aria-live="polite">Supports 1–12 shots, up to 60 seconds.</div>
+    </section>
     <form id="jobForm" class="card stack">
       <div class="field"><label for="workspaceId">Workspace ID</label><input id="workspaceId" name="workspace_id" required placeholder="workspace_..."></div>
       <div class="look-grid"><div class="field"><label for="mode">Render mode</label><select id="mode"></select></div><div class="field"><label for="visualStyle">Visual style</label><select id="visualStyle"></select></div></div>
@@ -52,6 +59,7 @@
 </main>
 <datalist id="shotCommandTemplates"></datalist>
 <script src="/l99_auth.js"></script>
+<script src="/makevideo_storyboard_import.js"></script>
 <script src="/video_studio.js"></script>
 </body>
 </html>
