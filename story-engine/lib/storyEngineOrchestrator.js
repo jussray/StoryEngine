@@ -376,6 +376,17 @@ export async function resumeStoryEngineRun(db, runId) {
     ? db.prepare('SELECT * FROM runtime_dispatch_queue WHERE dispatch_id=?').get(run.dispatch_id)
     : null;
   if (!dispatch || ['queued', 'running'].includes(dispatch.status)) return run;
+  if (dispatch.status === 'blocked') {
+    const blockerReason = dispatch.blocker_reason || 'provider_unavailable';
+    const message = dispatch.error || `Runtime blocked by provider: ${blockerReason}.`;
+    db.prepare("UPDATE story_engine_runs SET status='needs_review', error=?, updated_at=? WHERE run_id=?").run(message, Date.now(), runId);
+    setStage(db, runId, run.workspace_id, 'runtime', 'blocked', message, {
+      dispatch_id: dispatch.dispatch_id,
+      error_code: dispatch.error_code || null,
+      blocker_reason: blockerReason
+    });
+    return hydrateRun(db, runId);
+  }
   if (dispatch.status === 'failed') {
     db.prepare("UPDATE story_engine_runs SET status='failed', error=?, updated_at=? WHERE run_id=?").run(dispatch.error || 'Runtime failed.', Date.now(), runId);
     setStage(db, runId, run.workspace_id, 'runtime', 'failed', dispatch.error || 'Runtime failed.');
