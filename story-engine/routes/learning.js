@@ -49,7 +49,7 @@ export default function learningRoutes(router, db) {
     });
   });
 
-  router.post('/api/ooda/predict/:workspace_id', (req, res) => {
+  router.post('/api/ooda/predict/:workspace_id', requireRole('creator'), (req, res) => {
     if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     json(res, 200, predictWorkspaceRisk(db, req.params.workspace_id));
   });

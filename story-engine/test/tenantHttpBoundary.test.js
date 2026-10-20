@@ -12,6 +12,8 @@ import ipSeedRoutes from '../routes/ipSeed.js';
 import movieRoutes from '../routes/movie.js';
 import missionControlRoutes from '../routes/missionControl.js';
 import oodaRoutes from '../routes/ooda.js';
+import ipStudioRoutes from '../routes/ipStudio.js';
+import learningRoutes from '../routes/learning.js';
 
 function recordResponse() {
   return {
@@ -43,7 +45,7 @@ function request(router, method, path, key, body) {
   return res;
 }
 
-test('real HTTP middleware rejects cross-tenant writes and global metadata reads before database access', () => {
+test('real HTTP middleware rejects cross-tenant writes and global metadata reads before database access', async () => {
   const original = process.env.L99_API_KEYS_JSON;
   process.env.L99_API_KEYS_JSON = JSON.stringify([{
     key: 'tenant-http-creator-a',
@@ -95,6 +97,8 @@ test('real HTTP middleware rejects cross-tenant writes and global metadata reads
     movieRoutes(router, db);
     missionControlRoutes(router, db);
     oodaRoutes(router, db);
+    ipStudioRoutes(router, db);
+    learningRoutes(router, db);
 
     const denials = [
       ['GET', '/api/bootstrap-engine/providers'],
@@ -118,6 +122,18 @@ test('real HTTP middleware rejects cross-tenant writes and global metadata reads
     });
     assert.equal(blockedViewerDispatch.statusCode, 403, 'viewer must not enqueue runtime work');
     assert.equal(JSON.parse(blockedViewerDispatch.body).error, 'forbidden');
+
+    for (const [path, body] of [
+      ['/api/audit/series-continuity', { workspace_id: 'workspace-a', manuscript: 'Viewer must not overwrite chapters.' }],
+      ['/api/movie/beats/generate/workspace-a', {}],
+      ['/api/ip-studio/workspace-a/production-pack', {}],
+      ['/api/ooda/predict/workspace-a', {}]
+    ]) {
+      const denied = request(router, 'POST', path, 'tenant-http-viewer-a', body);
+      await Promise.resolve();
+      assert.equal(denied.statusCode, 403, path + ': viewer must not mutate an authorized workspace');
+      assert.equal(JSON.parse(denied.body).error, 'forbidden', path);
+    }
 
     const blockedAudit = request(router, 'POST', '/api/audit/series-continuity', 'tenant-http-creator-a', {
       workspace_id: 'workspace-b', manuscript: 'Foreign manuscript must never be written.'

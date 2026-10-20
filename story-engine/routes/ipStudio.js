@@ -38,7 +38,7 @@ export default function ipStudioRoutes(router, db) {
     catch (error) { json(res, 500, { error: error.message }); }
   });
 
-  router.post('/api/ip-studio/:workspace_id/production-pack', (req, res) => {
+  router.post('/api/ip-studio/:workspace_id/production-pack', requireRole('creator'), (req, res) => {
     if (!requireWorkspaceAccess(req, res, req.params.workspace_id)) return;
     try {
       const pack = buildProductionPack(db, req.params.workspace_id, req.body || {});

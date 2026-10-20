@@ -14,11 +14,16 @@ import ipSeedRoutes from '../routes/ipSeed.js';
 
 function registerRoutes(install) {
   const routes = new Map();
+  const chain = handlers => (req, res) => {
+    let index = 0;
+    const next = () => handlers[index++]?.(req, res, next);
+    return next();
+  };
   const router = {
-    get(path, handler) { routes.set('GET ' + path, handler); },
-    post(path, handler) { routes.set('POST ' + path, handler); },
-    put(path, handler) { routes.set('PUT ' + path, handler); },
-    delete(path, handler) { routes.set('DELETE ' + path, handler); }
+    get(path, ...handlers) { routes.set('GET ' + path, chain(handlers)); },
+    post(path, ...handlers) { routes.set('POST ' + path, chain(handlers)); },
+    put(path, ...handlers) { routes.set('PUT ' + path, chain(handlers)); },
+    delete(path, ...handlers) { routes.set('DELETE ' + path, chain(handlers)); }
   };
   install(router, {
     prepare() { throw new Error('DENIED REQUEST MUST NOT ACCESS DATABASE'); }

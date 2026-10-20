@@ -302,3 +302,10 @@ This ledger represents **REPAIR AUDIT COMPLETION**, not **RELEASE AUTHORIZATION*
 
 ---
 
+
+
+## PR #131 independent review follow-up — 2026-10-20
+
+Review of `8679f8a6c196d73ebb4ebd45645ac5829ff6a445` found that a viewer with valid workspace access could enter four mutation handlers: series-continuity audit, movie-beat generation, IP production-pack generation, and risk prediction. Workspace membership alone does not grant creator authority. All four now require creator-or-higher before application data access; existing workspace checks remain.
+
+The real HTTP middleware regression reproduced the audit defect before the fix and now checks all four denials. The route test harness executes complete handler chains. Local patched-worktree checks: 38 focused tests and 416 full Node tests passed, with zero failures/skips; founder truth gate passed 5/5. These local results precede the new commit and do not substitute for its exact-head CI or live production proof. No merge, deployment, credential, or data change was performed. Rollback is a normal revert of this focused patch; production release remains separately gated.
