@@ -138,7 +138,7 @@ export default function videoEngineRoutes(router, db) {
     } catch (error) {
       const code = error?.code || 'HEYGEN_PROVIDER_FAILED';
       const status = code === 'HEYGEN_JOB_NOT_FOUND' || code === 'HEYGEN_SHOT_NOT_FOUND' ? 404
-        : code === 'HEYGEN_PREVIEW_REQUIRED' || code === 'HEYGEN_STALE_PLAN' || code === 'SHOT_CONTINUITY_CONTRACT_BLOCKED' ? 409
+        : code === 'HEYGEN_PREVIEW_REQUIRED' || code === 'HEYGEN_STALE_PLAN' || code === 'HEYGEN_REQUEST_CONFLICT' || code === 'SHOT_CONTINUITY_CONTRACT_BLOCKED' ? 409
         : code === 'HEYGEN_DISABLED' ? 503 : 400;
       json(res, status, {
         code,
