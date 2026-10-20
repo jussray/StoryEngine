@@ -3,7 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createContinuityCookie } from './videoContinuity.js';
 
-const PROVIDER = 'heygen_avatar_v2';
+const PROVIDER = 'heygen_avatar_v3';
 const BASE = 'https://api.heygen.com';
 const ID = /^[a-zA-Z0-9_-]{3,200}$/;
 const sha256 = data => createHash('sha256').update(data).digest('hex');
@@ -122,17 +122,10 @@ function requestFor(job, input, env) {
   if (narration.length < 1 || narration.length > 2500) {
     throw problem('HEYGEN_SCRIPT_INVALID', 'Shot narration must be 1–2500 characters.');
   }
-  const dimensions = job.blueprint?.aspect_ratio === '9:16'
-    ? { width: 720, height: 1280 }
-    : job.blueprint?.aspect_ratio === '1:1'
-      ? { width: 720, height: 720 }
-      : { width: 1280, height: 720 };
   return {
-    video_inputs: [{
-      character: { type: 'avatar', avatar_id: avatarId },
-      voice: { type: 'text', input_text: narration, voice_id: voiceId }
-    }],
-    dimension: dimensions, test: false
+    type: 'avatar', avatar_id: avatarId, voice_id: voiceId,
+    script: narration, aspect_ratio: job.blueprint?.aspect_ratio || '16:9',
+    resolution: '720p', output_format: 'mp4'
   };
 }
 
@@ -177,7 +170,12 @@ export async function submitHeygenShot(db, job, input = {}, options = {}) {
     const existing = db.prepare(
       'SELECT * FROM story_video_heygen_attempts WHERE job_id=? AND shot_id=? AND continuity_cookie=?'
     ).get(job.job_id, value(input.shot_id), continuityCookie);
-    if (existing) return { row: existing, reused: true };
+    if (existing) {
+      if (existing.request_sha256 !== sha256(Buffer.from(body, 'utf8'))) {
+        throw problem('HEYGEN_REQUEST_CONFLICT', 'A different avatar or voice was already reserved for this shot.');
+      }
+      return { row: existing, reused: true };
+    }
     const now = Date.now();
     const row = {
       attempt_id: 'heygen_' + randomUUID(), job_id: job.job_id,
@@ -198,9 +196,13 @@ export async function submitHeygenShot(db, job, input = {}, options = {}) {
   // Do not retry an ambiguous POST; it may already have incurred a provider charge.
   let row;
   try {
-    const response = await (options.fetchImpl || fetch)(BASE + '/v2/video/generate', {
+    const response = await (options.fetchImpl || fetch)(BASE + '/v3/videos', {
       method: 'POST',
-      headers: { 'x-api-key': value(env.HEYGEN_API_KEY), 'content-type': 'application/json' },
+      headers: {
+        'x-api-key': value(env.HEYGEN_API_KEY),
+        'content-type': 'application/json',
+        'Idempotency-Key': reserved.row.attempt_id
+      },
       body,
       signal: AbortSignal.timeout(20_000)
     });
@@ -235,13 +237,18 @@ export async function refreshHeygenShot(db, job, attemptId, options = {}) {
   if (!value(env.HEYGEN_API_KEY)) throw problem('HEYGEN_DISABLED', 'HeyGen runtime credential is unavailable.');
   try {
     const response = await (options.fetchImpl || fetch)(
-      BASE + '/v1/video_status.get?video_id=' + encodeURIComponent(current.provider_video_id), {
+      BASE + '/v3/videos/' + encodeURIComponent(current.provider_video_id), {
         headers: { 'x-api-key': value(env.HEYGEN_API_KEY) },
         signal: AbortSignal.timeout(20_000)
       });
     if (!response.ok) return display(current, job);
     const body = await parseResponse(response);
+    // A mismatched provider resource cannot be treated as our previously submitted job.
+    if (value(body?.data?.id) !== current.provider_video_id) return display(current, job);
     const status = value(body?.data?.status);
+    if (!['completed', 'failed', 'waiting', 'processing', 'pending', 'queued'].includes(status)) {
+      return display(current, job);
+    }
     const next = status === 'completed' ? 'provider_completed_unverified'
       : status === 'failed' ? 'provider_failed' : 'processing';
     return display(setStatus(db, attemptId, next, current.provider_video_id), job);
