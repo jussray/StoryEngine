@@ -49,6 +49,7 @@ import {
   releaseRenderLease
 } from '../lib/videoRenderLedger.js';
 import { attachSyncAvenueToStoryVideoJob } from '../lib/syncAvenue.js';
+import { heygenReadiness, submitHeygenShot, getHeygenAttempt, refreshHeygenShot } from '../lib/heygenProvider.js';
 import { bindSyncAvenueRendererDirections } from '../lib/syncAvenueRendererBridge.js';
 
 function publicFailures(error) {
@@ -118,6 +119,59 @@ export default function videoEngineRoutes(router, db) {
   router.get('/api/video-engine/open-renderer/status', async (req, res) => {
     try { json(res, 200, await probeOpenVideoRenderer()); }
     catch { json(res, 200, { renderer: 'comfyui_wan22_ti2v_5b_v2', ready: false, primary_lane: 'self_hosted_open_weight', vendor_credit_required: false, blockers: [{ id: 'GPU-UNKNOWN', code: 'OPEN_RENDER_STATUS_UNKNOWN', reason: 'Renderer status could not be verified.' }], authority: 'none' }); }
+  });
+
+  // Avatar-video fallback only. No public or creator-level route may spend provider credits.
+  // FCR retains release authority; these endpoints never claim finished-media proof.
+  router.get('/api/video-engine/heygen/status', requireRole('administrator'), (req, res) => {
+    json(res, 200, heygenReadiness());
+  });
+
+  router.post('/api/video-engine/jobs/:job_id/heygen', requireRole('administrator'), async (req, res) => {
+    try {
+      const job = getStoryVideoJob(db, req.params.job_id);
+      if (!job) return json(res, 404, { error: 'Video job not found.' });
+      if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
+      ensureStoryVideoContinuityGate(db, job.job_id);
+      const attempt = await submitHeygenShot(db, job, req.body || {});
+      json(res, attempt.reused ? 200 : 202, attempt);
+    } catch (error) {
+      const code = error?.code || 'HEYGEN_PROVIDER_FAILED';
+      const status = code === 'HEYGEN_JOB_NOT_FOUND' || code === 'HEYGEN_SHOT_NOT_FOUND' ? 404
+        : code === 'HEYGEN_PREVIEW_REQUIRED' || code === 'HEYGEN_STALE_PLAN' || code === 'SHOT_CONTINUITY_CONTRACT_BLOCKED' ? 409
+        : code === 'HEYGEN_DISABLED' ? 503 : 400;
+      json(res, status, {
+        code,
+        error: error?.code ? error.message : 'HeyGen request failed before a verified provider result.'
+      });
+    }
+  });
+
+  router.get('/api/video-engine/jobs/:job_id/heygen/:attempt_id', requireRole('administrator'), (req, res) => {
+    try {
+      const job = getStoryVideoJob(db, req.params.job_id);
+      if (!job) return json(res, 404, { error: 'Video job not found.' });
+      if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
+      const attempt = getHeygenAttempt(db, job, req.params.attempt_id);
+      json(res, attempt ? 200 : 404, attempt || { error: 'HeyGen attempt not found.' });
+    } catch {
+      json(res, 500, { error: 'HeyGen attempt could not be read.' });
+    }
+  });
+
+  router.post('/api/video-engine/jobs/:job_id/heygen/:attempt_id/refresh', requireRole('administrator'), async (req, res) => {
+    try {
+      const job = getStoryVideoJob(db, req.params.job_id);
+      if (!job) return json(res, 404, { error: 'Video job not found.' });
+      if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
+      const attempt = await refreshHeygenShot(db, job, req.params.attempt_id);
+      json(res, 200, attempt);
+    } catch (error) {
+      const code = error?.code || 'HEYGEN_REFRESH_FAILED';
+      json(res, code === 'HEYGEN_ATTEMPT_NOT_FOUND' ? 404 : code === 'HEYGEN_STALE_PLAN' ? 409 : code === 'HEYGEN_DISABLED' ? 503 : 500, {
+        code, error: error?.code ? error.message : 'HeyGen status could not be verified.'
+      });
+    }
   });
 
   router.get('/api/video-engine/control-room', (req, res) => {
