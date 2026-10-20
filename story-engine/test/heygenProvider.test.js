@@ -84,12 +84,15 @@ test('submission persists evidence once, hashes request bytes, and cannot resubm
   try {
     const fakeFetch = async (url, opts) => {
       count += 1;
-      assert.equal(url, 'https://api.heygen.com/v2/video/generate');
+      assert.equal(url, 'https://api.heygen.com/v3/videos');
       assert.equal(opts.method, 'POST');
       assert.equal(opts.headers['x-api-key'], env.HEYGEN_API_KEY);
       const body = JSON.parse(opts.body);
-      assert.equal(body.video_inputs[0].voice.input_text, current.blueprint.shots[0].narration);
-      assert.deepEqual(body.dimension, { width: 720, height: 1280 });
+      assert.equal(body.script, current.blueprint.shots[0].narration);
+      assert.equal(body.aspect_ratio, '9:16');
+      assert.equal(body.type, 'avatar');
+      assert.equal(body.resolution, '720p');
+      assert.match(opts.headers['Idempotency-Key'], /^heygen_[a-z0-9-]+$/i);
       return mockResponse({ data: { video_id: 'video_confirmed_123' } });
     };
     const [first, duplicate] = await Promise.all([
@@ -108,6 +111,24 @@ test('submission persists evidence once, hashes request bytes, and cannot resubm
     assert.throws(() => {
       db.exec("UPDATE story_video_heygen_events SET event_type='altered'");
     }, /immutable/);
+  } finally { db.close(); }
+});
+
+test('duplicate submit with changed avatar or voice fails closed without a second charge', async () => {
+  const db = new DatabaseSync(':memory:');
+  const current = job();
+  let calls = 0;
+  try {
+    const fakeFetch = async () => {
+      calls += 1;
+      return mockResponse({ data: { video_id: 'video_confirmed_123' } });
+    };
+    await submitHeygenShot(db, current, input(current), { env, fetchImpl: fakeFetch });
+    await assert.rejects(
+      submitHeygenShot(db, current, { ...input(current), avatar_id: 'avatar_other' }, { env, fetchImpl: fakeFetch }),
+      { code: 'HEYGEN_REQUEST_CONFLICT' }
+    );
+    assert.equal(calls, 1);
   } finally { db.close(); }
 });
 
@@ -134,9 +155,9 @@ test('provider completed status is NOT playable media proof and does not authori
     });
     const done = await refreshHeygenShot(db, current, sent.attempt_id, {
       env, fetchImpl: async (url, opts) => {
-        assert.ok(url.endsWith('video_id=video_confirmed_321'));
+        assert.equal(url, 'https://api.heygen.com/v3/videos/video_confirmed_321');
         assert.equal(opts.headers['x-api-key'], env.HEYGEN_API_KEY);
-        return mockResponse({ data: { status: 'completed', video_url: 'https://example.com/bearer-media-url' } });
+        return mockResponse({ data: { id: 'video_confirmed_321', status: 'completed', video_url: 'https://example.com/bearer-media-url' } });
       }
     });
     assert.equal(done.status, 'provider_completed_unverified');
