@@ -31,11 +31,11 @@ also check the workspace access boundary.
 - POST /api/video-engine/jobs/:job_id/heygen/:attempt_id/refresh: read provider
   status for a confirmed provider video ID; never submits a new generation.
 
-The fixed provider API endpoints are:
-POST https://api.heygen.com/v2/video/generate
-GET https://api.heygen.com/v1/video_status.get
+The fixed provider API endpoints (verified against HeyGen documentation on October 20, 2026) are:
+POST https://api.heygen.com/v3/videos
+GET https://api.heygen.com/v3/videos/{video_id}
 
-This uses HeyGen avatar+voice text input. Arbitrary provider URLs are rejected
+This uses HeyGen v3 avatar+voice text input, 720p and the approved shot aspect ratio. The fixed, persisted attempt ID is sent as HeyGen's Idempotency-Key. This provides additional provider-side protection within its documented 24-hour window. Arbitrary provider URLs are rejected
 because the API origin is fixed in the adapter.
 
 ## Cost, consent and provider uncertainty
@@ -48,8 +48,7 @@ No automatic multi-shot submission is implemented.
 Presenter/avatar permissions and creator rights remain a separate review.
 
 A SQLite reservation occurs BEFORE network submission, guarded by a unique
-job+shot+continuity key. Concurrent requests and replays reuse the existing
-attempt rather than spending credits twice.
+job+shot+continuity key. Concurrent identical requests and replays reuse the existing attempt rather than spending credits twice. A changed avatar or voice for the same job, shot and continuity is rejected with HEYGEN_REQUEST_CONFLICT rather than silently reusing the old media.
 
 If a network timeout or ambiguous provider response occurs, the attempt becomes
 needs_reconcile. Never automatically retry an uncertain submission: it might
@@ -84,3 +83,5 @@ do not destroy records or automatically delete previously charged videos.
 
 MakeVideo integration and FCR provider-capability registration remain distinct
 workstreams. Neither is claimed complete by this adapter.
+
+Official v3 schemas: https://developers.heygen.com/reference/create-video and https://developers.heygen.com/reference/get-video
