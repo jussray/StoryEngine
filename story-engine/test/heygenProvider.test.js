@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createRouter } from '../lib/miniRouter.js';
+import { PassThrough } from 'node:stream';
 import videoEngineRoutes from '../routes/videoEngine.js';
 import { createContinuityCookie } from '../lib/videoContinuity.js';
 import {
@@ -195,5 +196,32 @@ test('HeyGen routes deny non-administrators before database access', () => {
     assert.equal(res.statusCode, 403);
     assert.equal(JSON.parse(res.body).error, 'forbidden');
   }
+  assert.equal(reads, 0);
+});
+
+
+test('HeyGen POST route denies creator before database lookup or provider call', async () => {
+  let reads = 0;
+  const db = { prepare() { reads += 1; throw Error('no DB'); } };
+  const router = createRouter();
+  videoEngineRoutes(router, db);
+  const req = new PassThrough();
+  Object.assign(req, {
+    method: 'POST',
+    url: '/api/video-engine/jobs/video_job_test/heygen',
+    headers: { 'content-type': 'application/json' },
+    auth: { actor_id: 'creator_one', tenant_id: 'tenant_one',
+      role: 'creator', workspace_ids: ['workspace_one'] }
+  });
+  const res = {
+    writableEnded: false, statusCode: 0, body: '',
+    writeHead(status) { this.statusCode = status; },
+    end(body = '') { this.body = String(body); this.writableEnded = true; }
+  };
+  router.handle(req, res);
+  req.end(JSON.stringify({ shot_id: 'shot_01', approve_provider_spend: true }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(res.statusCode, 403);
+  assert.equal(JSON.parse(res.body).error, 'forbidden');
   assert.equal(reads, 0);
 });
