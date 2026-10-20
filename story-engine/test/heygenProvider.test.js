@@ -152,27 +152,27 @@ test('provider completed status is NOT playable media proof and does not authori
   } finally { db.close(); }
 });
 
-test('HeyGen submit route denies non-administrators before touching the database', () => {
+test('HeyGen routes deny non-administrators before database access', () => {
   let reads = 0;
   const db = { prepare() { reads += 1; throw Error('no DB'); } };
   const router = createRouter();
   videoEngineRoutes(router, db);
-  const response = {
-    writableEnded: false, statusCode: 0, body: '',
-    writeHead(status) { this.statusCode = status; },
-    end(body = '') { this.body = String(body); this.writableEnded = true; }
-  };
-  router.handle({
-    method: 'POST',
-    url: '/api/video-engine/jobs/video_job_test/heygen',
-    headers: {}, auth: {
-      actor_id: 'creator_one', tenant_id: 'tenant_one',
-      role: 'creator', workspace_ids: ['workspace_one']
-    }
-  }, response);
-  // This route-level role gate protects against an omitted global middleware.
-  // Route parsing only occurs after middleware; the mock receives an empty post body.
-  // This assertion may run on a later microtask in the HTTP router.
-  assert.equal(response.statusCode, 0);
+  for (const url of [
+    '/api/video-engine/heygen/status',
+    '/api/video-engine/jobs/video_job_test/heygen/fake_attempt'
+  ]) {
+    const res = {
+      writableEnded: false, statusCode: 0, body: '',
+      writeHead(status) { this.statusCode = status; },
+      end(body = '') { this.body = String(body); this.writableEnded = true; }
+    };
+    router.handle({
+      method: 'GET', url, headers: {},
+      auth: { actor_id: 'creator_one', tenant_id: 'tenant_one',
+        role: 'creator', workspace_ids: ['workspace_one'] }
+    }, res);
+    assert.equal(res.statusCode, 403);
+    assert.equal(JSON.parse(res.body).error, 'forbidden');
+  }
   assert.equal(reads, 0);
 });
