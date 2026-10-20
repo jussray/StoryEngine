@@ -302,10 +302,36 @@ export async function convertStoryFormat(db, { workspace_id, story_vision, sourc
     log(db, { workspace_id, mode: 'ip_studio', event_type: 'ip.conversion.complete', payload: { conversion_id: conversionId, target_format, chars: raw.length } });
     return { conversion_id: conversionId, workspace_id, target_format, status: 'complete', output: raw, path };
   } catch (error) {
-    db.prepare("UPDATE ip_conversions SET status='error', error=?, updated_at=? WHERE conversion_id=?")
-      .run(error.message, Date.now(), conversionId);
-    log(db, { workspace_id, mode: 'ip_studio', event_type: 'ip.conversion.error', payload: { conversion_id: conversionId, target_format, error: error.message } });
-    return { conversion_id: conversionId, workspace_id, target_format, status: 'error', error: error.message, path };
+    const blockerReason = typeof error?.blocker_reason === 'string' ? error.blocker_reason : null;
+    const errorCode = typeof error?.code === 'string' ? error.code : null;
+    const status = blockerReason ? 'blocked' : 'error';
+    const safeError = blockerReason
+      ? `Provider blocked conversion: ${blockerReason}.`
+      : error instanceof Error ? error.message : String(error);
+    db.prepare('UPDATE ip_conversions SET status=?, error=?, updated_at=? WHERE conversion_id=?')
+      .run(status, safeError, Date.now(), conversionId);
+    log(db, {
+      workspace_id,
+      mode: 'ip_studio',
+      event_type: blockerReason ? 'ip.conversion.blocked' : 'ip.conversion.error',
+      payload: {
+        conversion_id: conversionId,
+        target_format,
+        error: safeError,
+        error_code: errorCode,
+        blocker_reason: blockerReason
+      }
+    });
+    return {
+      conversion_id: conversionId,
+      workspace_id,
+      target_format,
+      status,
+      error: safeError,
+      error_code: errorCode,
+      blocker_reason: blockerReason,
+      path
+    };
   }
 }
 
