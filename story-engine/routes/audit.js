@@ -1,11 +1,14 @@
 // routes/audit.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import { runSeriesContinuityAudit } from '../lib/seriesAudit.js';
 
 export default function auditRoutes(router, db) {
-  router.post('/api/audit/series-continuity', async (req, res) => {
+  router.post('/api/audit/series-continuity', requireRole('creator'), async (req, res) => {
+    const workspaceId = String(req.body?.workspace_id || '').trim();
+    if (!workspaceId) return json(res, 400, { error: 'workspace_id is required.' });
+    if (!requireWorkspaceAccess(req, res, workspaceId)) return;
     try {
       const report = await runSeriesContinuityAudit(db, req.body || {});
       json(res, 201, report);

@@ -26,7 +26,7 @@ import chapterMaintenanceRoutes from './routes/chapterMaintenance.js';
 import movieRoutes from './routes/movie.js';
 import eventsRoutes from './routes/events.js';
 import lindymodeRoutes from './routes/lindymode.js';
-import oodaRoutes from './routes/ooda.js';
+import oodaRoutes, { requireOodaIncidentStreamAdmin } from './routes/ooda.js';
 import decisionRoutes from './routes/decision.js';
 import learningRoutes from './routes/learning.js';
 import recoveryRoutes from './routes/recovery.js';
@@ -229,7 +229,7 @@ const server = createServer((req, res) => {
   }
 
   if (url.pathname === '/api/ooda/incidents') {
-    requestContext(req, res, () => requireAuth(req, res, () => openOodaStream(req, res)));
+    requestContext(req, res, () => requireAuth(req, res, () => requireOodaIncidentStreamAdmin(req, res, () => openOodaStream(req, res))));
     return;
   }
 

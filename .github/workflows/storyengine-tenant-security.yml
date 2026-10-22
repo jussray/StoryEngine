@@ -1,0 +1,62 @@
+name: StoryEngine Tenant Security Proof
+
+on:
+  pull_request:
+    paths:
+      - 'story-engine/routes/learning.js'
+      - 'story-engine/routes/ooda.js'
+      - 'story-engine/server.js'
+      - 'story-engine/routes/movie.js'
+      - 'story-engine/routes/bootstrapEngine.js'
+      - 'story-engine/routes/ipSeed.js'
+      - 'story-engine/routes/ipGrowth.js'
+      - 'story-engine/routes/campaignStudio.js'
+      - 'story-engine/routes/audit.js'
+      - 'story-engine/routes/ipStudio.js'
+      - 'story-engine/routes/missionControl.js'
+      - 'story-engine/routes/eventRetention.js'
+      - 'story-engine/lib/securityContext.js'
+      - 'story-engine/test/tenantRouteGuards.test.js'
+      - 'story-engine/test/tenantHttpBoundary.test.js'
+      - '.github/workflows/storyengine-tenant-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tenant-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact checkout
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: story-engine/package-lock.json
+      - name: Install locked dependencies
+        working-directory: story-engine
+        run: npm ci
+      - name: Install required media tools
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+      - name: Cross-workspace route regression
+        working-directory: story-engine
+        run: node --test test/tenantRouteGuards.test.js test/tenantHttpBoundary.test.js test/securityContext.test.js
+      - name: Full Node regression suite
+        working-directory: story-engine
+        run: npm test
