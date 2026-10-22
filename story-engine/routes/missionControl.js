@@ -1,14 +1,14 @@
 // routes/missionControl.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess, requireGlobalAdministrator } from '../lib/securityContext.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
 import { enqueueRuntime, drainRuntimeQueue, listDispatchQueue, scanChangedWorkspaces } from '../lib/runtimeDispatcher.js';
 import { runEventRetention } from '../lib/eventRetention.js';
 
 function requireAdministrator(req, res) {
   let allowed = false;
-  requireRole('administrator')(req, res, () => { allowed = true; });
+  requireGlobalAdministrator(req, res, () => { allowed = true; });
   return allowed;
 }
 

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { enforceOperatorApiBoundary } from '../lib/securityContext.js';
 import assert from 'node:assert/strict';
 import learningRoutes from '../routes/learning.js';
 import ipStudioRoutes from '../routes/ipStudio.js';
@@ -110,6 +111,64 @@ for (const [routes, endpoint] of [
   });
 }
 
+for (const [routes, endpoint] of [
+  [learning, 'GET /api/ooda/learned-recoveries'],
+  [ipStudio, 'GET /api/ip-studio/overview'],
+  [missionControl, 'GET /api/mission-control/snapshot'],
+  [missionControl, 'GET /api/runtime/dispatch-queue'],
+  [missionControl, 'POST /api/runtime/drain'],
+  [missionControl, 'POST /api/runtime/scan'],
+  [missionControl, 'POST /api/mission-control/retention/run'],
+  [eventRetention, 'GET /api/events/retention/status'],
+  [eventRetention, 'POST /api/events/retention/run'],
+  [ooda, 'GET /api/ooda/snapshot'],
+  [ooda, 'GET /api/ooda/timeline/:correlation_id'],
+  [bootstrapEngine, 'GET /api/bootstrap-engine/providers'],
+  [bootstrapEngine, 'PUT /api/bootstrap-engine/providers/:category'],
+  [bootstrapEngine, 'GET /api/bootstrap-engine/overview'],
+  [campaignStudio, 'GET /api/campaign-studio/overview'],
+  [ipGrowth, 'GET /api/ip-growth/overview'],
+  [ipSeeds, 'GET /api/ip-seeds/overview'],
+  [ipSeeds, 'GET /api/ip-seeds']
+]) {
+  test(endpoint + ' rejects a workspace-limited administrator before data access', () => {
+    const handler = routes.get(endpoint);
+    assert.equal(typeof handler, 'function');
+    const res = response();
+    handler({
+      auth: { role: 'administrator', workspace_ids: ['workspace-a'] },
+      query: {}, body: {}, params: {}, request_id: 'scoped-admin-deny'
+    }, res);
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error, 'global_workspace_forbidden');
+  });
+}
+
+test('global control-room operator boundary denies a scoped administrator', () => {
+  const res = response();
+  let allowed = false;
+  enforceOperatorApiBoundary({
+    url: '/api/control-room/operator',
+    method: 'GET',
+    auth: { role: 'administrator', workspace_ids: ['workspace-a'] }
+  }, res, () => { allowed = true; });
+  assert.equal(allowed, false);
+  assert.equal(res.status, 403);
+  assert.equal(res.body.error, 'global_workspace_forbidden');
+});
+
+test('live OODA incident stream denies a scoped administrator before opening SSE', () => {
+  const res = response();
+  let opened = false;
+  requireOodaIncidentStreamAdmin(
+    { auth: { role: 'administrator', workspace_ids: ['workspace-a'] }, request_id: 'ooda-stream-guard' },
+    res, () => { opened = true; }
+  );
+  assert.equal(opened, false);
+  assert.equal(res.status, 403);
+  assert.equal(res.body.error, 'global_workspace_forbidden');
+});
+
 test('live OODA incident stream denies creator before opening SSE', () => {
   const res = response();
   let opened = false;
@@ -127,7 +186,7 @@ test('live OODA incident stream allows an administrator to open SSE', () => {
   const res = response();
   let opened = false;
   requireOodaIncidentStreamAdmin(
-    { auth: { role: 'administrator' }, request_id: 'ooda-stream-guard' },
+    { auth: { role: 'administrator', workspace_ids: ['*'] }, request_id: 'ooda-stream-guard' },
     res,
     () => { opened = true; }
   );

@@ -1,12 +1,12 @@
 // routes/eventRetention.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireRole } from '../lib/securityContext.js';
+import { requireRole, requireGlobalAdministrator } from '../lib/securityContext.js';
 import { getRetentionStatus, runEventRetention } from '../lib/eventRetention.js';
 
 function requireAdministrator(req, res) {
   let allowed = false;
-  requireRole('administrator')(req, res, () => { allowed = true; });
+  requireGlobalAdministrator(req, res, () => { allowed = true; });
   return allowed;
 }
 

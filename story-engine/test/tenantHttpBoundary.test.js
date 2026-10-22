@@ -59,6 +59,12 @@ test('real HTTP middleware rejects cross-tenant writes and global metadata reads
     tenant_id: 'tenant-a',
     role: 'viewer',
     workspace_ids: ['workspace-a']
+  }, {
+    key: 'tenant-http-scoped-admin',
+    actor_id: 'admin-a',
+    tenant_id: 'tenant-a',
+    role: 'administrator',
+    workspace_ids: ['workspace-a']
   }]);
   try {
     const db = {
@@ -115,6 +121,23 @@ test('real HTTP middleware rejects cross-tenant writes and global metadata reads
       const res = request(router, method, path, 'tenant-http-creator-a');
       assert.equal(res.statusCode, 403, path);
       assert.equal(JSON.parse(res.body).error === 'forbidden' || JSON.parse(res.body).error === 'workspace_forbidden', true, path);
+    }
+
+    // An administrator restricted to workspace-a is not a global operator.
+    for (const [method, path] of [
+      ['GET', '/api/mission-control/snapshot'],
+      ['GET', '/api/runtime/dispatch-queue'],
+      ['POST', '/api/runtime/drain'],
+      ['POST', '/api/runtime/scan'],
+      ['POST', '/api/mission-control/retention/run'],
+      ['GET', '/api/ooda/snapshot'],
+      ['GET', '/api/ooda/timeline/other-tenant-correlation'],
+      ['GET', '/api/ip-seeds'],
+      ['GET', '/api/bootstrap-engine/providers']
+    ]) {
+      const denied = request(router, method, path, 'tenant-http-scoped-admin', {});
+      assert.equal(denied.statusCode, 403, path);
+      assert.equal(JSON.parse(denied.body).error, 'global_workspace_forbidden', path);
     }
 
     const blockedViewerDispatch = request(router, 'POST', '/api/runtime/dispatch/workspace-a', 'tenant-http-viewer-a', {

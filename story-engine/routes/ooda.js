@@ -1,7 +1,7 @@
 // routes/ooda.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireRole } from '../lib/securityContext.js';
+import { requireRole, requireGlobalAdministrator } from '../lib/securityContext.js';
 import { collectActiveIncidents } from '../lib/oodaProcessor.js';
 
 function parsePayload(value) {
@@ -13,17 +13,17 @@ function parsePayload(value) {
 }
 
 // Shared with server.js because the live incident SSE endpoint bypasses miniRouter.
-export const requireOodaIncidentStreamAdmin = requireRole('administrator');
+export const requireOodaIncidentStreamAdmin = requireGlobalAdministrator;
 
 export default function oodaRoutes(router, db) {
-  router.get('/api/ooda/snapshot', requireRole('administrator'), (req, res) => {
+  router.get('/api/ooda/snapshot', requireGlobalAdministrator, (req, res) => {
     json(res, 200, {
       generated_at: Date.now(),
       incidents: collectActiveIncidents(db)
     });
   });
 
-  router.get('/api/ooda/timeline/:correlation_id', requireRole('administrator'), (req, res) => {
+  router.get('/api/ooda/timeline/:correlation_id', requireGlobalAdministrator, (req, res) => {
     const correlationId = req.params.correlation_id;
 
     const incidents = db.prepare(`
