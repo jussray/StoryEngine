@@ -292,6 +292,93 @@
     .status.error { color: var(--danger); }
     .status.ok { color: var(--ok); }
 
+    .front-view { width: min(680px, 100%); text-align: center; }
+    .brand-lockup { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 26px; }
+    .brand-book { width: 64px; height: 48px; filter: drop-shadow(0 0 14px rgba(120,190,255,.7)); }
+    .brand-word {
+      font-family: var(--story);
+      font-weight: 700;
+      font-size: clamp(42px, 7vw, 62px);
+      letter-spacing: -.02em;
+      line-height: 1.05;
+      text-shadow: 0 0 30px rgba(120,150,255,.25);
+    }
+    .brand-word .word-story { color: #fff; }
+    .brand-word .word-engine {
+      background: linear-gradient(90deg, #ff7ad0 0%, #b99bff 50%, #46b7ff 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .brand-tag { margin: 2px 0 0; color: #f2d6ff; font-family: "Brush Script MT", "Segoe Script", cursive; font-size: 20px; }
+    .front-card {
+      position: relative;
+      padding: 26px 26px 22px;
+      border-radius: 26px;
+      background: linear-gradient(160deg, rgba(20,14,44,.84), rgba(12,10,30,.72));
+      box-shadow: 0 0 0 1px rgba(255,111,205,.42), 0 0 0 2px rgba(70,183,255,.14), 0 0 46px rgba(143,91,255,.32), var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .front-card h1 { color: #fff; font-size: clamp(30px, 4.6vw, 40px); line-height: 1.1; }
+    .front-sub { margin: 10px 0 18px; color: #c8c9de; font-family: var(--story); font-size: 16px; }
+    .front-field {
+      text-align: left;
+      padding: 16px 18px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(142,154,204,.28);
+      background: rgba(6,8,22,.7);
+    }
+    .front-field textarea {
+      display: block;
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      border: 0;
+      outline: 0;
+      padding: 0;
+      background: transparent;
+      color: #f7f2ea;
+      font-family: var(--story);
+      font-size: 19px;
+      line-height: 1.5;
+      caret-color: #fff;
+    }
+    .front-field textarea::placeholder { color: rgba(224,221,231,.45); }
+    .front-cta {
+      width: 100%;
+      min-width: 0;
+      min-height: 56px;
+      margin-top: 18px;
+      font-family: var(--ui);
+      font-size: 17px;
+      font-weight: 650;
+      background: linear-gradient(90deg, #ff52ad 0%, #7d6bff 52%, #3fb4ff 100%);
+      box-shadow: 0 14px 40px rgba(255,82,173,.25), 0 0 26px rgba(63,180,255,.3);
+    }
+    .medium-strip {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+      list-style: none;
+      margin: 26px 0 0;
+      padding: 0;
+    }
+    .medium-strip li {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 6px;
+      border: 1px solid rgba(142,154,204,.2);
+      border-radius: 14px;
+      background: rgba(9,12,30,.66);
+      color: #e8ebf5;
+      font-size: 12px;
+    }
+    .medium-strip .icon { font-size: 20px; }
+    @media (max-width: 720px) { .medium-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    @media (max-width: 420px) { .front-card { padding: 20px 16px 18px; } .front-field textarea { font-size: 18px; } }
+
     .shape-view { width: min(1060px, 100%); }
     .shape-view .brand { margin-bottom: 26px; font-size: 27px; }
     .shape-copy { text-align: center; margin-bottom: 22px; }
@@ -414,27 +501,46 @@
   </div>
 
   <main class="app">
-    <section id="frontView" class="view" aria-labelledby="frontTitle">
-      <div class="brand" aria-label="StoryEngine"><span>StoryEngine</span><i></i></div>
-      <div class="front-copy">
-        <h1 id="frontTitle">What do you want to create?</h1>
-        <p>Start with the idea. We’ll shape the rest together.</p>
+    <section id="frontView" class="view front-view" aria-labelledby="frontTitle">
+      <div class="brand-lockup">
+        <svg class="brand-book" viewBox="0 0 64 48" aria-hidden="true" fill="none" stroke="url(#bookGlow)" stroke-width="3" stroke-linejoin="round">
+          <defs>
+            <linearGradient id="bookGlow" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#ff7ad0"/>
+              <stop offset="1" stop-color="#46b7ff"/>
+            </linearGradient>
+          </defs>
+          <path d="M32 12 C24 6 14 6 4 9 V40 C14 37 24 37 32 43 C40 37 50 37 60 40 V9 C50 6 40 6 32 12 Z"/>
+          <path d="M32 12 V43"/>
+        </svg>
+        <div class="brand-word"><span class="word-story">Story</span><span class="word-engine">Engine</span></div>
+        <p class="brand-tag">Turn ideas into visual stories. <span aria-hidden="true">♥</span></p>
       </div>
+      <div class="front-card">
+        <h1 id="frontTitle">What do you want to create?</h1>
+        <p class="front-sub">Start with the idea. We’ll shape the rest together.</p>
 
-      <div class="context-shell">
-        <div class="context-panel">
+        <div class="front-field">
           <textarea id="vision" aria-label="Base context" maxlength="1000" placeholder="A girl discovers an abandoned train station that only appears at midnight."></textarea>
           <div class="context-hint">
             <span><strong>Base context</strong> · your original creative intent</span>
             <span id="charCount">0 / 1000</span>
           </div>
         </div>
+
+        <button class="primary front-cta" id="startBtn" type="button" disabled>Begin creating <span aria-hidden="true">→</span></button>
+        <p class="status" id="frontStatus" aria-live="polite"></p>
       </div>
 
-      <div class="front-actions">
-        <button class="primary" id="startBtn" type="button" disabled>Begin creating <span aria-hidden="true">→</span></button>
-      </div>
-      <p class="status" id="frontStatus" aria-live="polite"></p>
+      <ul class="medium-strip" aria-label="Formats you can make">
+        <li><span class="icon" aria-hidden="true">📖</span>Book</li>
+        <li><span class="icon" aria-hidden="true">🎬</span>Movie</li>
+        <li><span class="icon" aria-hidden="true">📺</span>Series</li>
+        <li><span class="icon" aria-hidden="true">🎵</span>Song</li>
+        <li><span class="icon" aria-hidden="true">🎮</span>Game</li>
+        <li><span class="icon" aria-hidden="true">🖼️</span>Comic</li>
+        <li><span class="icon" aria-hidden="true">🎙️</span>Podcast</li>
+      </ul>
     </section>
 
     <section id="shapeView" class="view shape-view hidden" aria-labelledby="shapeTitle">
