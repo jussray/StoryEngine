@@ -34,7 +34,9 @@ env:
 jobs:
   verify-guardrails:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # FFmpeg installation on the hosted Ubuntu runner may exceed 20 minutes;
+    # keep all browser and security tests enabled, with a finite job ceiling.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: story-engine
@@ -64,11 +66,16 @@ jobs:
         run: python runtime/founder_truth_gate.py
       - run: npm ci
       - name: Ensure deterministic MP4 renderer is available
+        shell: bash
         run: |
+          set -euo pipefail
           if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
+            # The hosted apt mirror can be slow. Bound each network operation
+            # so a stalled dependency install fails instead of hanging forever.
+            timeout --signal=TERM --kill-after=15s 15m sudo apt-get -o Acquire::Retries=2 update
+            timeout --signal=TERM --kill-after=15s 25m sudo apt-get -o Acquire::Retries=2 install -y --no-install-recommends ffmpeg
           fi
+          command -v ffmpeg
           ffmpeg -version | head -n 1
       - name: Run Node tests with retained evidence
         shell: bash
