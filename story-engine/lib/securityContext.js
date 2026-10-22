@@ -210,11 +210,26 @@ export function requireRole(...allowedRoles) {
   };
 }
 
+// Global administration requires both the administrator role and an
+// explicit unrestricted workspace grant; named-workspace admin is insufficient.
+export function requireGlobalAdministrator(req, res, next) {
+  return requireRole('administrator')(req, res, () => {
+    if (!Array.isArray(req.auth?.workspace_ids) || !req.auth.workspace_ids.includes('*')) {
+      return json(res, 403, {
+        error: 'global_workspace_forbidden',
+        required_workspace_scope: '*',
+        request_id: req.request_id
+      });
+    }
+    return next();
+  });
+}
+
 export function enforceOperatorApiBoundary(req, res, next) {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   const key = `${String(req.method || 'GET').toUpperCase()} ${pathname}`;
   if (!ADMIN_CONTROL_ROOM_ENDPOINTS.has(key)) return next();
-  return requireRole('administrator')(req, res, next);
+  return requireGlobalAdministrator(req, res, next);
 }
 
 function workspaceMembershipAllows(req, workspaceId) {

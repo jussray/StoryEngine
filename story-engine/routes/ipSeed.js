@@ -1,16 +1,16 @@
 // routes/ipSeed.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess, requireGlobalAdministrator } from '../lib/securityContext.js';
 import { buildIpSeed, getOrBuildIpSeed, getIpSeed, listIpSeeds, ipSeedOverview, proposeSeedUpdate } from '../lib/ipSeedMemoryGraph.js';
 
 export default function ipSeedRoutes(router, db) {
-  router.get('/api/ip-seeds/overview', (req, res) => {
+  router.get('/api/ip-seeds/overview', requireGlobalAdministrator, (req, res) => {
     try { json(res, 200, ipSeedOverview(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
 
-  router.get('/api/ip-seeds', (req, res) => {
+  router.get('/api/ip-seeds', requireGlobalAdministrator, (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
       json(res, 200, listIpSeeds(db, Number(url.searchParams.get('limit') || 25)));
