@@ -23,6 +23,22 @@ async function mountBeat(page) {
   return beat;
 }
 
+async function loadEmptyRuntime(page) {
+  await page.route('**/api/movie/beats/motion-proof', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await establishBrowserSession(page);
+  await page.goto('/movie.html?workspace_id=motion-proof');
+}
+
 async function loadRuntimeBeat(page, putStatus) {
   await page.route('**/api/movie/beats/motion-proof', async route => {
     if (route.request().method() === 'GET') {
@@ -42,6 +58,11 @@ async function loadRuntimeBeat(page, putStatus) {
   await page.goto('/movie.html?workspace_id=motion-proof');
   return page.locator('.save-beat');
 }
+
+test('Movie Mode renders bounded empty state before generated beats', async ({ page }) => {
+  await loadEmptyRuntime(page);
+  await expect(page.locator('#beats')).toContainText('No beats yet. Generate from chapters.');
+});
 
 test('Movie Mode uses bounded narrative motion on desktop', async ({ page }) => {
   const beat = await mountBeat(page);
