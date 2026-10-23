@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "repository": "jussray/StoryEngine",
   "portfolioHub": "jussray/founder-control-room",
   "role": "runtime-operations-layer",
@@ -39,9 +39,17 @@
     ]
   },
   "evidence": {
-    "status": "verified",
-    "commit": "0b97f2a8a0d310c49c013a328ae61c97ddbc9bad",
+    "status": "historical",
+    "subject": {
+      "branch": "main",
+      "commit": "0b97f2a8a0d310c49c013a328ae61c97ddbc9bad"
+    },
     "observedAt": "2026-08-04",
+    "freshness": {
+      "policy": "exact-commit",
+      "currentOnlyWhenRepositoryHeadEqualsSubjectCommit": true,
+      "onHeadMovement": "historical"
+    },
     "proofRefs": [
       ".control-room/repository.manifest.json",
       "runtime/promotion_gates.py",
@@ -60,5 +68,5 @@
       "A catalog entry is not a pass unless the exact Promotion gates signal succeeds"
     ]
   },
-  "nextGate": "Pass the exact nine-gate registry and retain the signed provider-neutral federation receipt before production release."
+  "nextGate": "Acquire fresh exact-head promotion evidence through the canonical federation contract; historical evidence never authorizes current production release."
 }

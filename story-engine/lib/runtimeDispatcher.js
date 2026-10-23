@@ -86,10 +86,88 @@ export function enqueueRuntime(db, workspaceId, triggerType = 'event_dispatch', 
   return db.prepare('SELECT * FROM runtime_dispatch_queue WHERE dispatch_id = ?').get(dispatchId);
 }
 
+export function getRuntimeDispatch(db, dispatchId) {
+  ensureSchema(db);
+  return db.prepare('SELECT * FROM runtime_dispatch_queue WHERE dispatch_id = ?').get(dispatchId) || null;
+}
+
+export async function processRuntimeDispatch(db, dispatchId) {
+  ensureSchema(db);
+  const item = getRuntimeDispatch(db, dispatchId);
+  if (!item) return null;
+
+  if (item.status !== 'queued') {
+    return {
+      dispatch_id: item.dispatch_id,
+      status: item.status,
+      run_id: item.run_id || null,
+      error: item.error || null,
+      skipped: true
+    };
+  }
+
+  const claimed = db.prepare(`
+    UPDATE runtime_dispatch_queue
+    SET status = 'running', attempts = attempts + 1, started_at = ?
+    WHERE dispatch_id = ? AND status = 'queued'
+  `).run(Date.now(), item.dispatch_id);
+
+  if (Number(claimed.changes || 0) !== 1) {
+    const current = getRuntimeDispatch(db, item.dispatch_id);
+    return current ? {
+      dispatch_id: current.dispatch_id,
+      status: current.status,
+      run_id: current.run_id || null,
+      error: current.error || null,
+      skipped: true
+    } : null;
+  }
+
+  try {
+    let manuscript = null;
+    if (item.trigger_type === 'story_engine_pipeline' || item.trigger_type === 'story_engine_operator_approved') {
+      manuscript = await materializeAutonomousBook(db, {
+        workspaceId: item.workspace_id,
+        dispatchId: item.dispatch_id
+      });
+    }
+
+    const chapter = item.chapter_id ? Chapter.get(db, Number(item.chapter_id)) : null;
+    const run = runAutonomousRuntime(db, {
+      workspaceId: item.workspace_id,
+      chapter,
+      triggerType: item.trigger_type,
+      allowRecovery: true
+    });
+    const status = run.status === 'failed' ? 'failed' : 'completed';
+    db.prepare(`
+      UPDATE runtime_dispatch_queue
+      SET status = ?, run_id = ?, completed_at = ?, error = NULL
+      WHERE dispatch_id = ?
+    `).run(status, run.run_id, Date.now(), item.dispatch_id);
+    return { dispatch_id: item.dispatch_id, status, run_id: run.run_id, manuscript, run };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    db.prepare(`
+      UPDATE runtime_dispatch_queue
+      SET status = 'failed', error = ?, completed_at = ?
+      WHERE dispatch_id = ?
+    `).run(message, Date.now(), item.dispatch_id);
+    log(db, {
+      workspace_id: item.workspace_id,
+      mode: 'autonomous_runtime',
+      event_type: 'runtime.dispatch.failed',
+      payload: { dispatch_id: item.dispatch_id, trigger_type: item.trigger_type, error: message },
+      rollback: 1
+    });
+    return { dispatch_id: item.dispatch_id, status: 'failed', error: message };
+  }
+}
+
 export async function drainRuntimeQueue(db, limit = 5) {
   ensureSchema(db);
   const queued = db.prepare(`
-    SELECT * FROM runtime_dispatch_queue
+    SELECT dispatch_id FROM runtime_dispatch_queue
     WHERE status = 'queued'
     ORDER BY created_at ASC
     LIMIT ?
@@ -97,52 +175,8 @@ export async function drainRuntimeQueue(db, limit = 5) {
 
   const results = [];
   for (const item of queued) {
-    const claimed = db.prepare(`
-      UPDATE runtime_dispatch_queue
-      SET status = 'running', attempts = attempts + 1, started_at = ?
-      WHERE dispatch_id = ? AND status = 'queued'
-    `).run(Date.now(), item.dispatch_id);
-    if (Number(claimed.changes || 0) !== 1) continue;
-
-    try {
-      let manuscript = null;
-      if (item.trigger_type === 'story_engine_pipeline' || item.trigger_type === 'story_engine_operator_approved') {
-        manuscript = await materializeAutonomousBook(db, {
-          workspaceId: item.workspace_id,
-          dispatchId: item.dispatch_id
-        });
-      }
-
-      const chapter = item.chapter_id ? Chapter.get(db, Number(item.chapter_id)) : null;
-      const run = runAutonomousRuntime(db, {
-        workspaceId: item.workspace_id,
-        chapter,
-        triggerType: item.trigger_type,
-        allowRecovery: true
-      });
-      const status = run.status === 'failed' ? 'failed' : 'completed';
-      db.prepare(`
-        UPDATE runtime_dispatch_queue
-        SET status = ?, run_id = ?, completed_at = ?, error = NULL
-        WHERE dispatch_id = ?
-      `).run(status, run.run_id, Date.now(), item.dispatch_id);
-      results.push({ dispatch_id: item.dispatch_id, status, run_id: run.run_id, manuscript, run });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      db.prepare(`
-        UPDATE runtime_dispatch_queue
-        SET status = 'failed', error = ?, completed_at = ?
-        WHERE dispatch_id = ?
-      `).run(message, Date.now(), item.dispatch_id);
-      log(db, {
-        workspace_id: item.workspace_id,
-        mode: 'autonomous_runtime',
-        event_type: 'runtime.dispatch.failed',
-        payload: { dispatch_id: item.dispatch_id, trigger_type: item.trigger_type, error: message },
-        rollback: 1
-      });
-      results.push({ dispatch_id: item.dispatch_id, status: 'failed', error: message });
-    }
+    const result = await processRuntimeDispatch(db, item.dispatch_id);
+    if (result && !result.skipped) results.push(result);
   }
   return results;
 }

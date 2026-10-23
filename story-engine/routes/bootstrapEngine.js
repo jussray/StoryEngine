@@ -1,7 +1,7 @@
 // routes/bootstrapEngine.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireRole } from '../lib/securityContext.js';
+import { requireRole, requireGlobalAdministrator } from '../lib/securityContext.js';
 import {
   DEFAULT_BOOTSTRAP_PROVIDERS,
   listBootstrapProviders,
@@ -22,13 +22,13 @@ export default function bootstrapEngineRoutes(router, db) {
     });
   });
 
-  router.get('/api/bootstrap-engine/providers', (req, res) => {
+  router.get('/api/bootstrap-engine/providers', requireGlobalAdministrator, (req, res) => {
     try { json(res, 200, listBootstrapProviders(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
 
   router.put('/api/bootstrap-engine/providers/:category', (req, res) => {
-    requireRole('administrator')(req, res, () => {
+    requireGlobalAdministrator(req, res, () => {
       try { json(res, 200, updateBootstrapProvider(db, req.params.category, req.body || {})); }
       catch (error) { json(res, /unknown/i.test(error.message) ? 404 : 400, { error: error.message }); }
     });
@@ -41,7 +41,7 @@ export default function bootstrapEngineRoutes(router, db) {
     });
   });
 
-  router.get('/api/bootstrap-engine/overview', (req, res) => {
+  router.get('/api/bootstrap-engine/overview', requireGlobalAdministrator, (req, res) => {
     try { json(res, 200, founderEconomicsOverview(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
