@@ -2,7 +2,7 @@
   "contract": "juss/council-model-capability-profile@v1",
   "repository": "jussray/StoryEngine",
   "defaultBranch": "main",
-  "preparedAgainstBaseSha": "be4fe1a006fcecdad077d5c3878cd76443274c65",
+  "preparedAgainstBaseSha": "8031efc43fe9caf5d841bb390e76ec0c3ddaceef",
   "authorityHost": "jussray/founder-control-room",
   "providerExecutionHost": "jussray/founder-control-room",
   "projectRole": "story_creator_and_production_intelligence",
