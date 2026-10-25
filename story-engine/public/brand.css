@@ -1,0 +1,48 @@
+/* StoryEngine brand wordmark — the single shared component for the brand title.
+ *
+ * Treatment (founder blueprint, 2026-10-25): decorative display serif;
+ * "Story" in pale luminous near-white; "Engine" in a pink -> violet -> blue
+ * gradient; soft neon glow around both halves. Every brand-title surface
+ * (front door, studio header, story universe, fallback door) renders the
+ * wordmark through this one component — no per-page one-offs.
+ *
+ * Markup:
+ *   <span class="se-wordmark"><span class="se-story">Story</span><span class="se-engine">Engine</span></span>
+ * Set font-size on .se-wordmark (or inherit it); everything else is fixed here.
+ *
+ * Font: the blueprint is a rendered comp, not a font file. The closest real,
+ * self-hostable match for its high-contrast display serif is "Playfair Display",
+ * so it leads the stack — a future self-hosted copy drops in with no code
+ * change. Until then, Didot / Bodoni MT (native on Apple devices) carry the
+ * Didone look, with Georgia as the broad fallback. The live CSP is
+ * font-src 'self', so no external font service can be used.
+ */
+:root {
+  --se-display-font: "Playfair Display", Didot, "Bodoni MT", "Bodoni 72", Georgia, "Times New Roman", serif;
+  --se-story-color: #fdfaff;
+  --se-engine-gradient: linear-gradient(94deg, #ff6fd8 0%, #c05cff 46%, #7d6bff 72%, #4fb8ff 100%);
+}
+
+.se-wordmark {
+  font-family: var(--se-display-font);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.se-wordmark .se-story {
+  color: var(--se-story-color);
+  text-shadow:
+    0 0 16px rgba(216, 180, 255, 0.55),
+    0 0 44px rgba(157, 124, 255, 0.38);
+}
+
+.se-wordmark .se-engine {
+  background: var(--se-engine-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 12px rgba(176, 92, 255, 0.45));
+}
