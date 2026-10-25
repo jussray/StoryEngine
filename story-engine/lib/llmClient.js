@@ -372,7 +372,21 @@ export async function completeWithReceipt(prompt, options = {}) {
   if (provider === 'anthropic') return completeAnthropicWithReceipt(prompt, { ...options, provider });
   if (provider === 'openrouter') return completeOpenAIWithReceipt(prompt, { ...options, provider });
   if (provider === 'openai') return completeOpenAIWithReceipt(prompt, { ...options, provider });
-  if (provider === 'muse') return completeMuseWithReceipt(prompt, { ...options, provider, model: pickModel('muse', options) });
+  if (provider === 'muse') {
+    return completeMuseWithReceipt(prompt, {
+      ...options,
+      provider,
+      model: pickModel('muse', options),
+      // Route muse through the shared fetch policy (retry/circuit/timeout).
+      // The body is read inside the policy window and re-wrapped so
+      // museClient's receipt validation runs unchanged.
+      fetchImpl: (url, init) => fetchWithPolicy('muse', url, init, options, async (response) => {
+        const maxBytes = boundedInteger(options.successBodyMaxBytes, SUCCESS_BODY_MAX_BYTES, 1024, 16_777_216);
+        const raw = await readBoundedResponseText(response, maxBytes + 1);
+        return new Response(raw, { status: response.status, headers: response.headers });
+      })
+    });
+  }
   throw new Error(`Unsupported LLM provider: ${provider}.`);
 }
 
