@@ -247,7 +247,11 @@ async function buildGhostPlan(runId, intent, profile) {
       humanize_pass: draft.humanize_pass,
       blader_score: draft.blader_score || 0,
       detector_report: draft.detector_report || null,
-      error: draft.error || null
+      error: draft.error || null,
+      error_code: draft.error_code || null,
+      blocker_reason: draft.blocker_reason || null,
+      provider_error_type: draft.provider_error_type || null,
+      provider_error_reason: draft.provider_error_reason || null
     },
     human_decisions: ['Approve paid execution when required.', 'Approve Ghost draft before overwriting human-authored text.', 'Approve final release.']
   };
