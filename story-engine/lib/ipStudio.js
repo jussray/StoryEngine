@@ -58,11 +58,20 @@ function ensureConversionSchema(db) {
       status TEXT NOT NULL DEFAULT 'pending',
       output_text TEXT,
       error TEXT,
+      error_code TEXT,
+      blocker_reason TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_ip_conversions_workspace ON ip_conversions(workspace_id, created_at DESC);
   `);
+  const columns = db.prepare('PRAGMA table_info(ip_conversions)').all();
+  if (!columns.some(column => column.name === 'error_code')) {
+    db.exec('ALTER TABLE ip_conversions ADD COLUMN error_code TEXT');
+  }
+  if (!columns.some(column => column.name === 'blocker_reason')) {
+    db.exec('ALTER TABLE ip_conversions ADD COLUMN blocker_reason TEXT');
+  }
 }
 
 function parseJson(value, fallback = {}) {
@@ -308,8 +317,8 @@ export async function convertStoryFormat(db, { workspace_id, story_vision, sourc
     const safeError = blockerReason
       ? `Provider blocked conversion: ${blockerReason}.`
       : error instanceof Error ? error.message : String(error);
-    db.prepare('UPDATE ip_conversions SET status=?, error=?, updated_at=? WHERE conversion_id=?')
-      .run(status, safeError, Date.now(), conversionId);
+    db.prepare('UPDATE ip_conversions SET status=?, error=?, error_code=?, blocker_reason=?, updated_at=? WHERE conversion_id=?')
+      .run(status, safeError, errorCode, blockerReason, Date.now(), conversionId);
     log(db, {
       workspace_id,
       mode: 'ip_studio',
@@ -337,7 +346,7 @@ export async function convertStoryFormat(db, { workspace_id, story_vision, sourc
 
 export function listConversions(db, workspaceId) {
   ensureConversionSchema(db);
-  return db.prepare('SELECT conversion_id, target_format, status, created_at, updated_at FROM ip_conversions WHERE workspace_id=? ORDER BY created_at DESC LIMIT 20').all(workspaceId);
+  return db.prepare('SELECT conversion_id, target_format, status, error_code, blocker_reason, created_at, updated_at FROM ip_conversions WHERE workspace_id=? ORDER BY created_at DESC LIMIT 20').all(workspaceId);
 }
 
 export function getConversion(db, conversionId) {
