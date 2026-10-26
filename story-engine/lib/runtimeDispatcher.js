@@ -110,8 +110,8 @@ export async function processRuntimeDispatch(db, dispatchId) {
       status: item.status,
       run_id: item.run_id || null,
       error: item.error || null,
-      error_code: item.error_code || null,
-      blocker_reason: item.blocker_reason || null,
+      ...(item.error_code ? { error_code: item.error_code } : {}),
+      ...(item.blocker_reason ? { blocker_reason: item.blocker_reason } : {}),
       skipped: true
     };
   }
@@ -129,8 +129,8 @@ export async function processRuntimeDispatch(db, dispatchId) {
       status: current.status,
       run_id: current.run_id || null,
       error: current.error || null,
-      error_code: current.error_code || null,
-      blocker_reason: current.blocker_reason || null,
+      ...(current.error_code ? { error_code: current.error_code } : {}),
+      ...(current.blocker_reason ? { blocker_reason: current.blocker_reason } : {}),
       skipped: true
     } : null;
   }
