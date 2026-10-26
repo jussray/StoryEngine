@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { convertStoryFormat, listConversions } from '../lib/ipStudio.js';
+import { ensureRuntimeDispatchSchema } from '../lib/runtimeDispatcher.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const schema = readFileSync(join(__dirname, '../db/schema.sql'), 'utf8');
@@ -62,5 +63,62 @@ test('IP Studio persists Anthropic spending exhaustion as a blocker receipt', as
     globalThis.fetch = priorFetch;
     if (priorAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
     else process.env.ANTHROPIC_API_KEY = priorAnthropic;
+  }
+});
+
+
+test('legacy blocker tables upgrade additively without destroying existing rows', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE runtime_dispatch_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dispatch_id TEXT NOT NULL UNIQUE,
+        workspace_id TEXT NOT NULL,
+        chapter_id INTEGER,
+        trigger_type TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        run_id TEXT,
+        error TEXT,
+        created_at INTEGER NOT NULL,
+        started_at INTEGER,
+        completed_at INTEGER
+      );
+      INSERT INTO runtime_dispatch_queue (
+        dispatch_id, workspace_id, trigger_type, fingerprint, status, created_at
+      ) VALUES ('dispatch-legacy', 'workspace-legacy', 'test', 'fingerprint-legacy', 'completed', 1);
+
+      CREATE TABLE ip_conversions (
+        conversion_id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        source_medium TEXT,
+        target_format TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        output_text TEXT,
+        error TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      INSERT INTO ip_conversions (
+        conversion_id, workspace_id, source_medium, target_format, status, created_at, updated_at
+      ) VALUES ('conversion-legacy', 'workspace-legacy', 'book', 'movie', 'complete', 1, 1);
+    `);
+
+    ensureRuntimeDispatchSchema(db);
+    const dispatchColumns = db.prepare('PRAGMA table_info(runtime_dispatch_queue)').all().map(row => row.name);
+    assert.ok(dispatchColumns.includes('error_code'));
+    assert.ok(dispatchColumns.includes('blocker_reason'));
+    assert.equal(db.prepare("SELECT status FROM runtime_dispatch_queue WHERE dispatch_id='dispatch-legacy'").get().status, 'completed');
+
+    const listed = listConversions(db, 'workspace-legacy');
+    const conversionColumns = db.prepare('PRAGMA table_info(ip_conversions)').all().map(row => row.name);
+    assert.ok(conversionColumns.includes('error_code'));
+    assert.ok(conversionColumns.includes('blocker_reason'));
+    assert.equal(listed[0].conversion_id, 'conversion-legacy');
+    assert.equal(listed[0].status, 'complete');
+  } finally {
+    db.close();
   }
 });
