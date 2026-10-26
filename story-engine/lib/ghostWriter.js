@@ -157,6 +157,8 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       blader
     };
   } catch (error) {
+    const blockerReason = typeof error?.blocker_reason === 'string' ? error.blocker_reason : null;
+    const errorCode = typeof error?.code === 'string' ? error.code : null;
     return {
       status: 'fallback_stub',
       provider: request.provider,
@@ -164,7 +166,11 @@ export async function draftStoryUnit(intent = {}, profile = {}) {
       voice_fingerprint: fingerprint,
       draft_unit: fallbackDraft(intent, fingerprint),
       error: error instanceof Error ? error.message : String(error),
-      humanize_pass: { applied: false, reason: 'provider_unavailable', policy: 'density-not-blacklist', authorship_inference: 'not_supported' },
+      error_code: errorCode,
+      blocker_reason: blockerReason,
+      provider_error_type: typeof error?.provider_error_type === 'string' ? error.provider_error_type : null,
+      provider_error_reason: typeof error?.provider_error_reason === 'string' ? error.provider_error_reason : null,
+      humanize_pass: { applied: false, reason: blockerReason || 'provider_unavailable', policy: 'density-not-blacklist', authorship_inference: 'not_supported' },
       blader_score: 0,
       detector_report: null,
       blader: null
