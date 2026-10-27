@@ -112,6 +112,7 @@ jobs:
           fi
 
           node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
           import { readFile, writeFile } from 'node:fs/promises';
 
           const signal = JSON.parse(await readFile(process.env.SIGNAL_PATH, 'utf8'));
@@ -158,6 +159,15 @@ jobs:
 
           const releaseSha = String(signal.release_sha || '').trim().toLowerCase();
           if (!/^[0-9a-f]{40}$/.test(releaseSha)) throw new Error('release_sha must be an exact 40-character Git SHA');
+
+          if (triggeringEvent === 'deployment_status' && signal.qualifies !== true) {
+            appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\n');
+            console.log(`Non-success deployment signal state=${String(signal.deployment_state || 'missing')}; production verification is a clean no-op.`);
+            process.exit(0);
+          }
+          if (triggeringEvent === 'workflow_dispatch' && signal.qualifies !== true) {
+            throw new Error('manual production signal must be qualifying');
+          }
 
           let deploymentId = 'manual';
           let signalMode = null;
@@ -243,6 +253,10 @@ jobs:
             }, null, 2) + '\n'
           );
           NODE
+
+          if [ ! -f production-signal/authorized.json ]; then
+            exit 0
+          fi
 
           release_sha="$(node -p "JSON.parse(require('fs').readFileSync('production-signal/authorized.json','utf8')).release_sha")"
           deployment_id="$(node -p "JSON.parse(require('fs').readFileSync('production-signal/authorized.json','utf8')).github_deployment_id")"
