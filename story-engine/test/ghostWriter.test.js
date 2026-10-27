@@ -66,3 +66,38 @@ test('Ghost draft falls back safely when no provider key is configured', async (
     else process.env.OPENROUTER_API_KEY = priorOpenRouter;
   }
 });
+
+
+test('Ghost preserves a sanitized spending-limit blocker receipt without leaking Anthropic text', async () => {
+  const priorAnthropic = process.env.ANTHROPIC_API_KEY;
+  const priorFetch = globalThis.fetch;
+  const secret = 'ghost-spending-limit-secret';
+  try {
+    process.env.ANTHROPIC_API_KEY = secret;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        message: `Account spending limit reached. reflected=${secret}`
+      }
+    }), { status: 400 });
+
+    const draft = await draftStoryUnit(
+      { title: 'Blocked Story', story_vision: 'A story waiting for its provider.', audience: 'adult', medium: 'book', story_kind: 'drama' },
+      { audience: 'adult', medium: 'book', tone: 'reflective' }
+    );
+
+    assert.equal(draft.status, 'fallback_stub');
+    assert.equal(draft.error_code, 'llm_provider_http_error');
+    assert.equal(draft.blocker_reason, 'spending_limit');
+    assert.equal(draft.provider_error_type, 'invalid_request_error');
+    assert.equal(draft.provider_error_reason, 'spending_limit');
+    assert.equal(draft.humanize_pass.reason, 'spending_limit');
+    assert.equal(JSON.stringify(draft).includes(secret), false);
+    assert.equal(JSON.stringify(draft).includes('reflected='), false);
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = priorAnthropic;
+  }
+});
