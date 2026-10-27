@@ -266,3 +266,24 @@ test('L99 CI watches both sides of the trusted production handoff', () => {
   assert.equal(proofMatches.length, 2, 'production proof workflow must be watched on push and pull_request');
   assert.equal(signalMatches.length, 2, 'production signal workflow must be watched on push and pull_request');
 });
+
+
+test('Railway deployment receipts are always emitted before success qualification', () => {
+  assert.ok(signalWorkflow.includes("github.event_name == 'workflow_dispatch' || github.event_name == 'deployment_status'"));
+  assert.ok(signalWorkflow.includes("const deploymentState = eventName === 'deployment_status'"));
+  assert.ok(signalWorkflow.includes("const qualifies = eventName === 'workflow_dispatch' || deploymentState === 'success'"));
+  assert.ok(signalWorkflow.includes('qualifies,'));
+  assert.doesNotMatch(signalWorkflow, /github\.event\.deployment\.environment == 'production'/);
+});
+
+test('non-success Railway deployment receipts no-op only after untrusted receipt validation', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes("if (triggeringEvent === 'deployment_status' && signal.qualifies !== true)"));
+  assert.ok(authorize.includes("appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\\n')"));
+  assert.ok(authorize.includes('Non-success deployment signal state='));
+  assert.ok(authorize.includes("if (triggeringEvent === 'workflow_dispatch' && signal.qualifies !== true)"));
+  assert.ok(authorize.includes('manual production signal must be qualifying'));
+  assert.ok(authorize.includes('if [ ! -f production-signal/authorized.json ]; then'));
+  assert.ok(authorize.includes("status.state !== 'success'"));
+  assert.ok(authorize.includes("deployment.environment || '').toLowerCase() !== 'production'"));
+});
