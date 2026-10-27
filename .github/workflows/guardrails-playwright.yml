@@ -34,7 +34,7 @@ env:
 jobs:
   verify-guardrails:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: story-engine
@@ -64,22 +64,7 @@ jobs:
         run: python runtime/founder_truth_gate.py
       - run: npm ci
       - name: Ensure deterministic MP4 renderer is available
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            # Bounded and retried: an unbounded apt step held this job past its 20-minute cap on 11e106f.
-            for attempt in 1 2; do
-              if sudo timeout 180 apt-get update && sudo timeout 360 apt-get install -y ffmpeg; then
-                break
-              fi
-              if [ "$attempt" = 2 ]; then
-                echo "ffmpeg install failed after 2 bounded attempts" >&2
-                exit 1
-              fi
-              echo "ffmpeg install attempt $attempt failed or timed out; retrying" >&2
-              sudo dpkg --configure -a || true
-            done
-          fi
-          ffmpeg -version | head -n 1
+        run: bash ../scripts/ensure-ffmpeg.sh
       - name: Run Node tests with retained evidence
         shell: bash
         run: |
