@@ -306,3 +306,11 @@ test('canonical Railway production environment label is accepted narrowly', () =
   assert.ok(authorize.includes("const signaledEnvironment = String(signal.deployment_environment || '').trim().toLowerCase()"));
   assert.ok(authorize.includes('deployment environment does not match signal'));
 });
+
+
+test('non-main Railway deployment signals no-op instead of failing production proof', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes("if (triggeringEvent === 'deployment_status' && triggeringHeadBranch !== 'main')"));
+  assert.ok(authorize.includes("appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\\n')"));
+  assert.ok(authorize.includes('Ignoring non-main deployment signal branch='));
+});
