@@ -160,6 +160,12 @@ jobs:
           const releaseSha = String(signal.release_sha || '').trim().toLowerCase();
           if (!/^[0-9a-f]{40}$/.test(releaseSha)) throw new Error('release_sha must be an exact 40-character Git SHA');
 
+          if (triggeringEvent === 'deployment_status' && triggeringHeadBranch !== 'main') {
+            appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\n');
+            console.log(`Ignoring non-main deployment signal branch=${triggeringHeadBranch || 'missing'}; production verification is a clean no-op.`);
+            process.exit(0);
+          }
+
           if (triggeringEvent === 'deployment_status' && signal.qualifies !== true) {
             appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\n');
             console.log(`Non-success deployment signal state=${String(signal.deployment_state || 'missing')}; production verification is a clean no-op.`);
@@ -183,9 +189,6 @@ jobs:
             const deploymentStatusId = String(signal.github_deployment_status_id || '');
             if (!/^\d+$/.test(deploymentId) || !/^\d+$/.test(deploymentStatusId)) {
               throw new Error('deployment signal must carry numeric deployment and status ids');
-            }
-            if (triggeringHeadBranch !== 'main') {
-              throw new Error(`deployment signal branch is ${triggeringHeadBranch || 'missing'}, expected main`);
             }
             if (!/^[0-9a-f]{40}$/.test(triggeringHeadSha) || triggeringHeadSha !== releaseSha) {
               throw new Error('deployment signal SHA does not match triggering workflow head SHA');
