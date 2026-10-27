@@ -247,7 +247,11 @@ async function buildGhostPlan(runId, intent, profile) {
       humanize_pass: draft.humanize_pass,
       blader_score: draft.blader_score || 0,
       detector_report: draft.detector_report || null,
-      error: draft.error || null
+      error: draft.error || null,
+      error_code: draft.error_code || null,
+      blocker_reason: draft.blocker_reason || null,
+      provider_error_type: draft.provider_error_type || null,
+      provider_error_reason: draft.provider_error_reason || null
     },
     human_decisions: ['Approve paid execution when required.', 'Approve Ghost draft before overwriting human-authored text.', 'Approve final release.']
   };
@@ -376,6 +380,17 @@ export async function resumeStoryEngineRun(db, runId) {
     ? db.prepare('SELECT * FROM runtime_dispatch_queue WHERE dispatch_id=?').get(run.dispatch_id)
     : null;
   if (!dispatch || ['queued', 'running'].includes(dispatch.status)) return run;
+  if (dispatch.status === 'blocked') {
+    const blockerReason = dispatch.blocker_reason || 'provider_unavailable';
+    const message = dispatch.error || `Runtime blocked by provider: ${blockerReason}.`;
+    db.prepare("UPDATE story_engine_runs SET status='needs_review', error=?, updated_at=? WHERE run_id=?").run(message, Date.now(), runId);
+    setStage(db, runId, run.workspace_id, 'runtime', 'blocked', message, {
+      dispatch_id: dispatch.dispatch_id,
+      error_code: dispatch.error_code || null,
+      blocker_reason: blockerReason
+    });
+    return hydrateRun(db, runId);
+  }
   if (dispatch.status === 'failed') {
     db.prepare("UPDATE story_engine_runs SET status='failed', error=?, updated_at=? WHERE run_id=?").run(dispatch.error || 'Runtime failed.', Date.now(), runId);
     setStage(db, runId, run.workspace_id, 'runtime', 'failed', dispatch.error || 'Runtime failed.');
