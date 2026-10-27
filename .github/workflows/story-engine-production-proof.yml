@@ -212,8 +212,18 @@ jobs:
               throw new Error(`deployment status did not originate from Railway App (creator=${statusCreator || 'missing'}, app=${statusAppSlug || 'missing'})`);
             }
             if (status.state !== 'success') throw new Error(`deployment status is ${status.state}`);
-            if (String(deployment.environment || '').toLowerCase() !== 'production') {
+            const deploymentEnvironment = String(deployment.environment || '').trim().toLowerCase();
+            const repositoryName = repository.split('/').pop()?.trim().toLowerCase() || '';
+            const acceptedProductionEnvironments = new Set([
+              'production',
+              `${repositoryName} / production`
+            ]);
+            if (!acceptedProductionEnvironments.has(deploymentEnvironment)) {
               throw new Error(`deployment environment is ${deployment.environment}`);
+            }
+            const signaledEnvironment = String(signal.deployment_environment || '').trim().toLowerCase();
+            if (signaledEnvironment && signaledEnvironment !== deploymentEnvironment) {
+              throw new Error('deployment environment does not match signal');
             }
             if (String(deployment.sha || '').toLowerCase() !== releaseSha) {
               throw new Error('deployment SHA does not match signal release SHA');
