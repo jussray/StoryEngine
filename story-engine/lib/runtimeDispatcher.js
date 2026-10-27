@@ -19,6 +19,8 @@ export function ensureRuntimeDispatchSchema(db) {
       attempts INTEGER NOT NULL DEFAULT 0,
       run_id TEXT,
       error TEXT,
+      error_code TEXT,
+      blocker_reason TEXT,
       created_at INTEGER NOT NULL,
       started_at INTEGER,
       completed_at INTEGER
@@ -32,6 +34,12 @@ export function ensureRuntimeDispatchSchema(db) {
   const columns = db.prepare('PRAGMA table_info(runtime_dispatch_queue)').all();
   if (!columns.some(column => column.name === 'chapter_id')) {
     db.exec('ALTER TABLE runtime_dispatch_queue ADD COLUMN chapter_id INTEGER');
+  }
+  if (!columns.some(column => column.name === 'error_code')) {
+    db.exec('ALTER TABLE runtime_dispatch_queue ADD COLUMN error_code TEXT');
+  }
+  if (!columns.some(column => column.name === 'blocker_reason')) {
+    db.exec('ALTER TABLE runtime_dispatch_queue ADD COLUMN blocker_reason TEXT');
   }
 }
 
@@ -102,6 +110,8 @@ export async function processRuntimeDispatch(db, dispatchId) {
       status: item.status,
       run_id: item.run_id || null,
       error: item.error || null,
+      ...(item.error_code ? { error_code: item.error_code } : {}),
+      ...(item.blocker_reason ? { blocker_reason: item.blocker_reason } : {}),
       skipped: true
     };
   }
@@ -119,6 +129,8 @@ export async function processRuntimeDispatch(db, dispatchId) {
       status: current.status,
       run_id: current.run_id || null,
       error: current.error || null,
+      ...(current.error_code ? { error_code: current.error_code } : {}),
+      ...(current.blocker_reason ? { blocker_reason: current.blocker_reason } : {}),
       skipped: true
     } : null;
   }
@@ -142,25 +154,42 @@ export async function processRuntimeDispatch(db, dispatchId) {
     const status = run.status === 'failed' ? 'failed' : 'completed';
     db.prepare(`
       UPDATE runtime_dispatch_queue
-      SET status = ?, run_id = ?, completed_at = ?, error = NULL
+      SET status = ?, run_id = ?, completed_at = ?, error = NULL, error_code = NULL, blocker_reason = NULL
       WHERE dispatch_id = ?
     `).run(status, run.run_id, Date.now(), item.dispatch_id);
     return { dispatch_id: item.dispatch_id, status, run_id: run.run_id, manuscript, run };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const blockerReason = typeof error?.blocker_reason === 'string' ? error.blocker_reason : null;
+    const errorCode = typeof error?.code === 'string' ? error.code : null;
+    const status = blockerReason ? 'blocked' : 'failed';
+    const message = blockerReason
+      ? `Provider blocked runtime execution: ${blockerReason}.`
+      : error instanceof Error ? error.message : String(error);
     db.prepare(`
       UPDATE runtime_dispatch_queue
-      SET status = 'failed', error = ?, completed_at = ?
+      SET status = ?, error = ?, error_code = ?, blocker_reason = ?, completed_at = ?
       WHERE dispatch_id = ?
-    `).run(message, Date.now(), item.dispatch_id);
+    `).run(status, message, errorCode, blockerReason, Date.now(), item.dispatch_id);
     log(db, {
       workspace_id: item.workspace_id,
       mode: 'autonomous_runtime',
-      event_type: 'runtime.dispatch.failed',
-      payload: { dispatch_id: item.dispatch_id, trigger_type: item.trigger_type, error: message },
-      rollback: 1
+      event_type: blockerReason ? 'runtime.dispatch.blocked' : 'runtime.dispatch.failed',
+      payload: {
+        dispatch_id: item.dispatch_id,
+        trigger_type: item.trigger_type,
+        error: message,
+        error_code: errorCode,
+        blocker_reason: blockerReason
+      },
+      rollback: blockerReason ? 0 : 1
     });
-    return { dispatch_id: item.dispatch_id, status: 'failed', error: message };
+    return {
+      dispatch_id: item.dispatch_id,
+      status,
+      error: message,
+      error_code: errorCode,
+      blocker_reason: blockerReason
+    };
   }
 }
 
