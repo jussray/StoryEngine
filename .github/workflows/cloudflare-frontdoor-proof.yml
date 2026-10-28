@@ -58,7 +58,7 @@ jobs:
           cache-dependency-path: story-engine/package-lock.json
       - run: npm ci
       - name: Install exact Cloudflare deploy tooling without changing the lockfile
-        run: npm install --no-save --package-lock=false wrangler@4.142.0
+        run: npm install --no-save --package-lock=false wrangler@4.153.0
       - name: Verify front-door contracts
         run: node --test test/cloudflareFrontdoor.test.js
       - name: Run founder truth gate
