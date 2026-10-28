@@ -101,5 +101,15 @@ export default {
     } catch {
       return unavailable(502, 'StoryEngine runtime is temporarily unavailable.');
     }
+  },
+
+  // Cron ticks (the hourly trigger on this Worker). No job is defined for them
+  // yet, so a tick is recorded and does nothing: no runtime call, no state write.
+  scheduled(controller) {
+    console.log(JSON.stringify({
+      event: 'storyengine.cron.noop',
+      cron: controller.cron,
+      scheduledTime: controller.scheduledTime
+    }));
   }
 };
