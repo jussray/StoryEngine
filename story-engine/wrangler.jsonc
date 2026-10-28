@@ -20,5 +20,20 @@
         "period": 60
       }
     }
-  ]
+  ],
+  "previews": {
+    "vars": {
+      "STORYENGINE_RUNTIME_ORIGIN": "https://story-engine-production-1e6b.up.railway.app"
+    },
+    "ratelimits": [
+      {
+        "name": "STORYENGINE_API_RATE_LIMITER",
+        "namespace_id": "1292370403",
+        "simple": {
+          "limit": 120,
+          "period": 60
+        }
+      }
+    ]
+  }
 }
