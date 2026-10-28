@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StoryEngine — Create</title>
+  <link rel="stylesheet" href="/brand.css" />
   <script src="/l99_auth.js"></script>
   <style>
     :root {
@@ -62,12 +63,7 @@
     .view { width: 100%; max-width: 720px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
 
     .brand { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-    .brand span {
-      font-family: Georgia, "Times New Roman", serif; font-weight: 700;
-      font-size: clamp(40px, 7vw, 60px); line-height: 1.05; letter-spacing: -0.01em;
-      background: linear-gradient(90deg, #ffffff 0%, var(--pink) 55%, var(--cyan) 100%);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-    }
+    .brand .se-wordmark { font-size: clamp(40px, 7vw, 60px); }
     .brand i {
       display: block; width: 46px; height: 30px;
       border: 2px solid var(--pink); border-bottom-width: 3px;
@@ -178,7 +174,7 @@
 
   <main class="app">
     <section id="frontView" class="view" aria-labelledby="frontTitle">
-      <div class="brand" aria-label="StoryEngine"><span>StoryEngine</span><i></i></div>
+      <div class="brand" aria-label="StoryEngine"><span class="se-wordmark"><span class="se-story">Story</span><span class="se-engine">Engine</span></span><i></i></div>
       <p class="tagline">Turn ideas into visual stories.</p>
       <img class="hero-art" src="/assets/front-door/hero-art.jpg" alt="" width="1422" height="640" />
       <div class="front-copy">
@@ -203,7 +199,7 @@
     </section>
 
     <section id="shapeView" class="view shape-view hidden" aria-labelledby="shapeTitle">
-      <div class="brand" aria-label="StoryEngine"><span>StoryEngine</span><i></i></div>
+      <div class="brand" aria-label="StoryEngine"><span class="se-wordmark"><span class="se-story">Story</span><span class="se-engine">Engine</span></span><i></i></div>
       <div class="shape-copy">
         <h2 id="shapeTitle">Let’s shape your idea.</h2>
         <p>Turn the spark into something you can make.</p>
