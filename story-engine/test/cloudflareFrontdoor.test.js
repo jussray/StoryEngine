@@ -165,3 +165,76 @@ test('manual front-door proof defaults to runtime-equivalence mode', () => {
   assert.match(workflow, /expected_runtime_sha:\s*\n\s+description:.*\n\s+required: false\s*\n\s+type: string/);
   assert.match(workflow, /Resolve runtime-equivalent Railway release[\s\S]*?if: env\.EXPECTED_RUNTIME_SHA == ''/);
 });
+
+test('protocol-relative paths stay on the runtime origin and keep no foreign host', async () => {
+  let upstream = null;
+  globalThis.fetch = async (request) => {
+    upstream = request.url;
+    return new Response('ok');
+  };
+  const response = await worker.fetch(new Request('https://storyengine.example//attacker.example/collect?x=1', {
+    headers: { cookie: 'l99_session=receipt' }
+  }), {
+    STORYENGINE_RUNTIME_ORIGIN: 'https://runtime.storyengine.example',
+    STORYENGINE_API_RATE_LIMITER: allowLimiter()
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(new URL(upstream).origin, 'https://runtime.storyengine.example');
+  assert.equal(new URL(upstream).pathname, '//attacker.example/collect');
+  assert.equal(new URL(upstream).search, '?x=1');
+});
+
+test('rotating session or bearer values cannot evade the per-IP rate limit', async () => {
+  const counts = new Map();
+  const limiter = {
+    async limit({ key }) {
+      const next = (counts.get(key) || 0) + 1;
+      counts.set(key, next);
+      return { success: next <= 120 };
+    }
+  };
+  globalThis.fetch = async () => new Response('ok');
+
+  const statuses = [];
+  for (let i = 0; i < 130; i += 1) {
+    const response = await worker.fetch(new Request('https://storyengine.example/api/stories', {
+      headers: { cookie: `l99_session=rotating-${i}`, 'cf-connecting-ip': '203.0.113.7' }
+    }), {
+      STORYENGINE_RUNTIME_ORIGIN: 'https://runtime.storyengine.example',
+      STORYENGINE_API_RATE_LIMITER: limiter
+    });
+    statuses.push(response.status);
+  }
+
+  assert.equal(statuses.filter(status => status === 200).length, 120);
+  assert.equal(statuses.filter(status => status === 429).length, 10);
+  // One shared IP bucket plus one session bucket per request that passed the IP check.
+  assert.equal(counts.size, 121);
+});
+
+test('a throwing rate limiter fails closed without calling the runtime', async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response('unexpected');
+  };
+  const response = await worker.fetch(new Request('https://storyengine.example/api/stories'), {
+    STORYENGINE_RUNTIME_ORIGIN: 'https://runtime.storyengine.example',
+    STORYENGINE_API_RATE_LIMITER: {
+      async limit() {
+        throw new Error('limiter offline');
+      }
+    }
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(called, false);
+  assert.equal(response.headers.get('x-storyengine-edge'), 'rate-limit-unavailable');
+});
+
+test('preview deployments carry no production runtime origin', () => {
+  const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+  assert.equal(config.previews?.vars?.STORYENGINE_RUNTIME_ORIGIN, undefined);
+});
