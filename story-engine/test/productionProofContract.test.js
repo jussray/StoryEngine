@@ -85,7 +85,12 @@ test('trusted authorize job validates untrusted signal before production environ
   assert.ok(authorize.includes('/deployments/${deploymentId}'));
   assert.ok(authorize.includes('/statuses/${deploymentStatusId}'));
   assert.ok(authorize.includes("status.state !== 'success'"));
-  assert.ok(authorize.includes("deployment.environment || '').toLowerCase() !== 'production'"));
+  assert.ok(authorize.includes("const deploymentEnvironment = String(deployment.environment || '').trim().toLowerCase()"));
+  assert.ok(authorize.includes("const repositoryName = repository.split('/').pop()?.trim().toLowerCase() || ''"));
+  assert.ok(authorize.includes("acceptedProductionEnvironments"));
+  assert.ok(authorize.includes("'production'"));
+  assert.ok(authorize.includes("`${repositoryName} / production`"));
+  assert.ok(authorize.includes('deployment environment does not match signal'));
   assert.ok(authorize.includes('deployment SHA does not match signal release SHA'));
   assert.ok(authorize.includes('manual production proof is repository-owner only'));
   assert.ok(authorize.includes('git merge-base --is-ancestor "$release_sha" origin/main'));
@@ -265,4 +270,47 @@ test('L99 CI watches both sides of the trusted production handoff', () => {
   const signalMatches = l99CiWorkflow.match(/\.github\/workflows\/story-engine-production-signal\.yml/g) || [];
   assert.equal(proofMatches.length, 2, 'production proof workflow must be watched on push and pull_request');
   assert.equal(signalMatches.length, 2, 'production signal workflow must be watched on push and pull_request');
+});
+
+
+test('Railway deployment receipts are always emitted before success qualification', () => {
+  assert.ok(signalWorkflow.includes("github.event_name == 'workflow_dispatch' || github.event_name == 'deployment_status'"));
+  assert.ok(signalWorkflow.includes("const deploymentState = eventName === 'deployment_status'"));
+  assert.ok(signalWorkflow.includes("const qualifies = eventName === 'workflow_dispatch' || deploymentState === 'success'"));
+  assert.ok(signalWorkflow.includes('qualifies,'));
+  assert.doesNotMatch(signalWorkflow, /github\.event\.deployment\.environment == 'production'/);
+});
+
+test('non-success Railway deployment receipts no-op only after untrusted receipt validation', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes("if (triggeringEvent === 'deployment_status' && signal.qualifies !== true)"));
+  assert.ok(authorize.includes("appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\\n')"));
+  assert.ok(authorize.includes('Non-success deployment signal state='));
+  assert.ok(authorize.includes("if (triggeringEvent === 'workflow_dispatch' && signal.qualifies !== true)"));
+  assert.ok(authorize.includes('manual production signal must be qualifying'));
+  assert.ok(authorize.includes('if [ ! -f production-signal/authorized.json ]; then'));
+  assert.ok(authorize.includes("status.state !== 'success'"));
+  assert.ok(authorize.includes("acceptedProductionEnvironments"));
+  assert.ok(authorize.includes('deployment environment does not match signal'));
+});
+
+
+test('canonical Railway production environment label is accepted narrowly', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes("const deploymentEnvironment = String(deployment.environment || '').trim().toLowerCase()"));
+  assert.ok(authorize.includes("const repositoryName = repository.split('/').pop()?.trim().toLowerCase() || ''"));
+  assert.ok(authorize.includes("const acceptedProductionEnvironments = new Set(["));
+  assert.ok(authorize.includes("'production'"));
+  assert.ok(authorize.includes("`${repositoryName} / production`"));
+  assert.ok(authorize.includes("if (!acceptedProductionEnvironments.has(deploymentEnvironment))"));
+  assert.ok(authorize.includes("const signaledEnvironment = String(signal.deployment_environment || '').trim().toLowerCase()"));
+  assert.ok(authorize.includes('deployment environment does not match signal'));
+});
+
+
+test('non-main Railway deployment signals no-op instead of failing production proof', () => {
+  const authorize = jobPrefix(proofWorkflow, 'authorize-signal');
+  assert.ok(authorize.includes("if (triggeringEvent === 'deployment_status' && triggeringHeadBranch !== 'main')"));
+  assert.ok(authorize.includes("appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\\n')"));
+  assert.ok(authorize.includes('Ignoring non-main deployment signal branch='));
 });
