@@ -248,6 +248,19 @@ CREATE TABLE IF NOT EXISTS story_genomes (
   updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS story_genome_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  genome_hash TEXT NOT NULL,
+  genome_json TEXT NOT NULL DEFAULT '{}',
+  source TEXT NOT NULL DEFAULT 'unknown',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+  UNIQUE(workspace_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_story_genome_versions_workspace
+  ON story_genome_versions(workspace_id, version DESC);
+
 CREATE TABLE IF NOT EXISTS memory_characters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   workspace_id TEXT NOT NULL,
