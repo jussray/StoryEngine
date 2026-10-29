@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import * as Story from '../models/storyModel.js';
 import * as Chapter from '../models/chapterModel.js';
 import { creativeProfileContext, upsertCreativeProfile } from './creativeProfile.js';
-import { getStoryGenome, buildStoryGenome } from './storyGenome.js';
+import { getStoryGenome, getStoryGenomeVersion, buildStoryGenome } from './storyGenome.js';
 import { getChildrenBookProfile } from './childrenBookProfile.js';
 import { evaluateAudienceFit } from './audienceLens.js';
 import { evaluateWorkspace, persistDecision } from './decisionEngine.js';
@@ -357,6 +357,53 @@ export function getBlueprintContinuationOptions(db, sourceWorkspaceId) {
   };
 }
 
+function resolveSourceGenomeRef(db, sourceWorkspaceId, blueprint) {
+  const current = getStoryGenome(db, sourceWorkspaceId);
+  if (!current) throw new Error('Source Genome is missing.');
+
+  const requestedVersion = Number(
+    blueprint.source_genome?.version
+    || blueprint.canon?.version
+    || 0
+  );
+  const requestedHash = String(
+    blueprint.source_genome?.genome_hash
+    || blueprint.canon?.genome_hash
+    || ''
+  ).trim();
+
+  if (!Number.isInteger(requestedVersion) || requestedVersion < 1) {
+    throw new Error('Blueprint is missing a valid source Genome version. Rebuild the blueprint before conversion.');
+  }
+
+  if (requestedVersion === Number(current.version)) {
+    if (requestedHash && requestedHash !== current.genome_hash) {
+      throw new Error('Blueprint source Genome hash does not match the current immutable Genome snapshot.');
+    }
+    return {
+      workspace_id: sourceWorkspaceId,
+      version: Number(current.version),
+      genome_hash: current.genome_hash
+    };
+  }
+
+  const historical = getStoryGenomeVersion(db, sourceWorkspaceId, requestedVersion);
+  if (!historical) {
+    throw new Error(
+      `Blueprint source Genome v${requestedVersion} has no immutable historical snapshot. Rebuild the blueprint before conversion.`
+    );
+  }
+  if (requestedHash && requestedHash !== historical.genome_hash) {
+    throw new Error('Blueprint source Genome hash does not match immutable history.');
+  }
+
+  return {
+    workspace_id: sourceWorkspaceId,
+    version: Number(historical.version),
+    genome_hash: historical.genome_hash
+  };
+}
+
 function conversionPlan(blueprint, targetMedium) {
   const beatCount = blueprint.beats?.length || 1;
   const map = {
@@ -470,7 +517,8 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
   const blueprint = row.blueprint;
   const option = (blueprint.continuation_options || []).find(item => item.target_medium === target);
   if (!option) throw new Error(`Target ${target} is not unlocked for this seed.`);
-  const plan = conversionPlan(blueprint, target);
+  const sourceGenome = resolveSourceGenomeRef(db, sourceWorkspaceId, blueprint);
+  const plan = conversionPlan({ ...blueprint, source_genome: sourceGenome }, target);
   const targetWorkspaceId = createConvertedWorkspace(db, blueprint, plan, target, {
     tenant_id: sourceStory.tenant_id,
     actor_id: sourceStory.created_by_actor_id,
