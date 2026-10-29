@@ -170,3 +170,52 @@ test('movie conversion preserves canon promises from the source book', () => {
   assert.equal(conversion.conversion.validation_promises.includes('adapt pacing to target medium'), true);
   db.close();
 });
+
+
+test('legacy blueprint without source_genome resolves against the exact current immutable Genome', () => {
+  const db = createDb();
+  const workspaceId = createValidatedBook(db);
+  const blueprint = buildStoryBlueprint(db, workspaceId);
+  const stored = db.prepare('SELECT blueprint_json FROM story_blueprints WHERE blueprint_id=?')
+    .get(blueprint.blueprint_id);
+  const legacyBlueprint = JSON.parse(stored.blueprint_json);
+  delete legacyBlueprint.source_genome;
+  delete legacyBlueprint.canon.genome_hash;
+  db.prepare('UPDATE story_blueprints SET blueprint_json=? WHERE blueprint_id=?')
+    .run(JSON.stringify(legacyBlueprint), blueprint.blueprint_id);
+
+  const conversion = convertBlueprint(db, workspaceId, 'youtube_short');
+
+  assert.equal(conversion.conversion.source_genome.workspace_id, workspaceId);
+  assert.equal(conversion.conversion.source_genome.version, legacyBlueprint.canon.version);
+  assert.match(conversion.conversion.source_genome.genome_hash, /^sha256:[0-9a-f]{64}$/);
+
+  db.close();
+});
+
+test('conversion fails before creating a target workspace when a legacy blueprint points to an unprovable Genome version', () => {
+  const db = createDb();
+  const workspaceId = createValidatedBook(db);
+  const blueprint = buildStoryBlueprint(db, workspaceId);
+  const stored = db.prepare('SELECT blueprint_json FROM story_blueprints WHERE blueprint_id=?')
+    .get(blueprint.blueprint_id);
+  const legacyBlueprint = JSON.parse(stored.blueprint_json);
+  delete legacyBlueprint.source_genome;
+  legacyBlueprint.canon.version = 999;
+  delete legacyBlueprint.canon.genome_hash;
+  db.prepare('UPDATE story_blueprints SET blueprint_json=? WHERE blueprint_id=?')
+    .run(JSON.stringify(legacyBlueprint), blueprint.blueprint_id);
+
+  const storyCountBefore = db.prepare('SELECT COUNT(*) AS count FROM stories').get().count;
+
+  assert.throws(
+    () => convertBlueprint(db, workspaceId, 'youtube_short'),
+    /no immutable historical snapshot/
+  );
+
+  const storyCountAfter = db.prepare('SELECT COUNT(*) AS count FROM stories').get().count;
+  assert.equal(storyCountAfter, storyCountBefore);
+  assert.equal(listBlueprintConversions(db, blueprint.blueprint_id).length, 0);
+
+  db.close();
+});
