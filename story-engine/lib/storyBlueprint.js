@@ -238,6 +238,11 @@ export function buildStoryBlueprint(db, sourceWorkspaceId) {
     story_kind: profile?.story_kind || story.genre || 'other',
     emotional_effect: profile?.emotional_effect || 'mixed',
     developmental_profile: childProfile,
+    source_genome: {
+      workspace_id: sourceWorkspaceId,
+      version: Number(genome.version),
+      genome_hash: genome.genome_hash
+    },
     canon: genome,
     characters: extractNames(fullText).map(name => ({ name, source: 'heuristic', preserve: true })),
     beats: pageOrChapterBeats(chapters),
@@ -370,6 +375,11 @@ function conversionPlan(blueprint, targetMedium) {
   return {
     target_medium: targetMedium,
     source_blueprint_id: blueprint.blueprint_id,
+    source_genome: blueprint.source_genome || {
+      workspace_id: blueprint.source_workspace_id,
+      version: Number(blueprint.canon?.version || 0),
+      genome_hash: blueprint.canon?.genome_hash || null
+    },
     length: selected.length,
     unit: selected.unit,
     structure: selected.structure,
@@ -481,7 +491,11 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
       { check: 'redteam_seed_checked', passed: blueprint.seed_gate.redteam_seed_check.passed },
       { check: 'canon_preservation_rules_attached', passed: true },
       { check: 'child_development_profile_preserved', passed: Boolean(blueprint.developmental_profile) },
-      { check: 'source_ownership_preserved', passed: true }
+      { check: 'source_ownership_preserved', passed: true },
+      {
+        check: 'source_genome_bound',
+        passed: Boolean(plan.source_genome?.workspace_id && plan.source_genome?.version && plan.source_genome?.genome_hash)
+      }
     ]
   };
 
@@ -496,7 +510,14 @@ export function convertBlueprint(db, sourceWorkspaceId, targetMedium) {
     workspace_id: sourceWorkspaceId,
     mode: 'story_blueprint',
     event_type: 'story_blueprint.converted_after_seed_gate',
-    payload: { conversion_id: conversionId, blueprint_id: row.blueprint_id, target_medium: target, target_workspace_id: targetWorkspaceId }
+    payload: {
+      conversion_id: conversionId,
+      blueprint_id: row.blueprint_id,
+      target_medium: target,
+      target_workspace_id: targetWorkspaceId,
+      source_genome_version: plan.source_genome?.version || null,
+      source_genome_hash: plan.source_genome?.genome_hash || null
+    }
   });
   log(db, {
     workspace_id: targetWorkspaceId,
