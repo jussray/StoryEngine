@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import * as Story from '../models/storyModel.js';
 import * as Chapter from '../models/chapterModel.js';
 import { upsertCreativeProfile, creativeProfileContext } from '../lib/creativeProfile.js';
+import { buildStoryGenome, getStoryGenome } from '../lib/storyGenome.js';
 import {
   BLUEPRINT_TARGETS,
   buildStoryBlueprint,
@@ -104,6 +105,27 @@ test('a seed-gated book blueprint converts into a YouTube Short workspace with s
   assert.equal(conversion.validation.checks.some(check => check.check === 'source_ownership_preserved' && check.passed), true);
   assert.ok(conversion.target_workspace_id);
   assert.match(conversion.conversion.structure[0], /hook/i);
+  assert.equal(conversion.conversion.source_genome.workspace_id, workspaceId);
+  assert.ok(conversion.conversion.source_genome.version >= 1);
+  assert.match(conversion.conversion.source_genome.genome_hash, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(
+    conversion.validation.checks.some(check => check.check === 'source_genome_bound' && check.passed),
+    true
+  );
+
+  const sourceGenomeAtConversion = { ...conversion.conversion.source_genome };
+  Chapter.create(db, workspaceId, {
+    title: 'After the Conversion',
+    content: 'Cloud learns another lesson after the adaptation already exists.',
+    position: 2
+  });
+  const evolvedGenome = buildStoryGenome(db, workspaceId);
+  assert.ok(evolvedGenome.version > sourceGenomeAtConversion.version);
+  assert.notEqual(evolvedGenome.genome_hash, sourceGenomeAtConversion.genome_hash);
+
+  const storedConversion = listBlueprintConversions(db, conversion.blueprint_id)[0];
+  assert.deepEqual(storedConversion.conversion.source_genome, sourceGenomeAtConversion);
+  assert.equal(getStoryGenome(db, workspaceId).version, evolvedGenome.version);
 
   const derived = Story.get(db, conversion.target_workspace_id);
   assert.equal(derived.tenant_id, TEST_IDENTITY.tenant_id);
