@@ -47,6 +47,40 @@ function hashGenomeJson(genomeJson) {
   return `sha256:${createHash('sha256').update(genomeJson).digest('hex')}`;
 }
 
+function ensureGenomeHistoryRow(db, row, source = 'legacy_current_backfill') {
+  if (!row) return null;
+  ensureGenomeHistorySchema(db);
+  const genomeJson = row.genome_json || '{}';
+  const genomeHash = hashGenomeJson(genomeJson);
+  const version = Number(row.version);
+  const existing = db.prepare(`
+    SELECT genome_hash, genome_json
+    FROM story_genome_versions
+    WHERE workspace_id = ? AND version = ?
+  `).get(row.workspace_id, version);
+
+  if (existing) {
+    if (existing.genome_hash !== genomeHash || existing.genome_json !== genomeJson) {
+      throw new Error(`Story Genome history mismatch for ${row.workspace_id} v${version}.`);
+    }
+    return { version, genome_hash: genomeHash };
+  }
+
+  db.prepare(`
+    INSERT INTO story_genome_versions (
+      workspace_id, version, genome_hash, genome_json, source, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    row.workspace_id,
+    version,
+    genomeHash,
+    genomeJson,
+    source,
+    Number(row.updated_at || Date.now())
+  );
+  return { version, genome_hash: genomeHash };
+}
+
 function hydrateGenome(row) {
   if (!row) return null;
   const genome = JSON.parse(row.genome_json || '{}');
@@ -69,20 +103,7 @@ export function persistStoryGenome(db, workspaceId, genome, { source = 'story_ge
   const genomeHash = hashGenomeJson(genomeJson);
 
   db.transaction(() => {
-    if (current) {
-      const currentJson = current.genome_json || '{}';
-      db.prepare(`
-        INSERT OR IGNORE INTO story_genome_versions (
-          workspace_id, version, genome_hash, genome_json, source, created_at
-        ) VALUES (?, ?, ?, ?, 'legacy_current_backfill', ?)
-      `).run(
-        workspaceId,
-        Number(current.version),
-        hashGenomeJson(currentJson),
-        currentJson,
-        Number(current.updated_at || updatedAt)
-      );
-    }
+    if (current) ensureGenomeHistoryRow(db, current);
 
     db.prepare(`
       INSERT INTO story_genomes (workspace_id, genome_json, version, updated_at)
@@ -208,11 +229,8 @@ export function getStoryGenome(db, workspaceId) {
   ensureGenomeHistorySchema(db);
   const row = db.prepare('SELECT * FROM story_genomes WHERE workspace_id = ?').get(workspaceId);
   if (!row) return null;
-  const history = db.prepare(`
-    SELECT genome_hash FROM story_genome_versions
-    WHERE workspace_id = ? AND version = ?
-  `).get(workspaceId, Number(row.version));
-  return hydrateGenome({ ...row, genome_hash: history?.genome_hash || null });
+  const snapshot = ensureGenomeHistoryRow(db, row);
+  return hydrateGenome({ ...row, genome_hash: snapshot.genome_hash });
 }
 
 export function getStoryGenomeVersion(db, workspaceId, version) {
