@@ -1,6 +1,7 @@
 // lib/storyGenome.js
 
 import { createHash } from 'node:crypto';
+import './sqliteTransaction.js';
 import { log } from '../models/eventModel.js';
 
 function words(text) {
