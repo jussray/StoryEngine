@@ -21,10 +21,10 @@
       }
     }
   ],
+  // Previews carry no runtime origin: Cloudflare does not inherit production
+  // vars into previews, so a preview Worker fails closed (503) instead of
+  // proxying to production state.
   "previews": {
-    "vars": {
-      "STORYENGINE_RUNTIME_ORIGIN": "https://story-engine-production-1e6b.up.railway.app"
-    },
     "ratelimits": [
       {
         "name": "STORYENGINE_API_RATE_LIMITER",
