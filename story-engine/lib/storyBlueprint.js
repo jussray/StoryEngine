@@ -358,6 +358,11 @@ export function getBlueprintContinuationOptions(db, sourceWorkspaceId) {
 }
 
 function resolveSourceGenomeRef(db, sourceWorkspaceId, blueprint) {
+  const declaredWorkspaceId = String(blueprint.source_genome?.workspace_id || '').trim();
+  if (declaredWorkspaceId && declaredWorkspaceId !== sourceWorkspaceId) {
+    throw new Error('Blueprint source Genome workspace does not match the source workspace.');
+  }
+
   const current = getStoryGenome(db, sourceWorkspaceId);
   if (!current) throw new Error('Source Genome is missing.');
 
