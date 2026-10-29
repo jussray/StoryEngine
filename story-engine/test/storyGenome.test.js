@@ -104,3 +104,58 @@ test('first write preserves a pre-existing current genome as a legacy history sn
 
   db.close();
 });
+
+
+test('reading a legacy current genome materializes the exact immutable snapshot before downstream lineage can use it', () => {
+  const db = createDb();
+  const workspaceId = seedStory(db, 'workspace-read-backfill');
+  const legacy = {
+    workspace_id: workspaceId,
+    identity: { title: 'Readable Legacy Genome' },
+    narrative: { total_words: 4 }
+  };
+  db.prepare(`
+    INSERT INTO story_genomes (workspace_id, genome_json, version, updated_at)
+    VALUES (?, ?, 3, ?)
+  `).run(workspaceId, JSON.stringify(legacy), 4321);
+
+  const current = getStoryGenome(db, workspaceId);
+  const immutable = getStoryGenomeVersion(db, workspaceId, 3);
+
+  assert.equal(current.version, 3);
+  assert.match(current.genome_hash, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(immutable.genome_hash, current.genome_hash);
+  assert.equal(immutable.identity.title, 'Readable Legacy Genome');
+
+  db.close();
+});
+
+test('current Genome read fails closed when an immutable version disagrees with the mutable snapshot', () => {
+  const db = createDb();
+  const workspaceId = seedStory(db, 'workspace-history-mismatch');
+  const current = JSON.stringify({
+    workspace_id: workspaceId,
+    identity: { title: 'Current Genome' }
+  });
+  db.prepare(`
+    INSERT INTO story_genomes (workspace_id, genome_json, version, updated_at)
+    VALUES (?, ?, 2, ?)
+  `).run(workspaceId, current, 5000);
+  db.prepare(`
+    INSERT INTO story_genome_versions (
+      workspace_id, version, genome_hash, genome_json, source, created_at
+    ) VALUES (?, 2, ?, ?, 'test_corruption', ?)
+  `).run(
+    workspaceId,
+    'sha256:' + '0'.repeat(64),
+    JSON.stringify({ workspace_id: workspaceId, identity: { title: 'Different Genome' } }),
+    4000
+  );
+
+  assert.throws(
+    () => getStoryGenome(db, workspaceId),
+    /Story Genome history mismatch/
+  );
+
+  db.close();
+});
