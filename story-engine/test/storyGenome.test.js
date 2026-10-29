@@ -97,10 +97,13 @@ test('first write preserves a pre-existing current genome as a legacy history sn
     WHERE workspace_id = ?
     ORDER BY version
   `).all(workspaceId);
-  assert.deepEqual(rows, [
-    { version: 7, source: 'legacy_current_backfill' },
-    { version: 8, source: 'story_genome.refresh' }
-  ]);
+  assert.deepEqual(
+    rows.map(row => ({ version: row.version, source: row.source })),
+    [
+      { version: 7, source: 'legacy_current_backfill' },
+      { version: 8, source: 'story_genome.refresh' }
+    ]
+  );
 
   db.close();
 });
