@@ -219,3 +219,29 @@ test('conversion fails before creating a target workspace when a legacy blueprin
 
   db.close();
 });
+
+
+test('conversion rejects a Blueprint whose source Genome declares another workspace', () => {
+  const db = createDb();
+  const workspaceId = createValidatedBook(db);
+  const blueprint = buildStoryBlueprint(db, workspaceId);
+  const stored = db.prepare('SELECT blueprint_json FROM story_blueprints WHERE blueprint_id=?')
+    .get(blueprint.blueprint_id);
+  const corrupted = JSON.parse(stored.blueprint_json);
+  corrupted.source_genome.workspace_id = 'foreign-workspace';
+  db.prepare('UPDATE story_blueprints SET blueprint_json=? WHERE blueprint_id=?')
+    .run(JSON.stringify(corrupted), blueprint.blueprint_id);
+
+  const storyCountBefore = db.prepare('SELECT COUNT(*) AS count FROM stories').get().count;
+
+  assert.throws(
+    () => convertBlueprint(db, workspaceId, 'youtube_short'),
+    /workspace does not match the source workspace/
+  );
+
+  const storyCountAfter = db.prepare('SELECT COUNT(*) AS count FROM stories').get().count;
+  assert.equal(storyCountAfter, storyCountBefore);
+  assert.equal(listBlueprintConversions(db, blueprint.blueprint_id).length, 0);
+
+  db.close();
+});
