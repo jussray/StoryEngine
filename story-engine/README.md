@@ -110,3 +110,19 @@ These are separate receipts, not one generic "not ready" state:
 - production deployment identity must match the exact promoted `main` SHA before release is called complete.
 
 See the repository root documentation, open issues, and current PR receipts for the exact live gate state.
+
+
+## WordPress + Amazon book storefront
+
+The existing StoryEngine Node/SQLite runtime remains the source of truth for books, chapters, provenance, and release gates. WordPress is only an optional **draft-only listing storefront**. Amazon KDP is the separately authorized publisher, checkout, and fulfillment service.
+
+- Configure the three WORDPRESS_* values above as **server-side secrets** on the runtime. Use an HTTPS WordPress site URL, a dedicated least-privileged WordPress account, and its revocable Application Password.
+- An authenticated release manager or administrator calls **POST /api/workspaces/:workspace_id/wordpress/book-draft** with JSON fields **artifact_id**, **confirm_draft: true**, and optional **amazon_url** (a valid Amazon book detail link obtained after the KDP listing exists).
+- A matching, same-workspace **book/picture_book** artifact must be **validated** by authenticated real-route Playwright proof. The workspace release gate must be **READY**. Other users and unapproved artifacts fail closed.
+- The adapter sends WordPress only the book title, short pitch, and optional Amazon buy link. It never sends private manuscript chapters or HTML artifact contents.
+- WordPress posts are always created with **status=draft**, with a deterministic content-bound slug, read-before-write deduplication, readback verification, and a StoryEngine event receipt. A network timeout is UNKNOWN, not success; no blind retry occurs.
+- Publishing a WordPress listing, generating final Kindle/print upload formats, submitting to Amazon KDP, pricing, and verifying a real purchase are **separate** approval and provider-evidence gates. This code performs none of them. FCR retains cross-product approvals.
+- The WordPress REST endpoint follows the WordPress.org core posts API and Application Password convention; WordPress.com installations with different authentication requirements need their own adapter.
+- No existing story, artifact, event bus, memory, account, commerce connector, or hosting setup is replaced.
+
+Rollback: revert the isolated commit(s) and remove the three optional environment variables. No database migration or third-party write is part of installing this source.
