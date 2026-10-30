@@ -36,18 +36,24 @@ export default function recoveryRoutes(router, db) {
   });
 
   router.get('/api/ooda/recovery-runs/:workspace_id', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const limit = Math.min(Number(req.query.limit) || 100, 500);
-    json(res, 200, listRecoveryRuns(db, req.params.workspace_id, limit));
+    json(res, 200, listRecoveryRuns(db, workspace_id, limit));
   });
 
   router.post('/api/story-genome/:workspace_id/refresh', (req, res) => {
-    const genome = buildStoryGenome(db, req.params.workspace_id);
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const genome = buildStoryGenome(db, workspace_id);
     if (!genome) return json(res, 404, { error: 'Workspace not found' });
     json(res, 200, genome);
   });
 
   router.get('/api/story-genome/:workspace_id', (req, res) => {
-    const genome = getStoryGenome(db, req.params.workspace_id);
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const genome = getStoryGenome(db, workspace_id);
     if (!genome) return json(res, 404, { error: 'Story Genome not found' });
     json(res, 200, genome);
   });

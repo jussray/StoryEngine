@@ -7,15 +7,17 @@ import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function runtimeRoutes(router, db) {
   router.post('/api/runtime/run/:workspace_id', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const chapterId = req.body?.chapter_id ? Number(req.body.chapter_id) : null;
     const chapter = chapterId ? Chapter.get(db, chapterId) : null;
     if (chapterId && !chapter) return json(res, 404, { error: 'Chapter not found' });
-    if (chapter && chapter.workspace_id !== req.params.workspace_id) {
+    if (chapter && chapter.workspace_id !== workspace_id) {
       return json(res, 400, { error: 'Chapter does not belong to workspace' });
     }
 
     const run = runAutonomousRuntime(db, {
-      workspaceId: req.params.workspace_id,
+      workspaceId: workspace_id,
       chapter,
       triggerType: req.body?.trigger_type || 'manual_runtime_run',
       correlationId: req.body?.correlation_id || null,
@@ -32,7 +34,9 @@ export default function runtimeRoutes(router, db) {
   });
 
   router.get('/api/runtime/runs/:workspace_id', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const limit = Math.min(Number(req.query.limit) || 100, 500);
-    json(res, 200, listRuntimeRuns(db, req.params.workspace_id, limit));
+    json(res, 200, listRuntimeRuns(db, workspace_id, limit));
   });
 }

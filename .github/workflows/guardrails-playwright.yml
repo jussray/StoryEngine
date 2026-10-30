@@ -2,7 +2,7 @@ name: Guardrails Playwright
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'security/**']
     paths:
       - 'story-engine/**'
       - 'docs/VISION.md'
@@ -34,7 +34,7 @@ env:
 jobs:
   verify-guardrails:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: story-engine
@@ -59,14 +59,12 @@ jobs:
       - name: Verify project-scoped Supabase MCP boundary
         working-directory: .
         run: python scripts/verify_mcp_config.py
+      - name: Run exact-head founder truth gate
+        working-directory: .
+        run: python runtime/founder_truth_gate.py
       - run: npm ci
       - name: Ensure deterministic MP4 renderer is available
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
-          ffmpeg -version | head -n 1
+        run: bash ../scripts/ensure-ffmpeg.sh
       - name: Run Node tests with retained evidence
         shell: bash
         run: |
@@ -78,6 +76,8 @@ jobs:
         run: npx playwright test e2e/product-build-control.spec.js
       - name: Verify real creator persistence path
         run: npx playwright test e2e/creator_persistence.spec.js
+      - name: Verify autonomous book end to end
+        run: npx playwright test --config=playwright.book.config.js
       - name: Verify business metrics evidence path
         run: npx playwright test e2e/business_metrics.spec.js
       - name: Verify local domain authority
@@ -96,6 +96,7 @@ jobs:
         with:
           name: l99-test-evidence
           path: |
+            artifacts/founder-truth/
             story-engine/node-test-output.log
             story-engine/playwright-report/
             story-engine/test-results/

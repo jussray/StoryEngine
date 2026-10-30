@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "repository": "jussray/StoryEngine",
+  "head_sha": "c6f79223f72da2de0c9bdf353561c17bbc5aef25",
+  "branch": "fix/frontdoor-runtime-equivalent-sha",
+  "generated_at": "2026-10-02T21:57:05.702672+00:00",
+  "executor": "local",
+  "overall": "passed",
+  "checks": [
+    {
+      "name": "capability-adversarial",
+      "command": [
+        "/usr/bin/python3",
+        "runtime/test_verify_capability_contract.py"
+      ],
+      "cwd": ".",
+      "status": "passed",
+      "return_code": 0,
+      "started_at": "2026-10-02T21:57:04.861245+00:00",
+      "ended_at": "2026-10-02T21:57:05.253185+00:00",
+      "stdout": "capability contract adversarial tests passed: active repository authority + cookie manifest identity + 8 rejection cases + conservative baseline\n",
+      "stderr": ""
+    },
+    {
+      "name": "capability-contract",
+      "command": [
+        "/usr/bin/python3",
+        "runtime/verify_capability_contract.py"
+      ],
+      "cwd": ".",
+      "status": "passed",
+      "return_code": 0,
+      "started_at": "2026-10-02T21:57:05.253325+00:00",
+      "ended_at": "2026-10-02T21:57:05.286991+00:00",
+      "stdout": "capability contract valid: 17 capabilities, 0 proof records\n",
+      "stderr": ""
+    },
+    {
+      "name": "control-room-federation",
+      "command": [
+        "/usr/bin/python3",
+        "runtime/test_control_room_contract.py"
+      ],
+      "cwd": ".",
+      "status": "passed",
+      "return_code": 0,
+      "started_at": "2026-10-02T21:57:05.287088+00:00",
+      "ended_at": "2026-10-02T21:57:05.405944+00:00",
+      "stdout": "",
+      "stderr": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.016s\n\nOK\n"
+    },
+    {
+      "name": "runtime-promotion",
+      "command": [
+        "/usr/bin/python3",
+        "runtime/promotion_gates_all.py"
+      ],
+      "cwd": ".",
+      "status": "passed",
+      "return_code": 0,
+      "started_at": "2026-10-02T21:57:05.406142+00:00",
+      "ended_at": "2026-10-02T21:57:05.539470+00:00",
+      "stdout": "L99 promotion gates\n========================================\n[PASS] provenance\n[PASS] revocation\n[PASS] partition_boundary\n[PASS] event_schema\n[PASS] lindymode_drift\n[PASS] shell_command\n[PASS] l99_latency\n[PASS] cookie_contract\n[PASS] control_room_federation\n========================================\nALL GATES PASSED\n",
+      "stderr": ""
+    },
+    {
+      "name": "header-auth",
+      "command": [
+        "node",
+        "--test",
+        "test/securityContext.test.js"
+      ],
+      "cwd": "story-engine",
+      "status": "passed",
+      "return_code": 0,
+      "started_at": "2026-10-02T21:57:05.539582+00:00",
+      "ended_at": "2026-10-02T21:57:05.699731+00:00",
+      "stdout": "TAP version 13\n# Subtest: security context resolves scoped actor identity from x-api-key\nok 1 - security context resolves scoped actor identity from x-api-key\n  ---\n  duration_ms: 1.577603\n  type: 'test'\n  ...\n# Subtest: security context preserves Bearer authentication\nok 2 - security context preserves Bearer authentication\n  ---\n  duration_ms: 0.511828\n  type: 'test'\n  ...\n# Subtest: security context rejects a valid API key supplied only through a legacy cookie name\nok 3 - security context rejects a valid API key supplied only through a legacy cookie name\n  ---\n  duration_ms: 0.324166\n  type: 'test'\n  ...\n# Subtest: opaque server session authenticates without putting claims or API keys in the cookie\nok 4 - opaque server session authenticates without putting claims or API keys in the cookie\n  ---\n  duration_ms: 2.012168\n  type: 'test'\n  ...\n# Subtest: explicit header identity wins over a higher-privilege session cookie\nok 5 - explicit header identity wins over a higher-privilege session cookie\n  ---\n  duration_ms: 0.405039\n  type: 'test'\n  ...\n# Subtest: session cookie clear contract expires the opaque identifier\nok 6 - session cookie clear contract expires the opaque identifier\n  ---\n  duration_ms: 0.187042\n  type: 'test'\n  ...\n# Subtest: operator API membrane blocks creator access without blocking assist-default reads\nok 7 - operator API membrane blocks creator access without blocking assist-default reads\n  ---\n  duration_ms: 0.442161\n  type: 'test'\n  ...\n# Subtest: security context refreshes cached registry when env source changes\nok 8 - security context refreshes cached registry when env source changes\n  ---\n  duration_ms: 0.200434\n  type: 'test'\n  ...\n# Subtest: workspace access uses params/query helper instead of trusting unparsed body middleware\nok 9 - workspace access uses params/query helper instead of trusting unparsed body middleware\n  ---\n  duration_ms: 0.38344\n  type: 'test'\n  ...\n1..9\n# tests 9\n# suites 0\n# pass 9\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 104.693502\n",
+      "stderr": ""
+    }
+  ],
+  "truth_boundary": "This artifact proves only the commands recorded here executed against this exact checkout."
+}

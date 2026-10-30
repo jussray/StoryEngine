@@ -18,11 +18,13 @@ const COMMAND_ALIASES = Object.freeze({
 });
 
 export const OPEN_SOURCE_VIDEO_POLICY = Object.freeze({
-  schema_version: '1.0.0',
+  schema_version: '1.1.0',
   workflow: 'LEEVIZE',
   shot_contract: 'shot-dna@v1',
   compile_order: Object.freeze(['director-brief', 'model-neutral-shot-spec', 'renderer-adapter']),
+  primary_render_lane: 'self_hosted_open_weight',
   open_source_first: true,
+  vendor_credit_zero_blocking: false,
   deterministic_post_tools: Object.freeze(['ffmpeg', 'ffprobe']),
   optional_open_source_candidates: Object.freeze(['remotion', 'comfyui', 'whisper-compatible']),
   candidate_availability_is_runtime_fact: true,
@@ -173,6 +175,89 @@ export function shotCommandFor(index, context = {}) {
   return sequence[Math.abs(Number(index) || 0) % sequence.length];
 }
 
+export const SHOT_CONTINUITY_EVIDENCE_PLANES = Object.freeze([
+  'CAPTURED_REALITY',
+  'GENERATED_VISUALIZATION',
+  'COMPOSITED_PRESENTATION'
+]);
+
+export const SHOT_CONTINUITY_CONTRACT_FIELDS = Object.freeze([
+  'SHOT_ID',
+  'CANON_REFERENCES',
+  'ENTRY_FRAME_ANCHOR',
+  'EXIT_FRAME_ANCHOR',
+  'SUBJECT_STATE',
+  'ENVIRONMENT_STATE',
+  'CAMERA_AND_MOTION_INTENT',
+  'EVIDENCE_PLANE',
+  'ACCEPTANCE_CHECKS'
+]);
+
+export function buildShotContinuityGate(shots = [], options = {}) {
+  if (!Array.isArray(shots) || shots.length === 0) {
+    throw new Error('Shot Continuity Contract requires at least one storyboard shot.');
+  }
+  const evidencePlane = clean(options.evidence_plane || 'GENERATED_VISUALIZATION').toUpperCase();
+  if (!SHOT_CONTINUITY_EVIDENCE_PLANES.includes(evidencePlane)) {
+    throw new Error(`Unsupported Shot Continuity evidence plane: ${evidencePlane}.`);
+  }
+
+  const contracts = shots.map((shot, index) => {
+    const direction = shot?.shot_direction || shot || {};
+    return Object.freeze({
+      SHOT_ID: clean(shot?.shot_id || `shot_${String(index + 1).padStart(2, '0')}`),
+      CANON_REFERENCES: cleanList(shot?.must_preserve || direction.continuity_constraints),
+      ENTRY_FRAME_ANCHOR: clean(direction.opening_frame),
+      EXIT_FRAME_ANCHOR: clean(direction.ending_frame),
+      SUBJECT_STATE: clean(shot?.subject_state || `${direction.subject || 'story subject'} remains in the declared canon state for this beat.`),
+      ENVIRONMENT_STATE: clean(shot?.environment_state || shot?.style_prompt || 'Preserve the established environment, geography, lighting logic, and product state.'),
+      CAMERA_AND_MOTION_INTENT: clean(`${direction.camera_move || shot?.camera_move || 'static'}; ${direction.motion || 'motivated motion only'}`),
+      EVIDENCE_PLANE: evidencePlane,
+      ACCEPTANCE_CHECKS: Object.freeze([
+        'actual first frame matches ENTRY_FRAME_ANCHOR',
+        'actual last frame matches EXIT_FRAME_ANCHOR',
+        'no undeclared character, prop, environment, or product identity drift',
+        'adjacent exit and entry anchors remain compatible unless a discontinuity is declared',
+        'factual product or UI claims use CAPTURED_REALITY evidence',
+        'every failed criterion produces its own repair receipt'
+      ])
+    });
+  });
+
+  const failures = [];
+  contracts.forEach((contract, index) => {
+    for (const field of SHOT_CONTINUITY_CONTRACT_FIELDS) {
+      const value = contract[field];
+      if ((Array.isArray(value) && value.length === 0) || (!Array.isArray(value) && !clean(value))) {
+        failures.push({ shot_id: contract.SHOT_ID, criterion: field, reason: 'missing_contract_field' });
+      }
+    }
+    if (index > 0) {
+      const previous = contracts[index - 1];
+      const declaredCut = shots[index]?.discontinuity_declared === true;
+      if (!declaredCut && previous.EXIT_FRAME_ANCHOR !== contract.ENTRY_FRAME_ANCHOR) {
+        failures.push({
+          shot_id: contract.SHOT_ID,
+          criterion: 'ENTRY_FRAME_ANCHOR',
+          reason: 'previous_exit_is_not_next_entry',
+          previous_shot_id: previous.SHOT_ID
+        });
+      }
+    }
+  });
+
+  return Object.freeze({
+    schema_version: '1.0.0',
+    phase: 'STORYBOARD_TO_RENDER',
+    status: 'TEST',
+    ready_for_render: failures.length === 0,
+    rendered_frame_receipts_complete: false,
+    contracts: Object.freeze(contracts),
+    failures: Object.freeze(failures),
+    stop_condition: 'Do not treat the production plan as final footage. Rendered first/last-frame evidence and film QA remain required.'
+  });
+}
+
 export function compileShotDirection(input = {}) {
   const parsed = parseShotCommand(input.command);
   const spec = SHOT_COMMANDS[parsed.command];
@@ -221,7 +306,7 @@ export function compileShotDirection(input = {}) {
   ].filter(Boolean).join('\n');
 
   return {
-    schema_version: '1.1.0',
+    schema_version: '1.2.0',
     shot_contract: 'shot-dna@v1',
     provider_neutral: true,
     command: parsed.raw,

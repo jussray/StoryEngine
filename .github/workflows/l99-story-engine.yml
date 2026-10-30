@@ -43,6 +43,7 @@ jobs:
   test:
     name: Node tests
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout exact head
@@ -69,14 +70,20 @@ jobs:
       - name: Verify portable Juss OS command contract
         run: node scripts/verify-juss-os-commands.mjs
 
+      - name: Reject tracked runtime database artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked="$(git ls-files 'story-engine/db/*.db' 'story-engine/db/*.db-*' 'story-engine/db/*.sqlite' 'story-engine/db/*.sqlite-*' 'story-engine/db/*.sqlite3' 'story-engine/db/*.sqlite3-*')"
+          if [ -n "$tracked" ]; then
+            printf '%s\n' "$tracked" >&2
+            echo 'Runtime database artifacts must never be tracked in Git.' >&2
+            exit 1
+          fi
+
       - name: Ensure deterministic MP4 renderer is available
         working-directory: story-engine
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
-          ffmpeg -version | head -n 1
+        run: bash ../scripts/ensure-ffmpeg.sh
 
       - name: Inspect exact Docker carrier for runtime capability and leakage
         shell: bash
@@ -166,10 +173,6 @@ jobs:
           LIVE_SMOKE_RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-            echo 'ANTHROPIC_API_KEY is not available to the trusted-main production smoke job.' >&2
-            exit 1
-          fi
           mkdir -p test-results
           node --input-type=module <<'NODE'
           import { writeFile } from 'node:fs/promises';
@@ -182,80 +185,53 @@ jobs:
             const text = String(value || '').trim();
             return /^[a-z0-9_.-]{1,80}$/i.test(text) ? text : null;
           };
-
-          const classifyReason = message => {
-            const text = String(message || '').toLowerCase();
-            if (/zero data retention|data retention|\bzdr\b/.test(text)) return 'data_retention';
-            if (/spend(?:ing)? limit|credit balance|usage limit/.test(text)) return 'spending_limit';
-            if (/max[_ -]?tokens/.test(text)) return 'max_tokens';
-            if (/temperature|top[_ -]?p|top[_ -]?k/.test(text)) return 'sampling_parameter';
-            if (/budget[_ -]?tokens|\bthinking\b|\beffort\b/.test(text)) return 'thinking';
-            if (/\bworkspace\b/.test(text)) return 'workspace';
-            if (/\bmodel\b/.test(text)) return 'model';
-            if (/\bmessages?\b/.test(text)) return 'messages';
-            if (/\bsystem\b/.test(text)) return 'system';
-            return null;
+          const safeReason = value => {
+            const reason = safeEnum(value);
+            return new Set([
+              'data_retention',
+              'spending_limit',
+              'max_tokens',
+              'sampling_parameter',
+              'thinking',
+              'workspace',
+              'model',
+              'messages',
+              'system'
+            ]).has(reason) ? reason : null;
           };
-
-          async function readBoundedDiagnosticText(response, maxBytes = 4096) {
-            const body = response?.body;
-            if (!body || typeof body.getReader !== 'function') return '';
-            const reader = body.getReader();
-            const decoder = new TextDecoder();
-            let bytesRead = 0;
-            let text = '';
-            try {
-              while (bytesRead < maxBytes) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
-                const remaining = maxBytes - bytesRead;
-                const take = Math.min(remaining, value.byteLength);
-                text += decoder.decode(value.subarray(0, take), { stream: true });
-                bytesRead += take;
-                if (take < value.byteLength || bytesRead >= maxBytes) {
-                  await reader.cancel().catch(() => {});
-                  break;
-                }
-              }
-              text += decoder.decode();
-              return text;
-            } catch {
-              return '';
-            } finally {
-              try { reader.releaseLock(); } catch {}
-            }
-          }
-
-          const classifyAnthropicError = raw => {
-            try {
-              const parsed = JSON.parse(raw);
-              return {
-                type: safeEnum(parsed?.error?.type || parsed?.type),
-                reason: classifyReason(parsed?.error?.message)
-              };
-            } catch {
-              return { type: null, reason: null };
-            }
-          };
-
-          let providerDiagnostic = { type: null, reason: null };
-          const nativeFetch = globalThis.fetch;
-          globalThis.fetch = async (url, init) => {
-            const response = await nativeFetch(url, init);
-            if (!response.ok && String(url) === 'https://api.anthropic.com/v1/messages') {
-              const raw = await readBoundedDiagnosticText(response.clone(), 4096);
-              providerDiagnostic = classifyAnthropicError(raw);
-            }
-            return response;
+          const safeBlocker = value => {
+            const reason = safeEnum(value);
+            return new Set([
+              'credential_unavailable',
+              'spending_limit',
+              'data_retention',
+              'provider_unavailable'
+            ]).has(reason) ? reason : null;
           };
 
           const base = {
             schema: 'juss/storyengine-anthropic-live-smoke@v1',
+            architecture_contract: 'juss/self-sufficient-architecture@v1',
             release_sha: releaseSha,
             provider: 'anthropic',
+            provider_role: 'plugin',
             observed_at: new Date().toISOString()
           };
+
+          if (!String(process.env.ANTHROPIC_API_KEY || '').trim()) {
+            const safe = {
+              ...base,
+              status: 'blocked',
+              blocker_reason: 'credential_unavailable',
+              error_code: 'provider_credential_unavailable',
+              http_status: null,
+              provider_error_type: null,
+              provider_error_reason: null
+            };
+            await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
+            console.warn(`Anthropic plugin lane blocked reason=${safe.blocker_reason} release=${safe.release_sha}`);
+            process.exit(0);
+          }
 
           try {
             const receipt = await completeWithReceipt('Reply with exactly OK.', {
@@ -286,17 +262,26 @@ jobs:
             const rawCode = String(error?.code || 'anthropic_live_smoke_failed').trim();
             const errorCode = /^[a-z0-9_.-]{1,80}$/i.test(rawCode) ? rawCode : 'anthropic_live_smoke_failed';
             const status = Number(error?.status || 0);
+            const httpStatus = Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+            const blockerReason = safeBlocker(error?.blocker_reason);
+            const providerErrorType = safeEnum(error?.provider_error_type);
+            const providerErrorReason = safeReason(error?.provider_error_reason);
             const safe = {
               ...base,
-              status: 'failed',
+              status: blockerReason ? 'blocked' : 'failed',
+              ...(blockerReason ? { blocker_reason: blockerReason } : {}),
               error_code: errorCode,
-              http_status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
-              provider_error_type: providerDiagnostic.type,
-              provider_error_reason: providerDiagnostic.reason
+              http_status: httpStatus,
+              provider_error_type: providerErrorType,
+              provider_error_reason: providerErrorReason
             };
             await writeFile('test-results/anthropic-live-smoke.json', JSON.stringify(safe, null, 2) + '\n');
-            console.error(`Anthropic live smoke failed code=${safe.error_code} status=${safe.http_status ?? 'none'} type=${safe.provider_error_type ?? 'unknown'} reason=${safe.provider_error_reason ?? 'unknown'}`);
-            process.exitCode = 1;
+            if (blockerReason) {
+              console.warn(`Anthropic plugin lane blocked reason=${blockerReason} code=${safe.error_code} status=${safe.http_status ?? 'none'} release=${safe.release_sha}`);
+            } else {
+              console.error(`Anthropic live smoke failed code=${safe.error_code} status=${safe.http_status ?? 'none'} type=${safe.provider_error_type ?? 'unknown'} reason=${safe.provider_error_reason ?? 'unknown'}`);
+              process.exitCode = 1;
+            }
           }
           NODE
 

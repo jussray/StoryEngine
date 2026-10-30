@@ -1,7 +1,7 @@
 // routes/assistMode.js
 
 import { json } from '../lib/miniRouter.js';
-import { requireRole } from '../lib/securityContext.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
   ASSIST_MODES,
   getOperatorAssistDefault,
@@ -53,28 +53,36 @@ export default function assistModeRoutes(router, db) {
   });
 
   router.get('/api/workspaces/:workspace_id/assist', (req, res) => {
-    try { json(res, 200, getWorkspaceAssist(db, req.params.workspace_id)); }
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    try { json(res, 200, getWorkspaceAssist(db, workspace_id)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
 
   router.put('/api/workspaces/:workspace_id/assist', (req, res) => {
-    try { json(res, 200, setWorkspaceAssist(db, req.params.workspace_id, req.body || {})); }
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    try { json(res, 200, setWorkspaceAssist(db, workspace_id, req.body || {})); }
     catch (error) { json(res, 400, { error: error.message }); }
   });
 
   router.get('/api/workspaces/:workspace_id/assist/contributions', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
-      json(res, 200, listAssistContributions(db, req.params.workspace_id, Number(req.query.limit || 100)));
+      json(res, 200, listAssistContributions(db, workspace_id, Number(req.query.limit || 100)));
     } catch (error) {
       json(res, 500, { error: error.message });
     }
   });
 
   router.post('/api/workspaces/:workspace_id/assist/contributions', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
       json(res, 201, recordAssistContribution(db, {
         ...(req.body || {}),
-        workspace_id: req.params.workspace_id
+        workspace_id: workspace_id
       }));
     } catch (error) {
       json(res, 400, { error: error.message });

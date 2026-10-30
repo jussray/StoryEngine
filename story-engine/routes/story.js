@@ -1,5 +1,6 @@
 // routes/story.js
 import { json } from '../lib/miniRouter.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 import * as Story from '../models/storyModel.js';
 import { log } from '../models/eventModel.js';
 import { canCreateWorkspace, workspaceCreationDenial } from '../lib/workspaceCreationAuthority.js';
@@ -10,7 +11,9 @@ export default function storyRoutes(router, db) {
   });
 
   router.get('/api/story/:workspace_id', (req, res) => {
-    const story = Story.get(db, req.params.workspace_id);
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const story = Story.get(db, workspace_id);
     if (!story) return json(res, 404, { error: 'Not found' });
     json(res, 200, story);
   });
@@ -36,6 +39,7 @@ export default function storyRoutes(router, db) {
 
   router.put('/api/story/:workspace_id', (req, res) => {
     const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const t0 = Date.now();
     Story.update(db, workspace_id, req.body);
     log(db, { workspace_id, event_type: 'story_updated', duration_ms: Date.now() - t0 });

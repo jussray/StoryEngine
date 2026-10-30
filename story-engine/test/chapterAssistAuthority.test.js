@@ -63,10 +63,12 @@ function runtimeDispatchCount(db) {
   return db.prepare('SELECT COUNT(*) AS count FROM runtime_dispatch_queue').get().count;
 }
 
-function createChapter(handlers, workspaceId, title = 'Chapter One') {
+function createChapter(handlers, db, workspaceId, title = 'Chapter One') {
   const res = responseRecorder();
   handlers.get('POST /api/chapters/:workspace_id')({
     params: { workspace_id: workspaceId },
+    auth: { ...TEST_IDENTITY, workspace_ids: ['*'] },
+    db,
     body: { title, content: 'Human-authored opening line.', position: 0 }
   }, res);
   return res;
@@ -77,7 +79,7 @@ test('Writer chapter create and save persist human text without autonomous runti
   const workspaceId = createWorkspace(db, 'writer');
   const handlers = captureRoutes(db);
 
-  const created = createChapter(handlers, workspaceId);
+  const created = createChapter(handlers, db, workspaceId);
   assert.equal(created.status, 201);
   assert.equal(created.body.queued, false);
   assert.equal(created.body.dispatch, null);
@@ -111,7 +113,7 @@ test('Co-Writer chapter create stays local until an explicit assist action', () 
   const workspaceId = createWorkspace(db, 'co_writer');
   const handlers = captureRoutes(db);
 
-  const created = createChapter(handlers, workspaceId);
+  const created = createChapter(handlers, db, workspaceId);
   assert.equal(created.status, 201);
   assert.equal(created.body.queued, false);
   assert.equal(created.body.dispatch, null);
@@ -124,7 +126,7 @@ test('Director chapter create preserves the existing autonomous runtime queue pa
   const workspaceId = createWorkspace(db, 'director');
   const handlers = captureRoutes(db);
 
-  const created = createChapter(handlers, workspaceId);
+  const created = createChapter(handlers, db, workspaceId);
   assert.equal(created.status, 202);
   assert.equal(created.body.queued, true);
   assert.ok(created.body.dispatch?.dispatch_id);

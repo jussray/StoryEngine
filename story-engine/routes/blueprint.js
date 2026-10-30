@@ -1,6 +1,7 @@
 // routes/blueprint.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireWorkspaceAccess } from '../lib/securityContext.js';
 import {
   BLUEPRINT_TARGETS,
   buildStoryBlueprint,
@@ -21,8 +22,10 @@ export default function blueprintRoutes(router, db) {
   });
 
   router.get('/api/blueprints/:workspace_id', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
-      const blueprint = getStoryBlueprint(db, req.params.workspace_id) || buildStoryBlueprint(db, req.params.workspace_id);
+      const blueprint = getStoryBlueprint(db, workspace_id) || buildStoryBlueprint(db, workspace_id);
       json(res, 200, blueprint);
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
@@ -31,8 +34,10 @@ export default function blueprintRoutes(router, db) {
   });
 
   router.post('/api/blueprints/:workspace_id/build', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
-      json(res, 201, buildStoryBlueprint(db, req.params.workspace_id));
+      json(res, 201, buildStoryBlueprint(db, workspace_id));
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
@@ -40,8 +45,10 @@ export default function blueprintRoutes(router, db) {
   });
 
   router.get('/api/blueprints/:workspace_id/continuation-options', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
-      json(res, 200, getBlueprintContinuationOptions(db, req.params.workspace_id));
+      json(res, 200, getBlueprintContinuationOptions(db, workspace_id));
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });
@@ -49,8 +56,10 @@ export default function blueprintRoutes(router, db) {
   });
 
   router.get('/api/blueprints/:workspace_id/conversions', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
-      const blueprint = getStoryBlueprint(db, req.params.workspace_id) || buildStoryBlueprint(db, req.params.workspace_id);
+      const blueprint = getStoryBlueprint(db, workspace_id) || buildStoryBlueprint(db, workspace_id);
       json(res, 200, listBlueprintConversions(db, blueprint.blueprint_id));
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
@@ -59,14 +68,16 @@ export default function blueprintRoutes(router, db) {
   });
 
   router.post('/api/blueprints/:workspace_id/convert', (req, res) => {
-    const sourceStory = Story.get(db, req.params.workspace_id);
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    const sourceStory = Story.get(db, workspace_id);
     if (!sourceStory) return json(res, 404, { error: 'Source workspace not found.' });
     if (!canCreateDerivedWorkspace(req.auth, sourceStory)) {
       return json(res, 403, { ...derivedWorkspaceCreationDenial(req.auth), request_id: req.request_id });
     }
     try {
       const target = req.body?.target_medium || req.body?.target;
-      json(res, 201, convertBlueprint(db, req.params.workspace_id, target));
+      json(res, 201, convertBlueprint(db, workspace_id, target));
     } catch (error) {
       const status = /not found/i.test(error.message) ? 404 : 400;
       json(res, status, { error: error.message });

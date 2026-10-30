@@ -35,6 +35,7 @@ test('creator pages include the core story flow and shared browser clients', () 
   assert.ok(CREATOR_PAGES.has('/studio.html'));
   assert.ok(CREATOR_PAGES.has('/ip_studio.html'));
   assert.ok(CREATOR_PAGES.has('/video_studio.html'));
+  assert.ok(CREATOR_PAGES.has('/makevideo_storyboard_import.js'));
   assert.ok(CREATOR_PAGES.has('/l99_auth.js'));
   assert.ok(CREATOR_PAGES.has('/video_control_room.js'));
 });
@@ -137,4 +138,18 @@ test('unknown HTML and JavaScript paths fail closed', () => {
     assert.equal(called, false);
     assert.equal(res.statusCode, 404);
   }
+});
+
+test('MakeVideo import helper requires a creator session but remains readable to authorized creators', () => {
+  const unauth = mockRes();
+  let called = false;
+  assert.equal(enforcePageAccess('/makevideo_storyboard_import.js', {method:'GET',headers:{}}, unauth, () => {called=true;}),false);
+  assert.equal(called,false);
+  assert.equal(unauth.statusCode,401);
+  const session = cookieFor('creator');
+  try {
+    const res=mockRes();
+    assert.equal(enforcePageAccess('/makevideo_storyboard_import.js', {method:'GET',headers:{cookie:session.cookie}}, res,()=>{called=true;}),true);
+    assert.equal(called,true);
+  } finally { revokeSession(session.token); }
 });

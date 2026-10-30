@@ -59,15 +59,20 @@ function logProseQuality(db, workspaceId, chapterId, quality) {
 
 export default function chapterRoutes(router, db) {
   router.get('/api/chapters/:workspace_id', (req, res) => {
-    json(res, 200, Chapter.list(db, req.params.workspace_id));
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    json(res, 200, Chapter.list(db, workspace_id));
   });
 
   router.get('/api/chapters/:workspace_id/memory-context', (req, res) => {
-    json(res, 200, getGenomeContext(db, req.params.workspace_id));
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    json(res, 200, getGenomeContext(db, workspace_id));
   });
 
   router.post('/api/chapters/:workspace_id', (req, res) => {
     const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const { title, content, position, memory_patches } = req.body || {};
     if (!title) return json(res, 400, { error: 'title required' });
 

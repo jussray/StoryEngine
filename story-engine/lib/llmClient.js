@@ -1,6 +1,8 @@
 // lib/llmClient.js
 // Single LLM boundary for L99. Engine modules should call complete() or completeJson().
 
+import { completeMuseWithReceipt } from './museClient.js';
+
 const DEFAULT_TASK_PROVIDERS = Object.freeze({
   chapter_generation: 'anthropic',
   conflict_explanation: 'anthropic',
@@ -17,7 +19,8 @@ const DEFAULT_MODELS = Object.freeze({
   anthropic_fast: process.env.ANTHROPIC_FAST_MODEL || 'claude-haiku-4-5-20251001',
   anthropic_deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-opus-5',
   openai: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-  openrouter: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
+  openrouter: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
+  muse: process.env.MUSE_MODEL || 'muse-spark-1.3'
 });
 
 const LLM_CLIENT_STARTED_AT = Date.now();
@@ -97,10 +100,12 @@ function assertCircuitClosed(provider) {
   }
   const error = new Error(`LLM provider circuit is open for ${provider}.`);
   error.code = 'llm_circuit_open';
+  error.blocker_reason = 'provider_unavailable';
   throw error;
 }
 
 function safeFailureSummary(provider, error) {
+  if (error?.blocker_reason) return `${provider} blocked ${error.blocker_reason}`;
   const status = Number(error?.status || 0);
   if (status) return `${provider} HTTP ${status}`;
   if (error?.code === 'llm_timeout' || error?.name === 'AbortError') return `${provider} timeout`;
@@ -181,30 +186,51 @@ async function readBoundedJsonResponse(response, label, options = {}) {
   }
 }
 
-function safeProviderErrorType(rawBody) {
-  if (!rawBody) return null;
+function safeProviderErrorDiagnostic(rawBody) {
+  if (!rawBody) return { type: null, reason: null };
   try {
     const parsed = JSON.parse(rawBody);
-    const type = String(parsed?.error?.type || parsed?.type || '').trim();
-    return new Set(['invalid_request_error', 'authentication_error', 'permission_error',
+    const rawType = String(parsed?.error?.type || parsed?.type || '').trim();
+    const type = new Set(['invalid_request_error', 'authentication_error', 'permission_error',
       'not_found_error', 'request_too_large', 'rate_limit_error', 'api_error',
-      'overloaded_error']).has(type) ? type : null;
+      'overloaded_error']).has(rawType) ? rawType : null;
+    const message = String(parsed?.error?.message || '').toLowerCase();
+    let reason = null;
+    if (/zero data retention|data retention|\bzdr\b/.test(message)) reason = 'data_retention';
+    else if (/spend(?:ing)? limit|credit balance|usage limit/.test(message)) reason = 'spending_limit';
+    else if (/max[_ -]?tokens/.test(message)) reason = 'max_tokens';
+    else if (/temperature|top[_ -]?p|top[_ -]?k/.test(message)) reason = 'sampling_parameter';
+    else if (/budget[_ -]?tokens|\bthinking\b|\beffort\b/.test(message)) reason = 'thinking';
+    else if (/\bworkspace\b/.test(message)) reason = 'workspace';
+    else if (/\bmodel\b/.test(message)) reason = 'model';
+    else if (/\bmessages?\b/.test(message)) reason = 'messages';
+    else if (/\bsystem\b/.test(message)) reason = 'system';
+    return { type, reason };
   } catch {
-    return null;
+    return { type: null, reason: null };
   }
+}
+
+function providerBlockerReason(status, diagnostic = {}) {
+  if (diagnostic.reason === 'spending_limit') return 'spending_limit';
+  if (diagnostic.reason === 'data_retention') return 'data_retention';
+  if ([408, 425, 429].includes(Number(status)) || Number(status) >= 500) return 'provider_unavailable';
+  return null;
 }
 
 function safeFetchError(provider, error) {
   if (error?.code === 'llm_provider_http_error') return error;
-  if (['llm_provider_response_too_large', 'llm_provider_invalid_json'].includes(error?.code)) return error;
+  if (['llm_provider_response_too_large', 'llm_provider_invalid_json', 'llm_provider_invalid_envelope', 'llm_provider_empty_text'].includes(error?.code)) return error;
   if (error?.code === 'llm_timeout' || error?.name === 'AbortError') {
     const timeout = new Error(`LLM provider request timed out for ${provider}.`);
     timeout.name = 'AbortError';
     timeout.code = 'llm_timeout';
+    timeout.blocker_reason = 'provider_unavailable';
     return timeout;
   }
   const safe = new Error(`LLM provider request failed for ${provider}.`);
   safe.code = 'llm_provider_request_failed';
+  safe.blocker_reason = 'provider_unavailable';
   return safe;
 }
 
@@ -226,10 +252,13 @@ async function fetchWithPolicy(provider, url, init, options = {}, consume = resp
       const response = await fetch(url, { ...init, redirect: 'error', signal: controller.signal });
       if (!response.ok) {
         const rawBody = await readBoundedResponseText(response);
-        const errorType = safeProviderErrorType(rawBody);
-        const error = new Error(`LLM provider request failed with status ${response.status}${errorType ? ` (${errorType})` : ''}.`);
+        const diagnostic = safeProviderErrorDiagnostic(rawBody);
+        const error = new Error(`LLM provider request failed with status ${response.status}${diagnostic.type ? ` (${diagnostic.type})` : ''}.`);
         error.status = response.status;
         error.code = 'llm_provider_http_error';
+        error.provider_error_type = diagnostic.type;
+        error.provider_error_reason = diagnostic.reason;
+        error.blocker_reason = providerBlockerReason(response.status, diagnostic);
         if (!retryableStatus(response.status) || attempt === retries) throw error;
         lastError = error;
       } else {
@@ -266,7 +295,7 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
 
   const baseUrl = process.env.LLM_BASE_URL || (useOpenRouter ? 'https://openrouter.ai/api/v1' : 'https://api.openai.com/v1');
   const model = pickModel(provider, options);
-  const response = await fetchWithPolicy(provider, `${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+  const { data, text } = await fetchWithPolicy(provider, `${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: headers({ Authorization: `Bearer ${apiKey}` }),
     body: JSON.stringify({
@@ -279,16 +308,21 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
         { role: 'user', content: prompt }
       ].filter(Boolean)
     })
-  }, options);
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error('OpenAI-compatible response was not valid JSON.');
-  }
-  const text = data?.choices?.[0]?.message?.content;
-  if (typeof text !== 'string') throw new Error('OpenAI-compatible response is missing assistant text.');
+  }, options, async response => {
+    const data = await readBoundedJsonResponse(response, 'OpenAI-compatible', options);
+    const text = data?.choices?.[0]?.message?.content;
+    if (typeof text !== 'string') {
+      const error = new Error('OpenAI-compatible response is missing assistant text.');
+      error.code = 'llm_provider_invalid_envelope';
+      throw error;
+    }
+    if (!text.trim()) {
+      const error = new Error('OpenAI-compatible response contained no text output.');
+      error.code = 'llm_provider_empty_text';
+      throw error;
+    }
+    return { data, text };
+  });
 
   return Object.freeze({
     text,
@@ -303,7 +337,12 @@ async function completeOpenAIWithReceipt(prompt, options = {}) {
 
 async function completeAnthropicWithReceipt(prompt, options = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is required.');
+  if (!apiKey) {
+    const error = new Error('ANTHROPIC_API_KEY is required.');
+    error.code = 'provider_credential_unavailable';
+    error.blocker_reason = 'credential_unavailable';
+    throw error;
+  }
   const workspaceId = String(process.env.ANTHROPIC_WORKSPACE_ID || '').trim();
   const model = pickModel('anthropic', options);
   const apiVersion = process.env.ANTHROPIC_VERSION || '2023-06-01';
@@ -318,7 +357,7 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
     body.temperature = options.temperature;
   }
 
-  const data = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
+  const { data, text } = await fetchWithPolicy('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: headers({
       'x-api-key': apiKey,
@@ -326,16 +365,25 @@ async function completeAnthropicWithReceipt(prompt, options = {}) {
       ...(workspaceId ? { 'anthropic-workspace-id': workspaceId } : {})
     }),
     body: JSON.stringify(body)
-  }, options, response => readBoundedJsonResponse(response, 'Anthropic', options));
-  if (data?.type !== 'message' || data?.role !== 'assistant' || !Array.isArray(data.content)) {
-    throw new Error('Anthropic response is not a valid Messages API assistant envelope.');
-  }
-  const text = data.content
-    .filter(part => part?.type === 'text' && typeof part.text === 'string')
-    .map(part => part.text)
-    .join('\n')
-    .trim();
-  if (!text) throw new Error('Anthropic response contained no text output.');
+  }, options, async response => {
+    const data = await readBoundedJsonResponse(response, 'Anthropic', options);
+    if (data?.type !== 'message' || data?.role !== 'assistant' || !Array.isArray(data.content)) {
+      const error = new Error('Anthropic response is not a valid Messages API assistant envelope.');
+      error.code = 'llm_provider_invalid_envelope';
+      throw error;
+    }
+    const text = data.content
+      .filter(part => part?.type === 'text' && typeof part.text === 'string')
+      .map(part => part.text)
+      .join('\n')
+      .trim();
+    if (!text) {
+      const error = new Error('Anthropic response contained no text output.');
+      error.code = 'llm_provider_empty_text';
+      throw error;
+    }
+    return { data, text };
+  });
 
   return Object.freeze({
     text,
@@ -355,6 +403,21 @@ export async function completeWithReceipt(prompt, options = {}) {
   if (provider === 'anthropic') return completeAnthropicWithReceipt(prompt, { ...options, provider });
   if (provider === 'openrouter') return completeOpenAIWithReceipt(prompt, { ...options, provider });
   if (provider === 'openai') return completeOpenAIWithReceipt(prompt, { ...options, provider });
+  if (provider === 'muse') {
+    return completeMuseWithReceipt(prompt, {
+      ...options,
+      provider,
+      model: pickModel('muse', options),
+      // Route muse through the shared fetch policy (retry/circuit/timeout).
+      // The body is read inside the policy window and re-wrapped so
+      // museClient's receipt validation runs unchanged.
+      fetchImpl: (url, init) => fetchWithPolicy('muse', url, init, options, async (response) => {
+        const maxBytes = boundedInteger(options.successBodyMaxBytes, SUCCESS_BODY_MAX_BYTES, 1024, 16_777_216);
+        const raw = await readBoundedResponseText(response, maxBytes + 1);
+        return new Response(raw, { status: response.status, headers: response.headers });
+      })
+    });
+  }
   throw new Error(`Unsupported LLM provider: ${provider}.`);
 }
 

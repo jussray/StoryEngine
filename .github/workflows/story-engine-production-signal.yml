@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   emit-signal:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'production') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'deployment_status' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -47,6 +47,11 @@ jobs:
             throw new Error('production signal requires an exact 40-character Git SHA');
           }
 
+          const deploymentState = eventName === 'deployment_status'
+            ? String(process.env.DEPLOYMENT_STATUS_STATE || '').trim().toLowerCase()
+            : null;
+          const qualifies = eventName === 'workflow_dispatch' || deploymentState === 'success';
+
           const signal = {
             schema: 'juss/storyengine-production-signal@v1',
             trust: 'untrusted-input',
@@ -56,6 +61,7 @@ jobs:
             source_run_attempt: process.env.SIGNAL_RUN_ATTEMPT || null,
             source_actor: process.env.SIGNAL_ACTOR || null,
             release_sha: releaseSha,
+            qualifies,
             github_deployment_id: eventName === 'deployment_status'
               ? String(process.env.DEPLOYMENT_ID || '')
               : null,
@@ -65,9 +71,7 @@ jobs:
             deployment_environment: eventName === 'deployment_status'
               ? String(process.env.DEPLOYMENT_ENVIRONMENT || '')
               : null,
-            deployment_state: eventName === 'deployment_status'
-              ? String(process.env.DEPLOYMENT_STATUS_STATE || '')
-              : null,
+            deployment_state: deploymentState,
             observed_at: new Date().toISOString()
           };
 

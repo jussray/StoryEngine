@@ -8,6 +8,9 @@ const ENV_KEYS = [
   'ANTHROPIC_FAST_MODEL',
   'ANTHROPIC_DEEP_MODEL',
   'ANTHROPIC_VERSION',
+  'OPENAI_API_KEY',
+  'OPENROUTER_API_KEY',
+  'LLM_BASE_URL',
   'LLM_ERROR_BODY_MAX_BYTES',
   'LLM_TIMEOUT_MS'
 ];
@@ -158,11 +161,15 @@ test('Anthropic success without the Messages API assistant envelope fails closed
   try {
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
     globalThis.fetch = async () => new Response(JSON.stringify({ id: 'msg_test', content: [] }), { status: 200 });
-    const { complete } = await freshClient();
+    const { complete, llmRoutingSnapshot } = await freshClient();
     await assert.rejects(
       () => complete('hello', { provider: 'anthropic', maxRetries: 0 }),
-      /valid Messages API assistant envelope/
+      error => error.code === 'llm_provider_invalid_envelope' && /valid Messages API assistant envelope/.test(error.message)
     );
+    const state = llmRoutingSnapshot().circuits.anthropic;
+    assert.equal(state.calls, 1);
+    assert.equal(state.successes, 0);
+    assert.equal(state.failures, 1);
   } finally {
     globalThis.fetch = priorFetch;
     restoreEnv(priorEnv);
@@ -178,11 +185,71 @@ test('Anthropic success with no text output fails closed', { concurrency: false 
       ...anthropicEnvelope(),
       content: [{ type: 'tool_use', id: 'tool_1' }]
     }), { status: 200 });
-    const { complete } = await freshClient();
+    const { complete, llmRoutingSnapshot } = await freshClient();
     await assert.rejects(
       () => complete('hello', { provider: 'anthropic', maxRetries: 0 }),
-      /no text output/
+      error => error.code === 'llm_provider_empty_text' && /no text output/.test(error.message)
     );
+    const state = llmRoutingSnapshot().circuits.anthropic;
+    assert.equal(state.calls, 1);
+    assert.equal(state.successes, 0);
+    assert.equal(state.failures, 1);
+  } finally {
+    globalThis.fetch = priorFetch;
+    restoreEnv(priorEnv);
+  }
+});
+
+test('OpenAI-compatible malformed success envelope counts as failure instead of success', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  try {
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.LLM_BASE_URL;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      id: 'chatcmpl_test',
+      model: 'gpt-test',
+      choices: []
+    }), { status: 200 });
+
+    const { complete, llmRoutingSnapshot } = await freshClient();
+    await assert.rejects(
+      () => complete('hello', { provider: 'openai', maxRetries: 0 }),
+      error => error.code === 'llm_provider_invalid_envelope' && /missing assistant text/.test(error.message)
+    );
+    const state = llmRoutingSnapshot().circuits.openai;
+    assert.equal(state.calls, 1);
+    assert.equal(state.successes, 0);
+    assert.equal(state.failures, 1);
+  } finally {
+    globalThis.fetch = priorFetch;
+    restoreEnv(priorEnv);
+  }
+});
+
+test('OpenAI-compatible blank assistant text counts as failure instead of success', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  try {
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.LLM_BASE_URL;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      id: 'chatcmpl_test_blank',
+      model: 'gpt-test',
+      choices: [{ message: { role: 'assistant', content: '   ' } }]
+    }), { status: 200 });
+
+    const { complete, llmRoutingSnapshot } = await freshClient();
+    await assert.rejects(
+      () => complete('hello', { provider: 'openai', maxRetries: 0 }),
+      error => error.code === 'llm_provider_empty_text' && /no text output/.test(error.message)
+    );
+    const state = llmRoutingSnapshot().circuits.openai;
+    assert.equal(state.calls, 1);
+    assert.equal(state.successes, 0);
+    assert.equal(state.failures, 1);
   } finally {
     globalThis.fetch = priorFetch;
     restoreEnv(priorEnv);
@@ -253,4 +320,42 @@ test('Anthropic error type cannot reflect a credential into exceptions', { concu
     await assert.rejects(completeWithReceipt('hello', { provider: 'anthropic', maxRetries: 0 }),
       error => error.status === 400 && !String(error).includes(secret));
   } finally { globalThis.fetch = priorFetch; restoreEnv(priorEnv); }
+});
+
+
+test('Anthropic spending limit is classified as a safe external blocker without leaking provider text', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  const secret = 'test-spending-limit-secret';
+  try {
+    process.env.ANTHROPIC_API_KEY = secret;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        message: `Your account has reached its spending limit. reflected=${secret}`
+      }
+    }), { status: 400 });
+
+    const { completeWithReceipt, llmRoutingSnapshot } = await freshClient();
+    await assert.rejects(
+      () => completeWithReceipt('hello', { provider: 'anthropic', maxRetries: 0 }),
+      error => {
+        assert.equal(error.code, 'llm_provider_http_error');
+        assert.equal(error.status, 400);
+        assert.equal(error.provider_error_type, 'invalid_request_error');
+        assert.equal(error.provider_error_reason, 'spending_limit');
+        assert.equal(error.blocker_reason, 'spending_limit');
+        assert.equal(String(error.message).includes(secret), false);
+        assert.equal(String(error.message).includes('spending limit'), false);
+        return true;
+      }
+    );
+    const snapshot = llmRoutingSnapshot();
+    assert.equal(snapshot.circuits.anthropic.last_error, 'anthropic blocked spending_limit');
+    assert.equal(JSON.stringify(snapshot).includes(secret), false);
+  } finally {
+    globalThis.fetch = priorFetch;
+    restoreEnv(priorEnv);
+  }
 });

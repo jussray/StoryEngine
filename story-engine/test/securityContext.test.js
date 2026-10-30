@@ -189,7 +189,7 @@ test('operator API membrane blocks creator access without blocking assist-defaul
   const adminReq = {
     method: 'GET',
     url: '/api/control-room/operator',
-    auth: { role: 'administrator' },
+    auth: { role: 'administrator', workspace_ids: ['*'] },
     request_id: 'req_operator_admin'
   };
   const adminRes = mockRes();

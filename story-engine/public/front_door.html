@@ -3,136 +3,384 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StoryEngine — Start Your Story</title>
+  <title>StoryEngine — Create</title>
   <script src="/l99_auth.js"></script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #070612;
+      --panel: rgba(18, 14, 38, 0.72);
+      --line: rgba(190, 150, 255, 0.24);
+      --text: #f6f1ff;
+      --muted: #b9afd6;
+      --pink: #ff6fd8;
+      --violet: #9d7cff;
+      --cyan: #62dcff;
+      --gold: #ffd27a;
+      --error: #ff8a8a;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
     body {
-      font-family: 'Georgia', serif;
-      background: #0a0a0a;
-      color: #f0ede8;
+      margin: 0;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
+      background:
+        radial-gradient(1100px 620px at 50% -12%, rgba(157, 124, 255, 0.34), transparent 62%),
+        radial-gradient(800px 560px at 92% 108%, rgba(98, 220, 255, 0.16), transparent 62%),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
     }
-    .stage {
-      width: 100%;
-      max-width: 640px;
-      display: flex;
-      flex-direction: column;
-      gap: 2rem;
+    .hidden { display: none !important; }
+
+    .ambient { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+    .ambient-card {
+      position: absolute; width: 230px; height: 150px; border-radius: 16px;
+      background: linear-gradient(135deg, rgba(255, 111, 216, 0.2), rgba(98, 220, 255, 0.08));
+      border: 1px solid var(--line); opacity: 0.5;
     }
-    .identity { text-align: center; }
-    .wordmark { font-size: 1rem; letter-spacing: 0.22em; text-transform: uppercase; color: #f0ede8; }
-    .runtime-mark { margin-top: 0.45rem; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: #666; }
-    h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 400; line-height: 1.2; text-align: center; color: #f0ede8; }
-    .promise { color: #888; text-align: center; line-height: 1.6; margin-top: -1rem; }
-    .prompt-area { display: flex; flex-direction: column; gap: 1rem; }
-    label { font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: #888; }
-    textarea {
-      width: 100%; min-height: 120px; background: #141414; border: 1px solid #2a2a2a; border-radius: 6px;
-      color: #f0ede8; font-family: 'Georgia', serif; font-size: 1rem; line-height: 1.6; padding: 1rem; resize: vertical;
-      transition: border-color 0.2s;
+    .ambient-card.book { left: -44px; top: 110px; transform: rotate(-6deg); }
+    .ambient-card.film { right: -34px; top: 150px; transform: rotate(7deg); }
+    .ambient-card.music { left: -30px; top: 560px; transform: rotate(-4deg); }
+    .ambient-card.world { right: -40px; top: 600px; transform: rotate(5deg); }
+    .ambient-label {
+      position: absolute; font-size: 11px; letter-spacing: 0.35em; text-transform: uppercase;
+      color: var(--muted); opacity: 0.6;
     }
-    textarea:focus { outline: none; border-color: #555; }
-    textarea::placeholder { color: #444; }
-    .selectors { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    .selector-group { display: flex; flex-direction: column; gap: 0.4rem; }
-    select {
-      background: #141414; border: 1px solid #2a2a2a; border-radius: 6px; color: #f0ede8;
-      font-family: 'Georgia', serif; font-size: 0.95rem; padding: 0.6rem 0.8rem; cursor: pointer; transition: border-color 0.2s;
+    .ambient-label.book { left: 70px; top: 300px; }
+    .ambient-label.film { right: 70px; top: 330px; }
+    .ambient-label.music { left: 60px; top: 680px; }
+    .ambient-label.series { right: 120px; top: 640px; }
+    .ambient-label.comic { left: 110px; top: 880px; }
+    .ambient-label.game { right: 90px; top: 870px; }
+    .ambient-label.podcast { right: 110px; top: 1000px; }
+
+    .app {
+      position: relative; z-index: 1; min-height: 100vh;
+      display: flex; justify-content: center; align-items: flex-start;
+      padding: 48px 16px 56px;
     }
-    select:focus { outline: none; border-color: #555; }
-    .cta {
-      background: #f0ede8; color: #0a0a0a; border: none; border-radius: 6px; font-family: 'Georgia', serif;
-      font-size: 1rem; font-weight: 600; padding: 0.9rem 1.5rem; cursor: pointer; transition: opacity 0.2s; width: 100%;
+    .view { width: 100%; max-width: 720px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+
+    .brand { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .brand span {
+      font-family: Georgia, "Times New Roman", serif; font-weight: 700;
+      font-size: clamp(40px, 7vw, 60px); line-height: 1.05; letter-spacing: -0.01em;
+      background: linear-gradient(90deg, #ffffff 0%, var(--pink) 55%, var(--cyan) 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    .cta:hover { opacity: 0.88; }
-    .cta:disabled { opacity: 0.35; cursor: not-allowed; }
-    .status { font-size: 0.85rem; color: #888; text-align: center; min-height: 1.2em; }
-    .status.error { color: #e05555; }
-    .status.ok { color: #5aab6e; }
+    .brand i {
+      display: block; width: 46px; height: 30px;
+      border: 2px solid var(--pink); border-bottom-width: 3px;
+      border-radius: 4px 4px 14px 14px; box-shadow: 0 0 22px rgba(255, 111, 216, 0.5);
+    }
+    .tagline { margin: 0; color: var(--muted); font-style: italic; font-size: 17px; text-align: center; }
+
+    .hero-art { display: block; width: 100%; max-width: 600px; height: auto; border-radius: 22px; border: 1px solid var(--line); box-shadow: 0 0 60px rgba(157, 124, 255, 0.25); }
+    .front-copy { text-align: center; }
+    .front-copy h1, .shape-copy h2 {
+      margin: 0; font-family: Georgia, "Times New Roman", serif; font-weight: 400;
+      font-size: clamp(30px, 5vw, 42px); line-height: 1.15;
+    }
+    .front-copy p, .shape-copy p { margin: 8px 0 0; color: var(--muted); font-size: 16px; }
+    .shape-copy { text-align: center; }
+
+    .context-shell { width: 100%; }
+    .context-panel {
+      width: 100%; padding: 16px 18px 14px;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 22px;
+      box-shadow: 0 0 40px rgba(157, 124, 255, 0.18);
+    }
+    .context-panel textarea {
+      display: block; width: 100%; min-height: 150px; resize: vertical;
+      background: transparent; border: 0; outline: none; color: var(--text);
+      font-size: 18px; line-height: 1.5; font-family: inherit;
+    }
+    .context-panel textarea::placeholder { color: #7f77a3; }
+    .context-hint {
+      display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px;
+    }
+    .context-hint strong { color: var(--gold); font-weight: 600; }
+
+    .front-actions, .shape-actions { width: 100%; display: flex; justify-content: center; }
+    .primary {
+      width: 100%; max-width: 420px; height: 56px; border: 0; border-radius: 999px;
+      background: linear-gradient(90deg, #e25bd0 0%, #7d6bff 55%, #4fb8ff 100%);
+      color: #fff; font: 600 17px/1 Inter, system-ui, sans-serif; cursor: pointer;
+      box-shadow: 0 10px 30px rgba(157, 124, 255, 0.35);
+    }
+    .primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+    .status { min-height: 20px; margin: 0; color: var(--muted); font-size: 14px; text-align: center; }
+    .status.error { color: var(--error); }
+
+    .shape-view { gap: 20px; }
+    .idea-card {
+      width: 100%; display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 16px 18px;
+    }
+    .idea-label { color: var(--pink); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+    .idea-text { margin-top: 6px; font-size: 17px; line-height: 1.5; overflow-wrap: anywhere; }
+    .edit-idea {
+      flex: 0 0 auto; background: transparent; color: var(--cyan); border: 1px solid var(--line);
+      border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+    }
+    .shape-panel {
+      width: 100%; display: flex; flex-direction: column; gap: 22px;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 20px 18px;
+    }
+    .shape-row { display: flex; flex-direction: column; gap: 12px; }
+    .shape-question { display: flex; align-items: flex-start; gap: 12px; }
+    .shape-question h3 { margin: 0; font-size: 16px; }
+    .shape-question p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+    .shape-number {
+      flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+      display: grid; place-items: center; font-size: 13px;
+      border: 1px solid var(--pink); color: var(--pink);
+    }
+    .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+    .choices.mode { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+    .choice {
+      min-height: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; padding: 12px 10px; text-align: center; cursor: pointer; font: inherit; color: var(--text);
+      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 16px;
+    }
+    .choice strong { font-size: 14px; font-weight: 600; }
+    .choice small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .choice .icon { font-size: 20px; line-height: 1; }
+    .choice.active {
+      border-color: var(--pink);
+      box-shadow: 0 0 0 1px var(--pink) inset, 0 0 18px rgba(255, 111, 216, 0.25);
+    }
+
+    @media (max-width: 640px) {
+      .ambient { display: none; }
+      .app { padding: 32px 16px 40px; }
+      .view { gap: 18px; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
   </style>
 </head>
 <body>
-  <div class="stage">
-    <div class="identity">
-      <p class="wordmark">StoryEngine</p>
-      <p class="runtime-mark">Powered by L99</p>
-    </div>
-    <h1>What do you want to create?</h1>
-    <p class="promise">Start with the idea. Write it, shape it, and carry it toward release with one creator-controlled pipeline.</p>
-
-    <div class="prompt-area">
-      <label for="vision">Your idea in a sentence or two</label>
-      <textarea id="vision" placeholder="A retired astronaut discovers her late husband left clues to a life she never knew..." maxlength="1000"></textarea>
-    </div>
-
-    <div class="selectors">
-      <div class="selector-group">
-        <label for="medium">Format</label>
-        <select id="medium">
-          <option value="book">Book</option><option value="picture_book">Picture book</option><option value="movie">Movie</option>
-          <option value="tv">TV series</option><option value="song">Song</option><option value="podcast">Podcast</option>
-          <option value="game">Game</option><option value="comic">Comic</option><option value="play">Play</option><option value="short_clip">Short clip</option>
-        </select>
-      </div>
-      <div class="selector-group">
-        <label for="audience">Audience</label>
-        <select id="audience">
-          <option value="adult">Adult</option><option value="young_adult">Young adult</option><option value="teen">Teen</option>
-          <option value="eli10">Kids (around 10)</option><option value="eli5">Young kids</option><option value="child">Child</option><option value="middle_grade">Middle grade</option>
-        </select>
-      </div>
-    </div>
-
-    <button class="cta" id="startBtn" disabled>Begin creating</button>
-    <p class="status" id="status"></p>
+  <div class="ambient" aria-hidden="true">
+    <div class="ambient-card book"></div>
+    <div class="ambient-card film"></div>
+    <div class="ambient-card music"></div>
+    <div class="ambient-card world"></div>
+    <span class="ambient-label book">Book</span>
+    <span class="ambient-label film">Film</span>
+    <span class="ambient-label music">Music</span>
+    <span class="ambient-label series">Series</span>
+    <span class="ambient-label comic">Comic</span>
+    <span class="ambient-label game">Game</span>
+    <span class="ambient-label podcast">Podcast</span>
   </div>
+
+  <main class="app">
+    <section id="frontView" class="view" aria-labelledby="frontTitle">
+      <div class="brand" aria-label="StoryEngine"><span>StoryEngine</span><i></i></div>
+      <p class="tagline">Turn ideas into visual stories.</p>
+      <img class="hero-art" src="/assets/front-door/hero-art.jpg" alt="" width="1422" height="640" />
+      <div class="front-copy">
+        <h1 id="frontTitle">What do you want to create?</h1>
+        <p>Start with the idea. We’ll shape the rest together.</p>
+      </div>
+
+      <div class="context-shell">
+        <div class="context-panel">
+          <textarea id="vision" aria-label="Base context" maxlength="1000" placeholder="A girl discovers an abandoned train station that only appears at midnight."></textarea>
+          <div class="context-hint">
+            <span><strong>Base context</strong> · your original creative intent</span>
+            <span id="charCount">0 / 1000</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="front-actions">
+        <button class="primary" id="startBtn" type="button" disabled>Begin creating <span aria-hidden="true">→</span></button>
+      </div>
+      <p class="status" id="frontStatus" aria-live="polite"></p>
+    </section>
+
+    <section id="shapeView" class="view shape-view hidden" aria-labelledby="shapeTitle">
+      <div class="brand" aria-label="StoryEngine"><span>StoryEngine</span><i></i></div>
+      <div class="shape-copy">
+        <h2 id="shapeTitle">Let’s shape your idea.</h2>
+        <p>Turn the spark into something you can make.</p>
+      </div>
+
+      <div class="idea-card">
+        <div>
+          <div class="idea-label">✦ Your idea</div>
+          <div class="idea-text" id="ideaPreview"></div>
+        </div>
+        <button class="edit-idea" id="editIdea" type="button" aria-label="Edit your idea">Edit</button>
+      </div>
+
+      <div class="shape-panel">
+        <div class="shape-row">
+          <div class="shape-question">
+            <span class="shape-number">1</span>
+            <div><h3>What are we making?</h3><p>Choose the main format for this project.</p></div>
+          </div>
+          <div class="choices" data-group="medium">
+            <button class="choice active" type="button" data-value="book"><span class="icon">📖</span><strong>Book</strong></button>
+            <button class="choice" type="button" data-value="movie"><span class="icon">🎬</span><strong>Movie</strong></button>
+            <button class="choice" type="button" data-value="series"><span class="icon">📺</span><strong>Series</strong></button>
+            <button class="choice" type="button" data-value="song"><span class="icon">🎵</span><strong>Song</strong></button>
+            <button class="choice" type="button" data-value="game"><span class="icon">🎮</span><strong>Game</strong></button>
+            <button class="choice" type="button" data-value="comic"><span class="icon">🖼️</span><strong>Comic</strong></button>
+            <button class="choice" type="button" data-value="podcast"><span class="icon">🎙️</span><strong>Podcast</strong></button>
+          </div>
+        </div>
+
+        <div class="shape-row">
+          <div class="shape-question">
+            <span class="shape-number">2</span>
+            <div><h3>Who is it for?</h3><p>Choose the primary audience.</p></div>
+          </div>
+          <div class="choices" data-group="audience">
+            <button class="choice" type="button" data-value="child"><span class="icon">🧒</span><strong>Children</strong></button>
+            <button class="choice" type="button" data-value="middle_grade"><span class="icon">📚</span><strong>Middle Grade</strong></button>
+            <button class="choice active" type="button" data-value="young_adult"><span class="icon">🎓</span><strong>Young Adult</strong></button>
+            <button class="choice" type="button" data-value="adult"><span class="icon">✦</span><strong>Adult</strong></button>
+          </div>
+        </div>
+
+        <div class="shape-row">
+          <div class="shape-question">
+            <span class="shape-number">3</span>
+            <div><h3>What should it feel like?</h3><p>Set the emotional direction.</p></div>
+          </div>
+          <div class="choices" data-group="emotion">
+            <button class="choice active" type="button" data-value="fear"><span class="icon">🌙</span><strong>Mysterious</strong></button>
+            <button class="choice" type="button" data-value="hope"><span class="icon">☀️</span><strong>Hopeful</strong></button>
+            <button class="choice" type="button" data-value="sadness"><span class="icon">☁️</span><strong>Dark</strong></button>
+            <button class="choice" type="button" data-value="excitement"><span class="icon">⛰️</span><strong>Adventurous</strong></button>
+            <button class="choice" type="button" data-value="mixed"><span class="icon">♥</span><strong>Emotional</strong></button>
+          </div>
+        </div>
+
+        <div class="shape-row">
+          <div class="shape-question">
+            <span class="shape-number">4</span>
+            <div><h3>How do you want to create?</h3><p>Choose how much of the first pass you want StoryEngine to carry.</p></div>
+          </div>
+          <div class="choices mode" data-group="assist">
+            <button class="choice active" type="button" data-value="writer"><span class="icon">✍️</span><strong>I’ll write it</strong><small>Start with your canvas. StoryEngine supports you when you ask.</small></button>
+            <button class="choice" type="button" data-value="co_writer"><span class="icon">✦</span><strong>Create with me</strong><small>Build it together, with you deciding what stays.</small></button>
+            <button class="choice" type="button" data-value="director"><span class="icon">▤</span><strong>Draft it for me</strong><small>Get a first pass you can shape, redirect, or replace.</small></button>
+            <button class="choice" type="button" data-value="autonomous_studio"><span class="icon">◫</span><strong>Build the first version</strong><small>Take the idea farther and return a polished starting point.</small></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="shape-actions">
+        <button class="primary" id="continueBtn" type="button">Continue to studio <span aria-hidden="true">→</span></button>
+      </div>
+      <p class="status" id="status" aria-live="polite"></p>
+    </section>
+  </main>
 
   <script>
     const visionEl = document.getElementById('vision');
-    const mediumEl = document.getElementById('medium');
-    const audienceEl = document.getElementById('audience');
     const startBtn = document.getElementById('startBtn');
+    const continueBtn = document.getElementById('continueBtn');
+    const frontView = document.getElementById('frontView');
+    const shapeView = document.getElementById('shapeView');
+    const ideaPreview = document.getElementById('ideaPreview');
+    const editIdea = document.getElementById('editIdea');
     const statusEl = document.getElementById('status');
+    const frontStatusEl = document.getElementById('frontStatus');
+    const charCount = document.getElementById('charCount');
 
-    function updateBtn() { startBtn.disabled = visionEl.value.trim().length < 10; }
-    visionEl.addEventListener('input', updateBtn);
+    const selections = {
+      medium: 'book',
+      audience: 'young_adult',
+      emotion: 'fear',
+      assist: 'writer'
+    };
 
-    startBtn.addEventListener('click', async () => {
+    function updateFront() {
+      const length = visionEl.value.trim().length;
+      startBtn.disabled = length < 10;
+      charCount.textContent = `${visionEl.value.length} / 1000`;
+      frontStatusEl.textContent = length > 0 && length < 10 ? 'Give StoryEngine a little more to work with.' : '';
+    }
+
+    visionEl.addEventListener('input', updateFront);
+
+    startBtn.addEventListener('click', () => {
       const vision = visionEl.value.trim();
-      if (!vision) return;
-      startBtn.disabled = true;
-      statusEl.textContent = 'Starting your story\u2026';
+      if (vision.length < 10) return;
+      ideaPreview.textContent = vision;
+      frontView.classList.add('hidden');
+      shapeView.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    editIdea.addEventListener('click', () => {
+      shapeView.classList.add('hidden');
+      frontView.classList.remove('hidden');
+      visionEl.focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    document.querySelectorAll('.choices').forEach(group => {
+      group.addEventListener('click', event => {
+        const choice = event.target.closest('.choice');
+        if (!choice) return;
+        group.querySelectorAll('.choice').forEach(item => item.classList.remove('active'));
+        choice.classList.add('active');
+        selections[group.dataset.group] = choice.dataset.value;
+      });
+    });
+
+    continueBtn.addEventListener('click', async () => {
+      const vision = visionEl.value.trim();
+      if (vision.length < 10) {
+        statusEl.textContent = 'Add a little more to your idea before continuing.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      continueBtn.disabled = true;
+      statusEl.textContent = 'Opening your studio…';
       statusEl.className = 'status';
 
       try {
-        const res = await fetch('/api/story-engine/runs', {
+        const response = await fetch('/api/story-engine/runs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story_vision: vision, medium: mediumEl.value, audience: audienceEl.value })
+          body: JSON.stringify({
+            story_vision: vision,
+            medium: selections.medium,
+            audience: selections.audience,
+            story_kind: 'other',
+            emotional_effect: selections.emotion,
+            assist_mode: selections.assist,
+            estimated_cost: 0
+          })
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Server error ${res.status}`);
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || `Server error ${response.status}`);
         }
-        const run = await res.json();
+        const run = await response.json();
         const runId = run.run_id || run.run?.run_id;
         const workspaceId = run.workspace_id || run.run?.workspace_id;
         if (!runId) throw new Error('StoryEngine did not return a run id.');
         const next = new URLSearchParams({ run_id: runId });
         if (workspaceId) next.set('workspace_id', workspaceId);
         window.location.href = `/story_engine.html?${next.toString()}`;
-      } catch (err) {
-        statusEl.textContent = err.message || 'Something went wrong. Try again.';
+      } catch (error) {
+        statusEl.textContent = error.message || 'Something went wrong. Try again.';
         statusEl.className = 'status error';
-        startBtn.disabled = false;
+        continueBtn.disabled = false;
       }
     });
+
+    updateFront();
   </script>
 </body>
 </html>

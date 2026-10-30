@@ -1,0 +1,39 @@
+// Cloudflare Workers Builds deploys this folder with `npx wrangler deploy`.
+// Front door only — no static assets, so operator pages in public/ are never
+// published without the runtime behind them. Bind STORYENGINE_RUNTIME_ORIGIN
+// from the source-controlled canonical domain contract. Missing or invalid
+// bindings still fail closed; the Worker never hosts runtime state.
+{
+  "name": "storyengine",
+  "main": "./cloudflare-frontdoor/worker.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "vars": {
+    "STORYENGINE_RUNTIME_ORIGIN": "https://story-engine-production-1e6b.up.railway.app"
+  },
+  "ratelimits": [
+    {
+      "name": "STORYENGINE_API_RATE_LIMITER",
+      "namespace_id": "1292370402",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    }
+  ],
+  "previews": {
+    "vars": {
+      "STORYENGINE_RUNTIME_ORIGIN": "https://story-engine-production-1e6b.up.railway.app"
+    },
+    "ratelimits": [
+      {
+        "name": "STORYENGINE_API_RATE_LIMITER",
+        "namespace_id": "1292370403",
+        "simple": {
+          "limit": 120,
+          "period": 60
+        }
+      }
+    ]
+  }
+}

@@ -31,6 +31,9 @@ test('creator can create a real workspace, save a chapter, reload, and reopen pe
   await page.goto('/front_door.html');
   await page.locator('#vision').fill(vision);
   await page.getByRole('button', { name: 'Begin creating' }).click();
+  await expect(page.getByRole('heading', { name: 'Let’s shape your idea.' })).toBeVisible();
+  await expect(page.locator('#ideaPreview')).toHaveText(vision);
+  await page.getByRole('button', { name: /Continue to studio/ }).click();
 
   await expect(page).toHaveURL(/\/story_engine\.html\?run_id=[^&]+&workspace_id=[^&]+$/);
   const createdUrl = new URL(page.url());

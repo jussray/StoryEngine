@@ -11,6 +11,7 @@ import db from './config/db.js';
 import { createRouter } from './lib/miniRouter.js';
 import { requestContext, requireAuth, enforceWorkspaceAccess, enforceOperatorApiBoundary, securitySnapshot } from './lib/securityContext.js';
 import { enforcePageAccess } from './lib/pageGuard.js';
+import { resolvePublicPath } from './lib/staticPath.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
@@ -25,7 +26,7 @@ import chapterMaintenanceRoutes from './routes/chapterMaintenance.js';
 import movieRoutes from './routes/movie.js';
 import eventsRoutes from './routes/events.js';
 import lindymodeRoutes from './routes/lindymode.js';
-import oodaRoutes from './routes/ooda.js';
+import oodaRoutes, { requireOodaIncidentStreamAdmin } from './routes/ooda.js';
 import decisionRoutes from './routes/decision.js';
 import learningRoutes from './routes/learning.js';
 import recoveryRoutes from './routes/recovery.js';
@@ -52,6 +53,7 @@ import bootstrapEngineRoutes from './routes/bootstrapEngine.js';
 import ipSeedRoutes from './routes/ipSeed.js';
 import artifactRoutes from './routes/artifacts.js';
 import revenueRoutes from './routes/revenue.js';
+import syncAvenueRoutes from './routes/syncAvenue.js';
 import videoEngineRoutes from './routes/videoEngine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -132,6 +134,7 @@ bootstrapEngineRoutes(router, db);
 ipSeedRoutes(router, db);
 artifactRoutes(router, db);
 revenueRoutes(router, db);
+syncAvenueRoutes(router, db);
 videoEngineRoutes(router, db);
 
 const oodaClients = new Set();
@@ -226,7 +229,7 @@ const server = createServer((req, res) => {
   }
 
   if (url.pathname === '/api/ooda/incidents') {
-    requestContext(req, res, () => requireAuth(req, res, () => openOodaStream(req, res)));
+    requestContext(req, res, () => requireAuth(req, res, () => requireOodaIncidentStreamAdmin(req, res, () => openOodaStream(req, res))));
     return;
   }
 
@@ -238,7 +241,12 @@ const server = createServer((req, res) => {
   let urlPath = req.url.split('?')[0];
   if (urlPath === '/') urlPath = '/front_door.html';
 
-  const filePath = join(__dirname, 'public', urlPath);
+  const filePath = resolvePublicPath(join(__dirname, 'public'), urlPath);
+  if (!filePath) {
+    res.writeHead(404);
+    res.end('Not found');
+    return;
+  }
   const ext = extname(filePath);
 
   if (ext === '.html' || ext === '.js') {

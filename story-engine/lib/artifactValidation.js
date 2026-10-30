@@ -127,11 +127,11 @@ function renderArtifactHtml({ title, intent, chapters, runId, profile }) {
   const unit = intent?.medium === 'song' ? 'Section' : intent?.medium === 'movie' ? 'Scene' : intent?.medium === 'comic' ? 'Panel' : intent?.medium === 'picture_book' ? 'Page' : 'Story Unit';
   const chapterMarkup = chapters.length
     ? chapters.map((chapter, index) => `
-      <section class="unit" data-testid="story-unit">
+      <section class="unit" data-testid="story-unit" data-unit-position="${index + 1}">
         <h2>${escapeHtml(chapter.title || `${unit} ${index + 1}`)}</h2>
-        <p>${escapeHtml(chapter.content || chapter.text || '').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>')}</p>
+        <div data-testid="story-unit-content"><p>${escapeHtml(chapter.content || chapter.text || '').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>')}</p></div>
       </section>`).join('\n')
-    : `<section class="unit" data-testid="story-unit"><h2>${escapeHtml(unit)} 1</h2><p>${escapeHtml(intent?.story_vision || 'Draft pending.')}</p></section>`;
+    : '<section class="empty" data-testid="artifact-empty">No persisted story units are available for this artifact.</section>';
 
   return `<!doctype html>
 <html lang="en">
@@ -144,7 +144,7 @@ function renderArtifactHtml({ title, intent, chapters, runId, profile }) {
     main{max-width:820px;margin:0 auto;padding:36px 18px 64px}
     header{border-bottom:2px solid #ded6c8;margin-bottom:24px;padding-bottom:18px}
     h1{font-size:clamp(32px,6vw,56px);line-height:1.05;margin:0 0 10px}
-    .meta{color:#6d655d;font-size:14px}.unit,.companion{background:#fff;border:1px solid #e3ddd1;border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 8px 24px #0000000a}.unit h2,.companion h2{margin-top:0}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:700}dd{margin:0}.companion article{border-top:1px solid #eee5d8;padding:12px 0}.companion small{color:#6d655d}
+    .meta{color:#6d655d;font-size:14px}.unit,.companion,.empty{background:#fff;border:1px solid #e3ddd1;border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 8px 24px #0000000a}.unit h2,.companion h2{margin-top:0}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:700}dd{margin:0}.companion article{border-top:1px solid #eee5d8;padding:12px 0}.companion small{color:#6d655d}
   </style>
 </head>
 <body>
@@ -186,7 +186,8 @@ export function generateStoryArtifact(db, { runId, workspaceId, intent = {} }) {
     story_kind: intent.story_kind || null,
     children_book_profile: childProfile,
     companion_artifacts: childProfile ? ['illustration_brief', 'parent_educator_guide', 'vocabulary_list', 'discussion_questions'] : [],
-    playwright_required: true
+    playwright_required: true,
+    playwright_proof_mode: 'authenticated_artifact_route'
   };
 
   db.prepare(`
@@ -211,45 +212,115 @@ function hydrateArtifact(row) {
   return { ...row, metadata: safeJson(row.metadata_json, {}), validation: safeJson(row.validation_json, {}) };
 }
 
-async function tryPlaywrightSmoke(html) {
+function normalizeBaseUrl(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function parseCookieHeader(header, url) {
+  if (!header || !url) return [];
+  return String(header).split(';').map(part => part.trim()).filter(Boolean).map(part => {
+    const index = part.indexOf('=');
+    if (index < 1) return null;
+    return { name: part.slice(0, index).trim(), value: part.slice(index + 1), url };
+  }).filter(Boolean);
+}
+
+async function tryPlaywrightRoute({ baseUrl, artifactId, cookieHeader, expectedUnitCount }) {
   let browser = null;
   try {
+    const origin = normalizeBaseUrl(baseUrl);
+    if (!origin) return { available: false, passed: false, real_route_proof: false, skipped_reason: 'invalid_base_url' };
     const { chromium } = await import('playwright');
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'domcontentloaded' });
+    const context = await browser.newContext();
+    const cookies = parseCookieHeader(cookieHeader, origin);
+    if (cookies.length) await context.addCookies(cookies);
+    const page = await context.newPage();
+    const routeUrl = `${origin}/api/artifacts/${encodeURIComponent(artifactId)}/html`;
+    const response = await page.goto(routeUrl, { waitUntil: 'domcontentloaded' });
+    const httpStatus = response?.status() || 0;
     const artifactCount = await page.locator('[data-testid="l99-artifact"]').count();
     const unitCount = await page.locator('[data-testid="story-unit"]').count();
+    const nonEmptyUnitCount = await page.locator('[data-testid="story-unit-content"]').evaluateAll(nodes => nodes.filter(node => (node.textContent || '').trim().length > 0).length);
     const title = await page.title();
-    return { available: true, passed: artifactCount === 1 && unitCount >= 1 && title.trim().length > 0, artifact_count: artifactCount, unit_count: unitCount, title };
+    const passed = httpStatus === 200
+      && artifactCount === 1
+      && expectedUnitCount > 0
+      && unitCount === expectedUnitCount
+      && nonEmptyUnitCount === expectedUnitCount
+      && title.trim().length > 0;
+    return {
+      available: true,
+      passed,
+      real_route_proof: true,
+      route: `/api/artifacts/${artifactId}/html`,
+      http_status: httpStatus,
+      artifact_count: artifactCount,
+      unit_count: unitCount,
+      non_empty_unit_count: nonEmptyUnitCount,
+      expected_unit_count: expectedUnitCount,
+      title
+    };
   } catch (error) {
-    return { available: false, passed: false, skipped_reason: error.code === 'ERR_MODULE_NOT_FOUND' ? 'playwright_not_installed' : error.message };
+    return {
+      available: false,
+      passed: false,
+      real_route_proof: false,
+      skipped_reason: error?.code === 'ERR_MODULE_NOT_FOUND' ? 'playwright_not_installed' : (error instanceof Error ? error.message : String(error))
+    };
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
 }
 
-export async function validateArtifactWithPlaywright(db, artifactId) {
+export async function validateArtifactWithPlaywright(db, artifactId, options = {}) {
   ensureArtifactSchema(db);
   const artifact = hydrateArtifact(db.prepare('SELECT * FROM story_artifacts WHERE artifact_id=?').get(artifactId));
   if (!artifact) throw new Error('Artifact not found.');
 
+  if (!options.baseUrl && artifact.validation?.passed === true && artifact.validation?.real_route_proof === true) {
+    return artifact;
+  }
+
   const childRequired = Boolean(artifact.metadata.children_book_profile);
+  const expectedUnitCount = Number(artifact.metadata.chapter_count || 0);
   const structural = {
     has_html: artifact.html.includes('<html') && artifact.html.includes('</html>'),
     has_artifact_marker: artifact.html.includes('data-testid="l99-artifact"'),
-    has_story_unit: artifact.html.includes('data-testid="story-unit"'),
+    has_persisted_units: expectedUnitCount > 0,
+    rendered_unit_count_matches_persistence: (artifact.html.match(/data-testid="story-unit"/g) || []).length === expectedUnitCount,
     has_title: /<title>[^<]+<\/title>/i.test(artifact.html),
     has_children_profile: !childRequired || artifact.html.includes('data-testid="children-book-profile"'),
     has_illustration_brief: !childRequired || artifact.html.includes('data-testid="illustration-brief"'),
     has_parent_guide: !childRequired || artifact.html.includes('data-testid="parent-guide"')
   };
   const structuralPassed = Object.values(structural).every(Boolean);
-  const playwright = await tryPlaywrightSmoke(artifact.html);
-  const passed = structuralPassed && playwright.available === true && playwright.passed === true;
+  const playwright = options.baseUrl && structuralPassed
+    ? await tryPlaywrightRoute({
+        baseUrl: options.baseUrl,
+        artifactId,
+        cookieHeader: options.cookieHeader,
+        expectedUnitCount
+      })
+    : {
+        available: false,
+        passed: false,
+        real_route_proof: false,
+        skipped_reason: structuralPassed ? 'real_route_context_required' : 'structural_validation_failed'
+      };
+  const passed = structuralPassed && playwright.passed === true && playwright.real_route_proof === true;
   const validation = {
-    validator: 'playwright_artifact_gate',
+    validator: 'playwright_real_route_artifact_gate',
     passed,
+    real_route_proof: playwright.real_route_proof === true,
+    requires_real_route: !passed,
     structural,
     playwright,
     required_before: 'redteam_pre_release',
@@ -264,7 +335,14 @@ export async function validateArtifactWithPlaywright(db, artifactId) {
     workspace_id: artifact.workspace_id,
     mode: 'artifacts',
     event_type: passed ? 'artifact.playwright_validated' : 'artifact.playwright_failed',
-    payload: { artifact_id: artifactId, run_id: artifact.run_id, validation }
+    payload: {
+      artifact_id: artifactId,
+      run_id: artifact.run_id,
+      validation: {
+        ...validation,
+        playwright: { ...playwright, title: playwright.title || null }
+      }
+    }
   });
 
   return { ...artifact, status: passed ? 'validated' : 'failed', validation };

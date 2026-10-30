@@ -1,0 +1,130 @@
+{
+  "contract": "juss/storyengine-three-council-court@v1",
+  "project": "jussray/StoryEngine",
+  "owner": "founder",
+  "purpose": "Convene Writers, AI, and Production domain councils under the existing Founder Council for consequential StoryEngine thinking, imagining, writing, visualizing, reviewing, and video-making decisions without creating a second authority plane.",
+  "creativeFreedom": {
+    "rule": "Structure should accelerate expression, never restrict it.",
+    "presetsAreOptionalShortcuts": true,
+    "otherOrCustomMustRemainAvailable": true,
+    "freeTextEscapeHatchRequired": true,
+    "importantChoicesEditableLater": true,
+    "baseContextIsDurableCreativeIntent": true,
+    "creatorEscapeRoutes": [
+      "accept",
+      "keep-mine",
+      "blend",
+      "try-another-direction",
+      "ask-another-council",
+      "challenge-the-ruling",
+      "custom-direction-free-text"
+    ]
+  },
+  "councils": {
+    "writers": {
+      "jurisdiction": "story craft, reader experience, voice, character, structure, genre, and continuity",
+      "capabilityBased": true,
+      "notLimitedToFamousWriters": true,
+      "roles": [
+        "story-architect",
+        "developmental-editor",
+        "scene-writer",
+        "character-editor",
+        "dialogue-specialist",
+        "worldbuilder",
+        "genre-specialist",
+        "audience-age-specialist",
+        "line-editor",
+        "research-editor",
+        "continuity-editor",
+        "screenwriter",
+        "comics-writer",
+        "narrative-game-designer",
+        "lyricist-poet",
+        "publishing-commercial-reader",
+        "beta-first-reader"
+      ]
+    },
+    "ai": {
+      "jurisdiction": "reasoning quality, evidence, model and tool routing, independent challenge, and reconciliation",
+      "providerBrandsAreReplaceable": true,
+      "roles": [
+        "primary-thinker",
+        "independent-thinker",
+        "researcher",
+        "critic",
+        "synthesizer",
+        "model-router"
+      ]
+    },
+    "production": {
+      "jurisdiction": "turning imagination into coherent visual, audio, motion, and video media without losing story truth",
+      "roles": [
+        "creative-director",
+        "art-director",
+        "cinematographer",
+        "storyboard-artist",
+        "production-designer",
+        "character-continuity-guardian",
+        "image-generation-specialist",
+        "video-generation-specialist",
+        "motion-director",
+        "editor",
+        "sound-designer",
+        "voice-director",
+        "caption-typography-specialist",
+        "media-router",
+        "makevideo",
+        "leevize",
+        "visual-canon-continuity"
+      ]
+    }
+  },
+  "court": {
+    "allThreeCouncilsRepresentedForConsequentialCreativeWork": true,
+    "smallestUsefulSeatsWithinEachCouncil": true,
+    "independentFirst": true,
+    "preserveMeaningfulDissent": true,
+    "devilCrossExaminationRequiredBeforeSynthesis": true,
+    "agreementIsProof": false,
+    "creatorMakesRuling": true,
+    "toolCapabilityGrantsPermission": false,
+    "canonMutationRequiresOwningAuthorityGate": true,
+    "publicationRequiresOwningAuthorityGate": true,
+    "spendRequiresOwningAuthorityGate": true,
+    "providerLiveLabelRequiresVerifiedReceipt": true,
+    "simulatedRolesMustBeLabeledSimulated": true
+  },
+  "phasePosture": {
+    "think": { "writers": "lead", "ai": "lead", "production": "support" },
+    "imagine": { "writers": "lead", "ai": "support", "production": "lead" },
+    "write": { "writers": "lead", "ai": "support", "production": "watch" },
+    "visualize": { "writers": "support", "ai": "support", "production": "lead" },
+    "video": { "writers": "lead", "ai": "support", "production": "lead" },
+    "review": { "writers": "lead", "ai": "lead", "production": "support" }
+  },
+  "receipt": {
+    "requiredForSubstantialSessions": true,
+    "fields": [
+      "project",
+      "creative_intent",
+      "base_context",
+      "phase",
+      "decision",
+      "writers_recommendation",
+      "writers_dissent",
+      "ai_recommendation",
+      "ai_evidence",
+      "ai_uncertainty",
+      "production_recommendation",
+      "production_continuity_risks",
+      "devil_strongest_challenge",
+      "creator_ruling",
+      "creator_rejected_options",
+      "creator_custom_instruction",
+      "canon_effect",
+      "provider_evidence",
+      "next_action"
+    ]
+  }
+}

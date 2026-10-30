@@ -1,6 +1,7 @@
 // routes/campaignStudio.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireRole, requireWorkspaceAccess, requireGlobalAdministrator } from '../lib/securityContext.js';
 import {
   CAMPAIGN_PLATFORMS,
   buildCampaignPack,
@@ -11,7 +12,6 @@ import {
   campaignStudioOverview
 } from '../lib/campaignStudio.js';
 import { attachCreditsToCampaign, buildVisualEndCredit } from '../lib/visualLineage.js';
-import { requireWorkspaceAccess } from '../lib/securityContext.js';
 
 export default function campaignStudioRoutes(router, db) {
   router.get('/api/campaign-studio/options', (req, res) => {
@@ -22,7 +22,7 @@ export default function campaignStudioRoutes(router, db) {
     });
   });
 
-  router.get('/api/campaign-studio/overview', (req, res) => {
+  router.get('/api/campaign-studio/overview', requireGlobalAdministrator, (req, res) => {
     try { json(res, 200, campaignStudioOverview(db)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
@@ -69,13 +69,17 @@ export default function campaignStudioRoutes(router, db) {
   });
 
   router.get('/api/campaign-studio/:workspace_id/packs', (req, res) => {
-    try { json(res, 200, listCampaignPacks(db, req.params.workspace_id)); }
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+    try { json(res, 200, listCampaignPacks(db, workspace_id)); }
     catch (error) { json(res, 500, { error: error.message }); }
   });
 
   router.post('/api/campaign-studio/:workspace_id/build', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     try {
-      const campaign = buildCampaignPack(db, req.params.workspace_id, req.body || {});
+      const campaign = buildCampaignPack(db, workspace_id, req.body || {});
       json(res, 201, attachCreditsToCampaign(campaign, req.body || {}));
     }
     catch (error) { json(res, /not found/i.test(error.message) ? 404 : 400, { error: error.message }); }

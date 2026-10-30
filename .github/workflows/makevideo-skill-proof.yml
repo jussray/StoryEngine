@@ -1,0 +1,76 @@
+name: StoryEngine MAKEVIDEO Skill Proof
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.claude/skills/makevideo/SKILL.md'
+      - 'skills/makevideo/SKILL.md'
+      - 'story-engine/lib/videoEngine.js'
+      - 'story-engine/lib/videoExport.js'
+      - 'story-engine/lib/openVideoRenderer.js'
+      - 'story-engine/routes/videoEngine.js'
+      - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/playwright.config.js'
+      - 'story-engine/package.json'
+      - 'story-engine/package-lock.json'
+      - '.github/workflows/makevideo-skill-proof.yml'
+  pull_request:
+    paths:
+      - '.claude/skills/makevideo/SKILL.md'
+      - 'skills/makevideo/SKILL.md'
+      - 'story-engine/lib/videoEngine.js'
+      - 'story-engine/lib/videoExport.js'
+      - 'story-engine/lib/openVideoRenderer.js'
+      - 'story-engine/routes/videoEngine.js'
+      - 'story-engine/e2e/video_engine.spec.js'
+      - 'story-engine/playwright.config.js'
+      - 'story-engine/package.json'
+      - 'story-engine/package-lock.json'
+      - '.github/workflows/makevideo-skill-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  makevideo-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: story-engine
+    steps:
+      - name: Check out exact proof subject
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact head
+        working-directory: .
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: story-engine/package-lock.json
+      - run: npm ci
+      - name: Verify media tooling
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify Story Video Engine real browser/API path
+        run: npx playwright test e2e/video_engine.spec.js

@@ -1,10 +1,14 @@
 // routes/audit.js
 
 import { json } from '../lib/miniRouter.js';
+import { requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
 import { runSeriesContinuityAudit } from '../lib/seriesAudit.js';
 
 export default function auditRoutes(router, db) {
-  router.post('/api/audit/series-continuity', async (req, res) => {
+  router.post('/api/audit/series-continuity', requireRole('creator'), async (req, res) => {
+    const workspaceId = String(req.body?.workspace_id || '').trim();
+    if (!workspaceId) return json(res, 400, { error: 'workspace_id is required.' });
+    if (!requireWorkspaceAccess(req, res, workspaceId)) return;
     try {
       const report = await runSeriesContinuityAudit(db, req.body || {});
       json(res, 201, report);
@@ -15,13 +19,15 @@ export default function auditRoutes(router, db) {
   });
 
   router.get('/api/audit/series-continuity/:workspace_id/latest', (req, res) => {
+    const { workspace_id } = req.params;
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
     const rows = db.prepare(`
       SELECT * FROM events
       WHERE workspace_id = ?
         AND mode = 'series_audit'
       ORDER BY created_at DESC
       LIMIT 10
-    `).all(req.params.workspace_id).map(row => {
+    `).all(workspace_id).map(row => {
       let payload = {};
       try { payload = JSON.parse(row.payload || '{}'); } catch {}
       return { ...row, payload };

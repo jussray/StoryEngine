@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "default_model_id": "wan2.2-ti2v-5b",
+  "models": [
+    {
+      "id": "wan2.2-ti2v-5b",
+      "family": "Wan 2.2",
+      "execution": "comfyui",
+      "license": "Apache-2.0",
+      "commercial_use_allowed": true,
+      "license_source": "https://github.com/Wan-Video/Wan2.2",
+      "workflow_source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_wan2_2_5B_ti2v.json",
+      "diffusion_model": "wan2.2_ti2v_5B_fp16.safetensors",
+      "text_encoder": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "vae": "wan2.2_vae.safetensors",
+      "supports": ["text-to-video", "image-to-video"],
+      "runtime_truth": "Presence in this manifest verifies the intended model/license contract only. Production readiness still requires live ComfyUI node and model-file evidence."
+    }
+  ]
+}

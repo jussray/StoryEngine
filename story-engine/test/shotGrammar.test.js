@@ -33,7 +33,7 @@ test('compiler expands terse direction into Shot DNA without selecting a provide
     negative_constraints: ['no identity drift']
   });
 
-  assert.equal(direction.schema_version, '1.1.0');
+  assert.equal(direction.schema_version, '1.2.0');
   assert.equal(direction.shot_contract, 'shot-dna@v1');
   assert.equal(direction.provider_neutral, true);
   assert.equal(direction.command_name, 'dolly_in');

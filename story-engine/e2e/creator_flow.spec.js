@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { establishBrowserSession } from './session.js';
 
-test('front door hands the exact run identity to the Story Engine without persisting bootstrap credentials', async ({ page }) => {
+test('front door preserves base context through shape step and hands exact run identity to the StoryEngine studio', async ({ page }) => {
   const run = {
     run_id: 'run-proof-123',
     workspace_id: 'workspace-proof-456',
@@ -18,6 +18,7 @@ test('front door hands the exact run identity to the Story Engine without persis
     }]
   };
   const requestedRunIds = [];
+  let createPayload = null;
 
   await establishBrowserSession(page);
 
@@ -31,6 +32,7 @@ test('front door hands the exact run identity to the Story Engine without persis
 
   await page.route('**/api/story-engine/runs', async route => {
     if (route.request().method() !== 'POST') return route.continue();
+    createPayload = route.request().postDataJSON();
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
@@ -63,8 +65,28 @@ test('front door hands the exact run identity to the Story Engine without persis
     local: localStorage.getItem('l99_api_key')
   }))).toEqual({ session: null, local: null });
 
-  await page.locator('#vision').fill('A child discovers a sleeping moon beneath her neighborhood.');
-  await page.getByRole('button', { name: 'Begin' }).click();
+  await expect(page.getByRole('heading', { name: 'What do you want to create?' })).toBeVisible();
+  await expect(page.getByText('Powered by L99')).toHaveCount(0);
+
+  const baseContext = 'A child discovers a sleeping moon beneath her neighborhood.';
+  await page.locator('#vision').fill(baseContext);
+  await page.getByRole('button', { name: /Begin creating/ }).click();
+
+  await expect(page.getByRole('heading', { name: 'Let’s shape your idea.' })).toBeVisible();
+  await expect(page.locator('#ideaPreview')).toHaveText(baseContext);
+  await expect(page.getByRole('button', { name: /Continue to studio/ })).toBeVisible();
+
+  await page.getByRole('button', { name: /Continue to studio/ }).click();
+
+  expect(createPayload).toMatchObject({
+    story_vision: baseContext,
+    medium: 'book',
+    audience: 'young_adult',
+    story_kind: 'other',
+    emotional_effect: 'fear',
+    assist_mode: 'writer',
+    estimated_cost: 0
+  });
 
   await expect(page).toHaveURL(new RegExp(`/story_engine\\.html\\?run_id=${run.run_id}&workspace_id=${run.workspace_id}$`));
   await expect(page.locator('#runTitle')).toHaveText(run.intent.title);
@@ -73,6 +95,8 @@ test('front door hands the exact run identity to the Story Engine without persis
     'href',
     `/story_universe.html?workspace_id=${run.workspace_id}`
   );
+  await expect(page.locator('#creationCard')).toHaveClass(/hidden/);
+  await expect(page.getByText('L99 runtime', { exact: false })).toHaveCount(0);
 
   expect(requestedRunIds).toEqual([run.run_id]);
   expect(requestedRunIds).not.toContain(run.workspace_id);

@@ -1,0 +1,56 @@
+name: Media Router Contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'story-engine/lib/mediaRouterDomainBridge.js'
+      - 'story-engine/test/mediaRouterDomainBridge.test.js'
+      - 'docs/contracts/media-router-domain-protocol-v1.md'
+      - '.github/workflows/media-router-contract.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'story-engine/lib/mediaRouterDomainBridge.js'
+      - 'story-engine/test/mediaRouterDomainBridge.test.js'
+      - 'docs/contracts/media-router-domain-protocol-v1.md'
+      - '.github/workflows/media-router-contract.yml'
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  verify:
+    name: MAKEVIDEO ↔ Media Router exact-head proof
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: story-engine
+    steps:
+      - name: Check out exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+
+      - name: Verify exact head
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED_HEAD_SHA" "$actual"
+          test "$actual" = "$EXPECTED_HEAD_SHA"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install StoryEngine dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run focused MAKEVIDEO router bridge tests
+        run: node --test test/mediaRouterDomainBridge.test.js
