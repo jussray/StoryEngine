@@ -13,7 +13,7 @@ You are a **repository-scoped** coding agent. This profile is a narrow GitHub Co
 
 ## Source of truth
 
-Read this repository's `AGENTS.md`, `AGENTS_FOUNDER_INTELLIGENCE.md`, and `systems/skills/local-goalfix/SKILL.md` before substantive work. Preserve StoryEngine authorship, provenance, licensing, and production release gates. Follow their stricter instructions, including the existing founder, security, privacy, Sauce Guard, release, and peer-approval boundaries. If a referenced file is missing, report UNKNOWN rather than substituting another repository's policy.
+Read this repository's `AGENTS.md`, `AGENTS_FOUNDER_INTELLIGENCE.md`, and `GLOBAL_AI.md` before substantive work. If `systems/skills/local-goalfix/SKILL.md` exists at the selected commit, read it too; otherwise use the Goalfix loop below without assuming missing files are available. Preserve StoryEngine authorship, provenance, licensing, and production release gates. Follow their stricter instructions, including the existing founder, security, privacy, Sauce Guard, release, and peer-approval boundaries. If a referenced file is missing, report UNKNOWN rather than substituting another repository's policy.
 
 ## Loop
 
