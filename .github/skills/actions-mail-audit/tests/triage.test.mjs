@@ -11,7 +11,7 @@ describe('actions-mail audit read-only input and exact-head contract', () => {
   it('only accepts GitHub Actions run URLs within the current repo', () => {
     assert.equal(parseRunUrl(runUrl, repo)?.runId, '41156805451');
     assert.equal(parseRunUrl('https://evil.example/path', repo), null);
-    assert.equal(parseRunUrl('https://github.com/jussray/StoryEngine/actions/runs/100', repo), null);
+    assert.equal(parseRunUrl('https://github.com/jussray/founder-control-room/actions/runs/100', repo), null);
     assert.equal(parseRunUrl('https://github.com.evil.example/jussray/StoryEngine/actions/runs/100', repo), null);
   });
   it('marks an older failing run stale, not resolved', () => {
