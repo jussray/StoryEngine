@@ -170,6 +170,18 @@ tenant / workspace
 3. Add a runtime book-to-social artifact producer that implements `story-engine/BOOK_TO_SOCIAL_GATE_NOTES.md`, validates `story-engine/schemas/book_to_social_artifact.schema.json`, and proves any user-visible preview with Playwright before promotion.
 4. Expand the verified StoryEngine release path format by format, preserving the rule that consequential publishing/distribution remains behind explicit authority and outcome evidence.
 
+## Supabase development setup
+
+- `.mcp.json` already defines a `supabase` MCP server. Its URL carries a `project_ref`. Confirm that ref names the project you intend before using it, because a stale or wrong ref points tools at the wrong database. Authenticate once with `claude /mcp`.
+- `supabase/config.toml` sets `project_id = "storyengine"`. That names the local stack, not a hosted project ref.
+- For direct Postgres access, take credentials from your environment or the team secret store. Never commit a password, a connection string that contains one, or a `.env` file.
+
+```bash
+psql "host=db.<PROJECT_REF>.supabase.co port=5432 dbname=postgres user=postgres"
+```
+
+Supply the password through `PGPASSWORD` or the interactive prompt. Optional agent skills: `npx skills add supabase/agent-skills`.
+
 ## License
 
 Copyright © 2024–2026 Juss Ray. All rights reserved.
