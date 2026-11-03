@@ -8,6 +8,13 @@ import {
 } from '../lib/revenueEngine.js';
 import { listConversions as listIpConversions } from '../lib/ipStudio.js';
 import { verifyStripeWebhookSignature } from '../lib/stripeWebhookSignature.js';
+import {
+  buildCheckoutIdempotencyKey,
+  buildCheckoutSessionForm,
+  createStripeCheckoutSession,
+  resolveStripePrice,
+  StripeCheckoutError
+} from '../lib/stripeCheckout.js';
 
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -27,6 +34,8 @@ function normalizedStripePayload(event) {
     customer: object.customer || null,
     subscription_id: typeof object.subscription === 'string' ? object.subscription : subscription.id || null,
     subscription,
+    plan: metadata.plan || subscription.metadata?.plan || null,
+    payment_status: typeof object.payment_status === 'string' ? object.payment_status : null,
     amount_cents: amountCandidate === null || !Number.isFinite(amount) ? null : amount,
     currency: typeof object.currency === 'string' ? object.currency : null,
     stripe_object_id: typeof object.id === 'string' ? object.id : null
@@ -34,6 +43,68 @@ function normalizedStripePayload(event) {
 }
 
 export default function revenueRoutes(router, db) {
+  // Authenticated checkout creation. The browser supplies a plan name only;
+  // the server owns the plan -> Stripe Price mapping and never accepts a
+  // client-provided amount or price id.
+  router.post('/api/revenue/checkout', requireRole('creator'), async (req, res) => {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const workspace_id = String(body.workspace_id || '').trim();
+    const requestedPlan = String(body.plan || '').trim();
+
+    if (!workspace_id || !requestedPlan) {
+      json(res, 400, { error: 'workspace_id_and_plan_required' });
+      return;
+    }
+    if (!requireWorkspaceAccess(req, res, workspace_id)) return;
+
+    let selection;
+    try {
+      selection = resolveStripePrice(requestedPlan);
+    } catch (error) {
+      const code = error instanceof StripeCheckoutError ? error.code : 'STRIPE_CHECKOUT_CONFIG_INVALID';
+      const status = code === 'STRIPE_PLAN_INVALID' || code === 'STRIPE_PLAN_UNAVAILABLE' ? 400 : 503;
+      json(res, status, { error: code.toLowerCase() });
+      return;
+    }
+
+    let formBody;
+    try {
+      formBody = buildCheckoutSessionForm({
+        workspaceId: workspace_id,
+        tenantId: req.auth?.tenant_id,
+        plan: selection.plan,
+        priceId: selection.priceId,
+        publicUrl: process.env.L99_PUBLIC_URL
+      });
+    } catch (error) {
+      const code = error instanceof StripeCheckoutError ? error.code : 'STRIPE_CHECKOUT_CONFIG_INVALID';
+      json(res, 503, { error: code.toLowerCase() });
+      return;
+    }
+
+    const idempotencyKey = buildCheckoutIdempotencyKey({
+      tenantId: req.auth?.tenant_id,
+      actorId: req.auth?.actor_id,
+      workspaceId: workspace_id,
+      plan: selection.plan,
+      attemptId: body.checkout_attempt_id || req.request_id
+    });
+
+    try {
+      const session = await createStripeCheckoutSession({ formBody, idempotencyKey });
+      json(res, 201, {
+        checkout_session_id: session.id,
+        url: session.url,
+        workspace_id,
+        plan: selection.plan
+      });
+    } catch (error) {
+      const code = error instanceof StripeCheckoutError ? error.code : 'STRIPE_CHECKOUT_CREATE_FAILED';
+      const status = code.endsWith('_UNCONFIGURED') || code.includes('_INVALID') || code.includes('_FORBIDDEN') ? 503 : 502;
+      json(res, status, { error: code.toLowerCase() });
+    }
+  });
+
   // Stripe webhook — authenticated by Stripe's signature, not the normal creator API key.
   router.post('/api/revenue/stripe/webhook', async (req, res) => {
     try {
