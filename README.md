@@ -1,16 +1,44 @@
-# L99
+# StoryEngine / L99
 
 > **Copyright © 2024–2026 Juss Ray. All rights reserved.**
 > This is proprietary software. No license to use, copy, modify, distribute,
 > sublicense, or create derivative works is granted. See [LICENSE](LICENSE).
 
-L99 is an AI runtime and operations layer focused on state integrity, provenance-safe semantic reuse, recovery, shadow validation, and observable promotion controls.
+**StoryEngine is the creator-facing product. L99 is the execution runtime underneath it. They are one product architecture, not separate products.**
+
+StoryEngine is designed to help a creator carry an idea through writing, creation, packaging, release preparation, distribution, commerce handoff, and measurement across formats such as books, picture books, movies, TV, songs, podcasts, games, comics, plays, and short-form media.
+
+L99 supplies the runtime and operations layer that makes that product trustworthy: state integrity, provenance-safe semantic reuse, recovery, shadow validation, observable promotion controls, event truth, creator-control modes, and release gates.
+
+```text
+Idea
+→ Write
+→ Create
+→ Package
+→ Release gate
+→ Publish / distribute through approved channels
+→ Sell
+→ Measure
+```
+
+The product goal is end-to-end creation and publishing. Current capability claims remain bounded by verified runtime evidence: a designed stage is not automatically a production-ready stage, and draft generation is not direct publishing until the publishing path is implemented and proved.
+
+## Product identity
+
+| Surface | Role |
+|---|---|
+| **StoryEngine** | Customer-facing creator product and market identity |
+| **L99** | StoryEngine execution, state, provenance, recovery, orchestration, and evidence runtime |
+| **RiverEditor** | Authoring and transformation surface inside StoryEngine |
+| **Release gates** | Founder/creator-controlled boundary between generated work and consequential publication or distribution |
+
+Internal `l99_*` runtime names, event types, APIs, telemetry, and operational artifacts intentionally keep the L99 name. Customer-facing surfaces should lead with **StoryEngine** and may identify L99 as the runtime powering the product.
 
 ## Code audit status
 
 A repository-wide code audit is in progress. The runtime and promotion-gate foundations are substantial, but the system is not yet verified as production-safe.
 
-Known release blockers include cryptographic Stripe webhook verification, replacing browser-readable API-key persistence with a hardened authentication/session design, tightening the browser Content Security Policy, proving workspace authorization on every read and mutation path, and keeping existing feature PRs current with `main` through the repository PR Continuity Law before merge. A present header is not proof of a valid Stripe signature, and passing isolated tests is not a production-readiness claim.
+Current code implements cryptographic Stripe webhook signature verification and replaces legacy browser-readable API-key persistence with an in-memory bootstrap exchange for a server-issued HttpOnly SameSite session cookie. Those implementation facts do not prove live Stripe delivery or complete production authorization. Remaining release blockers include tightening the browser Content Security Policy, proving workspace authorization on every read and mutation path, attaching immutable exact-head evidence to the canonical capability contract, and proving live provider/runtime outcomes. A valid local signature test is not a live Stripe receipt, and passing isolated tests is not a production-readiness claim.
 
 ## AI operating contracts
 
@@ -18,7 +46,6 @@ Known release blockers include cryptographic Stripe webhook verification, replac
 - [`CLAUDE.md`](CLAUDE.md) — Claude / Claude Code repository instructions
 - [`AGENTS.md`](AGENTS.md) — Codex, ChatGPT, and repository-agent instructions
 - [`docs/PROVIDERS.md`](docs/PROVIDERS.md) — Claude, Codex, OpenAI, Anthropic, Perplexity, and GitHub boundaries
-- [`docs/PR_CONTINUITY.md`](docs/PR_CONTINUITY.md) — history-preserving same-branch rollover, exact-head proof expiry, stacked-PR ordering, and non-authorizing continuity receipts
 
 Shared founder stack:
 
@@ -62,7 +89,6 @@ The first redteam attacks the premise. The second attacks the selected implement
 - `dashboards/l99_events_dashboard.html` — tenant-first, severity-second, correlation-chain-third live events dashboard.
 - `runtime/promotion_gates.py` — CI promotion gates for provenance, revocation, partition-boundary, event-schema, Lindymode drift, shell-command, and L99 latency failures.
 - `.github/workflows/l99-promotion-gates.yml` — runs the promotion gates in CI.
-- `.github/workflows/pr-continuity.yml` — ATTACK-20-gated continuity audit and trusted-current-main rollover for existing PR branches; head movement always requires fresh exact-head proof.
 - `story-engine/BOOK_TO_SOCIAL_GATE_NOTES.md` — book-to-social creation gate for turning approved source material into TikTok, Instagram, and Facebook-ready draft artifacts without direct publishing.
 - `story-engine/schemas/book_to_social_artifact.schema.json` — reduced metadata contract for book-to-social artifacts.
 
@@ -84,18 +110,19 @@ The first redteam attacks the premise. The second attacks the selected implement
 
 > Draft generation is not publishing.
 
-> A current PR ancestry relationship is not current proof. Any changed head must earn CI, review, runtime, provider, artifact, and Playwright evidence again where applicable.
-
 ## Request path
 
 ```text
-Request
+Creator request
+→ StoryEngine surface
 → Identity Layer
 → Authorization Layer
-→ Provenance Engine
+→ L99 Provenance Engine
 → Partition Resolver
 → Semantic Cache
-→ Model
+→ Model / tool execution
+→ Evidence
+→ StoryEngine result
 ```
 
 ## Event read model
@@ -141,6 +168,7 @@ tenant / workspace
 1. Add a provenance decision evaluator (`artifact_writer.build_decision_artifact` formats and validates a decision from explicit inputs; it does not yet evaluate live cache candidates).
 2. Add boundary and revocation test fixtures beyond the property checks already covered by `runtime/promotion_gates.py`'s `revocation` and `partition_boundary` gates.
 3. Add a runtime book-to-social artifact producer that implements `story-engine/BOOK_TO_SOCIAL_GATE_NOTES.md`, validates `story-engine/schemas/book_to_social_artifact.schema.json`, and proves any user-visible preview with Playwright before promotion.
+4. Expand the verified StoryEngine release path format by format, preserving the rule that consequential publishing/distribution remains behind explicit authority and outcome evidence.
 
 ## License
 
