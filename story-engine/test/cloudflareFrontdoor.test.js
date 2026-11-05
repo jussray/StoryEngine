@@ -165,3 +165,30 @@ test('manual front-door proof defaults to runtime-equivalence mode', () => {
   assert.match(workflow, /expected_runtime_sha:\s*\n\s+description:.*\n\s+required: false\s*\n\s+type: string/);
   assert.match(workflow, /Resolve runtime-equivalent Railway release[\s\S]*?if: env\.EXPECTED_RUNTIME_SHA == ''/);
 });
+
+test('scheduled cron tick is a recorded no-op that never reaches the runtime', async () => {
+  let fetched = false;
+  globalThis.fetch = async () => {
+    fetched = true;
+    return new Response('unexpected');
+  };
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (line) => logs.push(line);
+  try {
+    await worker.scheduled(
+      { cron: '0 */1 * * *', scheduledTime: 1793130000000 },
+      { STORYENGINE_RUNTIME_ORIGIN: 'https://runtime.example' },
+      { waitUntil() {} }
+    );
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(fetched, false);
+  assert.equal(logs.length, 1);
+  assert.deepEqual(JSON.parse(logs[0]), {
+    event: 'storyengine.cron.noop',
+    cron: '0 */1 * * *',
+    scheduledTime: 1793130000000
+  });
+});
