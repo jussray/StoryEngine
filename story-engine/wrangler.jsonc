@@ -21,19 +21,7 @@
       }
     }
   ],
-  "previews": {
-    "vars": {
-      "STORYENGINE_RUNTIME_ORIGIN": "https://story-engine-production-1e6b.up.railway.app"
-    },
-    "ratelimits": [
-      {
-        "name": "STORYENGINE_API_RATE_LIMITER",
-        "namespace_id": "1292370403",
-        "simple": {
-          "limit": 120,
-          "period": 60
-        }
-      }
-    ]
-  }
+  // Branch previews must never inherit the production runtime origin or rate limiter.
+  // Without those bindings the front door fails closed instead of proxying requests.
+  "previews": {}
 }
