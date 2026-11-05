@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StoryEngine — Studio</title>
+  <link rel="stylesheet" href="/brand.css">
   <style>
     :root {
       --ink:#060914;
@@ -45,8 +46,8 @@
     .hidden{display:none!important}
     .shell{position:relative;z-index:1;max-width:1180px;margin:auto;padding:26px 24px 72px}
     .top{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:46px}
-    .brand{display:flex;align-items:center;gap:8px;font-size:23px;font-weight:850;letter-spacing:-.04em}
-    .brand span{background:linear-gradient(90deg,#fff 0 48%,#72adff 70%,#ae62ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .brand{display:flex;align-items:center;gap:8px}
+    .brand .se-wordmark{font-size:23px}
     .brand i{width:8px;height:8px;transform:rotate(45deg);border-radius:2px;background:linear-gradient(135deg,#73caff,#b662ff);box-shadow:0 0 18px #925cff}
     .links{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     .links a{padding:9px 13px;border:1px solid var(--border);border-radius:999px;text-decoration:none;color:#c8cbe0;background:rgba(255,255,255,.025);font-size:13px}
@@ -111,7 +112,7 @@
 <body>
   <main class="shell">
     <header class="top">
-      <div class="brand" aria-label="StoryEngine"><span>StoryEngine</span><i></i></div>
+      <div class="brand" aria-label="StoryEngine"><span class="se-wordmark"><span class="se-story">Story</span><span class="se-engine">Engine</span></span><i></i></div>
       <nav class="links" aria-label="Studio navigation">
         <a href="/front_door.html">New project</a>
       </nav>
