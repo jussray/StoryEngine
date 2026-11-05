@@ -60,6 +60,27 @@ test('HeyGen is disabled by default and never exposes an API key through readine
   } finally { db.close(); }
 });
 
+test('HeyGen refuses paid submission when the production switch is explicitly false', async () => {
+  const db = new DatabaseSync(':memory:');
+  let providerCalls = 0;
+  try {
+    const disabledEnv = { ...env, HEYGEN_SUBMISSIONS_ENABLED: 'false' };
+    assert.equal(heygenReadiness(disabledEnv).configured, true);
+    assert.equal(heygenReadiness(disabledEnv).ready, false);
+    await assert.rejects(
+      submitHeygenShot(db, job(), input(), {
+        env: disabledEnv,
+        fetchImpl: async () => {
+          providerCalls += 1;
+          throw new Error('Disabled HeyGen must never reach the paid provider');
+        }
+      }),
+      { code: 'HEYGEN_DISABLED' }
+    );
+    assert.equal(providerCalls, 0);
+  } finally { db.close(); }
+});
+
 test('HeyGen submission requires validated preview, matching continuity, and valid avatar inputs', async () => {
   const db = new DatabaseSync(':memory:');
   try {
