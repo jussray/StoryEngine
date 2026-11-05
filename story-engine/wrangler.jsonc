@@ -20,5 +20,8 @@
         "period": 60
       }
     }
-  ]
+  ],
+  // Branch previews must never inherit the production runtime origin or rate limiter.
+  // Without those bindings the front door fails closed instead of proxying requests.
+  "previews": {}
 }
