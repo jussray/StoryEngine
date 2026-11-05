@@ -60,25 +60,16 @@ test('live smoke uses the existing client and emits only sanitized provider prov
   assert.doesNotMatch(job, /console\.(log|error)\([^\n]*receipt\.text/);
 });
 
-test('failure diagnostics inspect the same bounded response clone and reduce it to whitelisted enums', () => {
+test('failure diagnostics consume only shared client blocker fields', () => {
   const job = jobPrefix(workflow, 'anthropic-live-smoke');
-  assert.ok(job.includes("String(url) === 'https://api.anthropic.com/v1/messages'"));
-  assert.ok(job.includes('readBoundedDiagnosticText(response.clone(), 4096)'));
-  assert.ok(job.includes('provider_error_type: providerDiagnostic.type'));
-  assert.ok(job.includes('provider_error_reason: providerDiagnostic.reason'));
-  for (const reason of [
-    'data_retention',
-    'spending_limit',
-    'max_tokens',
-    'sampling_parameter',
-    'thinking',
-    'workspace',
-    'model',
-    'messages',
-    'system'
-  ]) {
-    assert.ok(job.includes(`'${reason}'`), `missing safe diagnostic reason ${reason}`);
-  }
+  assert.ok(job.includes('safeBlocker(error?.blocker_reason)'));
+  assert.ok(job.includes('safeEnum(error?.provider_error_type)'));
+  assert.ok(job.includes('safeReason(error?.provider_error_reason)'));
+  assert.ok(job.includes('provider_error_type: providerErrorType'));
+  assert.ok(job.includes('provider_error_reason: providerErrorReason'));
+  assert.doesNotMatch(job, /response\.clone\(/);
+  assert.doesNotMatch(job, /readBoundedDiagnosticText/);
+  assert.doesNotMatch(job, /JSON\.parse\(raw/);
   assert.doesNotMatch(job, /provider_error_message/);
   assert.doesNotMatch(job, /raw_body/);
   assert.doesNotMatch(job, /error_message/);
@@ -90,10 +81,9 @@ test('external provider availability is a receipted plugin blocker, not a false 
   assert.ok(job.includes("provider_role: 'plugin'"));
   assert.ok(job.includes("status: 'blocked'"));
   assert.ok(job.includes("blocker_reason: 'credential_unavailable'"));
-  assert.ok(job.includes("diagnostic?.reason === 'spending_limit'"));
-  assert.ok(job.includes("diagnostic?.reason === 'data_retention'"));
-  assert.ok(job.includes("return 'provider_unavailable'"));
-  assert.ok(job.includes("['llm_timeout', 'llm_provider_request_failed', 'llm_circuit_open']"));
+  for (const reason of ['credential_unavailable', 'spending_limit', 'data_retention', 'provider_unavailable']) {
+    assert.ok(job.includes(`'${reason}'`), `missing safe blocker ${reason}`);
+  }
   assert.ok(job.includes("status: blockerReason ? 'blocked' : 'failed'"));
 });
 

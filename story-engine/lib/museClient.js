@@ -55,12 +55,16 @@ export async function completeMuseWithReceipt(prompt, options = {}) {
   if (!/^muse-spark-1\.(?:1|2|3)$/.test(model)) throw new Error('Unsupported Muse model.');
   const timeoutMs = boundedInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS, 1_000, 300_000);
   const maxBytes = boundedInteger(options.successBodyMaxBytes, MAX_RESPONSE_BYTES, 1024, 16_777_216);
+  // Optional injected transport: llmClient passes an adapter over its shared
+  // fetchWithPolicy so this path gets the family retry/circuit/timeout policy.
+  // Direct callers that inject nothing keep the standalone bounded fetch.
+  const fetchImpl = typeof options.fetchImpl === 'function' ? options.fetchImpl : null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let response;
   try {
-    response = await fetch(MUSE_URL, {
+    const init = {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -72,13 +76,16 @@ export async function completeMuseWithReceipt(prompt, options = {}) {
         store: false,
         max_output_tokens: boundedInteger(options.maxTokens, 4096, 1, 8192)
       }),
-      redirect: 'error',
-      signal: controller.signal
-    });
-  } catch {
-    const error = new Error('LLM provider request failed for muse.');
-    error.code = controller.signal.aborted ? 'llm_timeout' : 'llm_provider_request_failed';
-    throw error;
+      redirect: 'error'
+    };
+    response = fetchImpl
+      ? await fetchImpl(MUSE_URL, init)
+      : await fetch(MUSE_URL, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (fetchImpl) throw error;
+    const mapped = new Error('LLM provider request failed for muse.');
+    mapped.code = controller.signal.aborted ? 'llm_timeout' : 'llm_provider_request_failed';
+    throw mapped;
   } finally {
     clearTimeout(timer);
   }

@@ -162,7 +162,15 @@ export async function materializeAutonomousBook(db, { workspaceId, dispatchId })
 
   const ghostPlan = safeJson(run.ghost_plan_json, {});
   if (ghostPlan.draft?.status === 'fallback_stub') {
-    throw new Error('Autonomous book generation cannot continue from a writing-provider fallback stub.');
+    const blockerReason = typeof ghostPlan.draft?.blocker_reason === 'string' ? ghostPlan.draft.blocker_reason : null;
+    const error = new Error(
+      blockerReason
+        ? `Autonomous book generation is blocked by the writing provider (${blockerReason}).`
+        : 'Autonomous book generation cannot continue from a writing-provider fallback stub.'
+    );
+    error.code = blockerReason ? 'writing_provider_blocked' : 'writing_provider_fallback_stub';
+    error.blocker_reason = blockerReason;
+    throw error;
   }
 
   const chapterCount = boundedChapterCount(process.env.AUTONOMOUS_BOOK_CHAPTER_COUNT);

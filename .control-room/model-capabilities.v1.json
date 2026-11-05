@@ -1,0 +1,60 @@
+{
+  "contract": "juss/council-model-capability-profile@v1",
+  "repository": "jussray/StoryEngine",
+  "defaultBranch": "main",
+  "preparedAgainstBaseSha": "8031efc43fe9caf5d841bb390e76ec0c3ddaceef",
+  "authorityHost": "jussray/founder-control-room",
+  "providerExecutionHost": "jussray/founder-control-room",
+  "projectRole": "story_creator_and_production_intelligence",
+  "activation": "trial_profile_only",
+  "runtimeActivation": false,
+  "restrictedContextAllowed": false,
+  "lanes": [
+    {
+      "model": "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+      "role": "reasoning_and_adversarial_challenge",
+      "notes": "Bounded reasoning/challenge; provider response is evidence input only.",
+      "status": "trial"
+    },
+    {
+      "model": "@cf/cloudflare/clairic",
+      "role": "structured_estimation_and_forecast",
+      "notes": "Typed extraction/estimate/forecast with confidence; never truth by itself.",
+      "status": "trial"
+    },
+    {
+      "model": "@cf/cloudflare/clef-omni",
+      "role": "multimodal_evidence_adjudication",
+      "notes": "Typed multimodal decisions/probabilities; never self-authorizing.",
+      "status": "trial"
+    },
+    {
+      "model": "@cf/daily-co/phonellm-mini-alpha-2",
+      "role": "voice_agent_fast_lane",
+      "notes": "Voice/conversation specialist; only after local privacy/runtime gates.",
+      "status": "trial"
+    }
+  ],
+  "authority": {
+    "selectionAuthority": false,
+    "executionAuthority": false,
+    "mergeAuthority": false,
+    "deployAuthority": false,
+    "publishAuthority": false,
+    "spendAuthority": false,
+    "providerMutationAuthority": false
+  },
+  "promotionGate": [
+    "fresh task-specific local receipts",
+    "provider evidence for the exact invocation",
+    "project-local focused tests",
+    "runtime proof for live claims",
+    "Playwright proof for user-facing flows"
+  ],
+  "projectGuards": [
+    "preserve canon and provenance",
+    "generated media cannot masquerade as proof footage",
+    "voice lane is production support, not publication authority"
+  ],
+  "rollback": "Remove this profile and any consumer mapping that references it; no secret or deployment state is stored here."
+}

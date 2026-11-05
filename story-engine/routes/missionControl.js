@@ -3,7 +3,7 @@
 import { json } from '../lib/miniRouter.js';
 import { requireRole, requireWorkspaceAccess, requireGlobalAdministrator } from '../lib/securityContext.js';
 import { getMissionControlSnapshot } from '../lib/missionControl.js';
-import { enqueueRuntime, drainRuntimeQueue, listDispatchQueue, scanChangedWorkspaces } from '../lib/runtimeDispatcher.js';
+import { enqueueRuntime, drainRuntimeQueue, getRuntimeDispatch, processRuntimeDispatch, listDispatchQueue, scanChangedWorkspaces } from '../lib/runtimeDispatcher.js';
 import { runEventRetention } from '../lib/eventRetention.js';
 
 function requireAdministrator(req, res) {
@@ -30,6 +30,21 @@ export default function missionControlRoutes(router, db) {
     const item = enqueueRuntime(db, workspace_id, req.body?.trigger_type || 'manual_dispatch');
     if (!item) return json(res, 404, { error: 'Workspace not found' });
     json(res, item.deduplicated ? 200 : 201, item);
+  });
+
+  // Process one dispatch only after checking its owning workspace. This does
+  // not confer the global queue-drain capability on a tenant creator.
+  router.post('/api/runtime/dispatch/:dispatch_id/process', requireRole('creator'), async (req, res) => {
+    const item = getRuntimeDispatch(db, req.params.dispatch_id);
+    if (!item) return json(res, 404, { error: 'Runtime dispatch not found' });
+    if (!requireWorkspaceAccess(req, res, item.workspace_id)) return;
+    try {
+      const processed = await processRuntimeDispatch(db, item.dispatch_id);
+      if (!processed) return json(res, 404, { error: 'Runtime dispatch not found' });
+      json(res, processed.status === 'failed' ? 500 : 200, processed);
+    } catch (error) {
+      json(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    }
   });
 
   router.post('/api/runtime/drain', async (req, res) => {

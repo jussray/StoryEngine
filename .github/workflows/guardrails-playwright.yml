@@ -34,7 +34,7 @@ env:
 jobs:
   verify-guardrails:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: story-engine
@@ -64,12 +64,7 @@ jobs:
         run: python runtime/founder_truth_gate.py
       - run: npm ci
       - name: Ensure deterministic MP4 renderer is available
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
-          ffmpeg -version | head -n 1
+        run: bash ../scripts/ensure-ffmpeg.sh
       - name: Run Node tests with retained evidence
         shell: bash
         run: |

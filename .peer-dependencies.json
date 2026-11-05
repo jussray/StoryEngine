@@ -1,0 +1,18 @@
+{
+  "schema": "juss/peer-dependencies@v1",
+  "description": "Versionable peer dependency manifest. Tracks expected commits for cross-repo integration.",
+  "purpose": "Prevent drift between repositories by making peer refs explicit, discoverable, and version-controlled.",
+  "peers": [
+    {
+      "repository": "jussray/chief-ai-machine",
+      "ref": "main",
+      "expectedCommit": "fabc221",
+      "description": "Chief AI governance stack. Updated after each successful governance gate.",
+      "lastUpdated": "2026-10-23",
+      "reason": "StoryEngine depends on Chief AI's merge-intent and governance policies."
+    }
+  ],
+  "managedBy": "Founder. Update this manifest when moving forward and syncing with peer projects.",
+  "releaseAuthority": "jussray/founder-control-room — portfolio release manifests, validation policy, and CI gating live there.",
+  "automationNotes": "CI workflows should validate this manifest against live peer commits. Use `.peer-dependencies.json` as the source of truth, not GitHub Actions env vars or hardcoded refs. Release promotion is controlled by founder-control-room/portfolio-compatibility.yml and release-policy/ — this file documents peer dependencies, founder-control-room enforces them."
+}

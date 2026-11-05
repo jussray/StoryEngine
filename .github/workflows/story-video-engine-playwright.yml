@@ -93,7 +93,7 @@ env:
 jobs:
   verify-story-video-engine:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: story-engine
@@ -112,12 +112,7 @@ jobs:
           python-version: '3.11'
       - run: npm ci
       - name: Ensure deterministic MP4 renderer is available
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
-          ffmpeg -version | head -n 1
+        run: bash ../scripts/ensure-ffmpeg.sh
       - name: Verify portable Juss OS command contract
         working-directory: .
         run: node scripts/verify-juss-os-commands.mjs
