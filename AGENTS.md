@@ -123,3 +123,13 @@ Never commit `.codex/.env`, `OPENAI_API_KEY`, `MODEL_API_KEY`, service-role keys
 ## Evidence report
 
 List files changed, contracts changed, tests run, Playwright result or inapplicability, artifacts produced, failures or skips, isolation impact, release impact, Cloudflare and Founder Control Room evidence when applicable, rollback, residual risk, and next gate.
+
+## Mandatory cinematic composition (founder design rule 2026-11-04)
+
+Every authorized application, website, page and interface must be **one cohesive cinematic composition**. Establish a dominant purpose/focal subject, consistent atmosphere, depth, light, type, spacing, graphics, and connected navigation and interaction states. Do not build visually disconnected cards or arbitrary styles.
+
+Carry each product's **own** established identity across its actual home, onboarding, authentication, settings, dashboards, mobile, loading, error and empty states, as applicable. Inspect live/source visuals and design tokens before changing them. Preserve accessible contrast, keyboard/focus, reduced-motion behavior, responsive layout, performance, privacy and truthful claims. No interchangeable brand templates.
+
+Treat this as a design acceptance criterion for every UI change and agent handoff. Verify real rendered screenshots, interactions and applicable checks against the exact candidate head. An instruction update does not prove the screens were changed. Do not bypass founder authority, privacy, release, security, or publication gates.
+
+Canonical detailed source: `jussray/founder-control-room/skills/cinematic-composition/SKILL.md` (staged pending authorized integration).
