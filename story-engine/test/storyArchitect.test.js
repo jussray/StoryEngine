@@ -106,8 +106,19 @@ test('rebuilding architecture increments its version instead of duplicating it',
   buildStoryArchitecture(db, { workspace_id: workspaceId, chapter_count: 15 });
 
   const rows = db.prepare('SELECT * FROM studio_architectures WHERE workspace_id = ?').all(workspaceId);
+  const genomeHistory = db.prepare(`
+    SELECT version, source, genome_json
+    FROM story_genome_versions
+    WHERE workspace_id = ?
+    ORDER BY version
+  `).all(workspaceId);
+
   assert.equal(rows.length, 1);
   assert.equal(rows[0].version, 2);
   assert.equal(JSON.parse(rows[0].structure_json).target_chapter_count, 15);
+  assert.equal(genomeHistory.length, 2);
+  assert.deepEqual(genomeHistory.map(item => item.source), ['story_architect.seed', 'story_architect.seed']);
+  assert.equal(JSON.parse(genomeHistory[0].genome_json).architecture.target_chapter_count, 9);
+  assert.equal(JSON.parse(genomeHistory[1].genome_json).architecture.target_chapter_count, 15);
   db.close();
 });
