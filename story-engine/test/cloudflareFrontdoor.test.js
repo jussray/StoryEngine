@@ -33,6 +33,22 @@ test('fails closed when no runtime origin is configured', async () => {
   assert.equal(response.headers.get('x-storyengine-edge'), 'runtime-unavailable');
 });
 
+test('preview-disabled origin never initiates an outbound request', async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response('should not connect');
+  };
+
+  const response = await worker.fetch(new Request('https://storyengine.example/healthz'), {
+    STORYENGINE_RUNTIME_ORIGIN: 'https://preview-disabled.invalid'
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-storyengine-edge'), 'runtime-unavailable');
+  assert.equal(called, false);
+});
+
 test('fails closed when an API request has no rate-limit binding', async () => {
   let called = false;
   globalThis.fetch = async () => {
@@ -150,14 +166,33 @@ test('wrangler config deploys the front door only with a first-class API rate-li
   }]);
 });
 
-test('deployed runtime origin matches canonical production domain authority', () => {
+test('wrangler preview is isolated from production runtime and rate-limit state', () => {
+  const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+
+  assert.deepEqual(config.previews.vars, {
+    STORYENGINE_RUNTIME_ORIGIN: 'https://preview-disabled.invalid'
+  });
+  assert.equal(config.previews.ratelimits.length, 1);
+  const [previewLimiter] = config.previews.ratelimits;
+  assert.equal(previewLimiter.name, 'STORYENGINE_API_RATE_LIMITER');
+  assert.match(previewLimiter.namespace_id, /^[1-9]\d*$/);
+  assert.notEqual(previewLimiter.namespace_id, config.ratelimits[0].namespace_id);
+  assert.deepEqual(previewLimiter.simple, config.ratelimits[0].simple);
+});
+
+test('public canonical origin and stateful runtime origin remain distinct', () => {
   const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
   const authority = JSON.parse(readFileSync(new URL('../config/domain-authority.json', import.meta.url), 'utf8'));
   assert.equal(authority.mode, 'production');
-  assert.equal(config.vars.STORYENGINE_RUNTIME_ORIGIN, authority.productionOrigin);
-  assert.equal(new URL(authority.productionOrigin).protocol, 'https:');
-  assert.equal(new URL(authority.productionOrigin).origin, authority.productionOrigin);
+  assert.equal(authority.productionOrigin, 'https://storyengine.jussco.company');
+  assert.equal(config.vars.STORYENGINE_RUNTIME_ORIGIN, authority.runtimeOrigin);
+  assert.notEqual(authority.productionOrigin, authority.runtimeOrigin);
+  for (const origin of [authority.productionOrigin, authority.runtimeOrigin]) {
+    assert.equal(new URL(origin).protocol, 'https:');
+    assert.equal(new URL(origin).origin, origin);
+  }
 });
 
 test('manual front-door proof defaults to runtime-equivalence mode', () => {

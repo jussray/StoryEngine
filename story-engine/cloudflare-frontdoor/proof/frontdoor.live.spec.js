@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 
-const { productionOrigin } = JSON.parse(readFileSync(
+const { runtimeOrigin } = JSON.parse(readFileSync(
   new URL('../../config/domain-authority.json', import.meta.url), 'utf8'
 ));
 
@@ -11,8 +11,8 @@ async function readJson(request, url) {
   return response.json();
 }
 
-test('health passes through the real Worker to the canonical runtime', async ({ request }, testInfo) => {
-  const direct = await readJson(request, `${productionOrigin}/healthz`);
+test('health passes through the real Worker to the stateful runtime', async ({ request }, testInfo) => {
+  const direct = await readJson(request, `${runtimeOrigin}/healthz`);
   const edge = await readJson(request, '/healthz');
   expect(direct.status).toBe('ok');
   expect(edge.status).toBe(direct.status);
@@ -23,7 +23,7 @@ test('health passes through the real Worker to the canonical runtime', async ({ 
 test('runtime identity matches direct Railway and the expected deployed SHA', async ({ request }, testInfo) => {
   const expected = process.env.EXPECTED_RUNTIME_SHA || '';
   expect(expected, 'An exact deployed SHA is required; health alone is not release proof').toMatch(/^[0-9a-f]{40}$/);
-  const direct = await readJson(request, `${productionOrigin}/runtime-identity`);
+  const direct = await readJson(request, `${runtimeOrigin}/runtime-identity`);
   const edge = await readJson(request, '/runtime-identity');
   await testInfo.attach('runtime-identity.json', { body: JSON.stringify({ expected, direct, edge }), contentType: 'application/json' });
   expect(edge).toEqual(direct);
@@ -38,7 +38,7 @@ test('runtime identity matches direct Railway and the expected deployed SHA', as
 });
 
 test('home page loads through the Worker', async ({ page, request }, testInfo) => {
-  const direct = await request.get(`${productionOrigin}/`, { maxRedirects: 0 });
+  const direct = await request.get(`${runtimeOrigin}/`, { maxRedirects: 0 });
   expect(direct.status()).toBe(200);
   const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
   expect(response.status()).toBe(200);
@@ -48,7 +48,7 @@ test('home page loads through the Worker', async ({ page, request }, testInfo) =
 });
 
 test('unauthenticated API passes the actual rate limiter and preserves auth denial', async ({ request }) => {
-  const direct = await request.get(`${productionOrigin}/api/auth/me`, { maxRedirects: 0 });
+  const direct = await request.get(`${runtimeOrigin}/api/auth/me`, { maxRedirects: 0 });
   const edge = await request.get('/api/auth/me', { maxRedirects: 0 });
   expect([401, 403]).toContain(direct.status());
   expect(edge.status()).toBe(direct.status());
