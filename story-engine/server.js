@@ -12,6 +12,7 @@ import { createRouter } from './lib/miniRouter.js';
 import { requestContext, requireAuth, enforceWorkspaceAccess, enforceOperatorApiBoundary, securitySnapshot } from './lib/securityContext.js';
 import { enforcePageAccess } from './lib/pageGuard.js';
 import { resolvePublicPath } from './lib/staticPath.js';
+import { MIME_TYPES as MIME, contentTypeFor } from './lib/mimeTypes.js';
 import { startOODALoop } from './lib/oodaProcessor.js';
 import { startRuntimeScheduler } from './lib/runtimeDispatcher.js';
 import { llmRoutingSnapshot } from './lib/llmClient.js';
@@ -73,14 +74,6 @@ const DOCUMENT_CSP = [
   "frame-ancestors 'none'",
   "form-action 'self'"
 ].join('; ');
-
-const MIME = {
-  '.html': 'text/html',
-  '.js': 'application/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.ico': 'image/x-icon'
-};
 
 const router = createRouter({ maxBodyBytes: API_MAX_BODY_BYTES });
 router.use('/api', requestContext);
@@ -189,7 +182,7 @@ function serveStatic(filePath, ext, res) {
     res.end(injected);
     return;
   }
-  res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain' });
+  res.writeHead(200, { 'Content-Type': contentTypeFor(ext) });
   res.end(readFileSync(filePath));
 }
 
