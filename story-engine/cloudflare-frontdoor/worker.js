@@ -32,6 +32,8 @@ export function runtimeOrigin(env) {
   if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
     return null;
   }
+  // Preview-disabled origins must not initiate any outbound fetch (even when DNS is mocked).
+  if (parsed.hostname === 'invalid' || parsed.hostname.endsWith('.invalid')) return null;
 
   const localhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
   if (parsed.protocol === 'https:') return parsed.origin;
