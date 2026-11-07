@@ -33,6 +33,22 @@ test('fails closed when no runtime origin is configured', async () => {
   assert.equal(response.headers.get('x-storyengine-edge'), 'runtime-unavailable');
 });
 
+test('preview-disabled origin never initiates an outbound request', async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response('should not connect');
+  };
+
+  const response = await worker.fetch(new Request('https://storyengine.example/healthz'), {
+    STORYENGINE_RUNTIME_ORIGIN: 'https://preview-disabled.invalid'
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-storyengine-edge'), 'runtime-unavailable');
+  assert.equal(called, false);
+});
+
 test('fails closed when an API request has no rate-limit binding', async () => {
   let called = false;
   globalThis.fetch = async () => {
