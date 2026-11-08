@@ -32,7 +32,7 @@ export function runtimeOrigin(env) {
   if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
     return null;
   }
-  // Preview-disabled origins must not initiate any outbound fetch (even when DNS is mocked).
+  // Preview-disabled origins must not initiate any outbound fetch even when DNS is mocked.
   if (parsed.hostname === 'invalid' || parsed.hostname.endsWith('.invalid')) return null;
 
   const localhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
@@ -67,6 +67,13 @@ export async function rateLimitKey(request) {
   return sha256(material);
 }
 
+// Every API request counts against its client IP. Session and bearer values are
+// client-supplied, so rotating them cannot mint a fresh primary rate-limit bucket.
+export async function clientIpKey(request) {
+  const ip = String(request.headers.get('cf-connecting-ip') || '').trim();
+  return sha256(`ip:${ip || 'anonymous'}`);
+}
+
 async function enforceApiRateLimit(request, env) {
   const pathname = new URL(request.url).pathname;
   if (pathname !== '/api' && !pathname.startsWith(API_PREFIX)) return null;
@@ -76,13 +83,24 @@ async function enforceApiRateLimit(request, env) {
     return unavailable(503, 'StoryEngine API rate limiter is not configured for this deployment.', 'rate-limit-unavailable');
   }
 
-  const key = await rateLimitKey(request);
-  const { success } = await limiter.limit({ key });
-  if (success) return null;
+  const ipKey = await clientIpKey(request);
+  const subjectKey = await rateLimitKey(request);
+  const keys = subjectKey === ipKey ? [ipKey] : [ipKey, subjectKey];
 
-  const response = unavailable(429, 'StoryEngine API rate limit exceeded.', 'rate-limited');
-  response.headers.set('retry-after', '60');
-  return response;
+  try {
+    for (const key of keys) {
+      const { success } = await limiter.limit({ key });
+      if (!success) {
+        const response = unavailable(429, 'StoryEngine API rate limit exceeded.', 'rate-limited');
+        response.headers.set('retry-after', '60');
+        return response;
+      }
+    }
+  } catch {
+    return unavailable(503, 'StoryEngine API rate limiter is temporarily unavailable.', 'rate-limit-unavailable');
+  }
+
+  return null;
 }
 
 export default {
@@ -96,12 +114,26 @@ export default {
     if (limited) return limited;
 
     const incoming = new URL(request.url);
-    const target = new URL(incoming.pathname + incoming.search, origin);
+    // Set pathname/search on the trusted origin object. Concatenating a leading
+    // "//" path would otherwise become a protocol-relative URL and change host.
+    const target = new URL(origin);
+    target.pathname = incoming.pathname;
+    target.search = incoming.search;
 
     try {
       return await fetch(new Request(target, request));
     } catch {
       return unavailable(502, 'StoryEngine runtime is temporarily unavailable.');
     }
+  },
+
+  // The existing hourly trigger has no product job attached. Record the tick
+  // and do nothing: no runtime call and no state mutation.
+  scheduled(controller) {
+    console.log(JSON.stringify({
+      event: 'storyengine.cron.noop',
+      cron: controller.cron,
+      scheduledTime: controller.scheduledTime
+    }));
   }
 };
