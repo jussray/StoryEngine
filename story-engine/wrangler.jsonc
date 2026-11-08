@@ -2,8 +2,8 @@
 // Front door only — no static assets, so operator pages in public/ are never
 // published without the stateful runtime behind them. STORYENGINE_RUNTIME_ORIGIN
 // points at the Railway runtime; config/domain-authority.json separately owns the
-// public canonical StoryEngine origin. Preview bindings are isolated and fail
-// closed instead of reaching production state.
+// public canonical StoryEngine origin. Preview bindings remain isolated and fail
+// closed because production vars are not inherited.
 {
   "name": "storyengine",
   "main": "./cloudflare-frontdoor/worker.js",
@@ -23,9 +23,6 @@
     }
   ],
   "previews": {
-    "vars": {
-      "STORYENGINE_RUNTIME_ORIGIN": "https://preview-disabled.invalid"
-    },
     "ratelimits": [
       {
         "name": "STORYENGINE_API_RATE_LIMITER",
