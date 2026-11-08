@@ -33,6 +33,22 @@ test('fails closed when no runtime origin is configured', async () => {
   assert.equal(response.headers.get('x-storyengine-edge'), 'runtime-unavailable');
 });
 
+test('preview-disabled origin never initiates an outbound request', async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response('should not connect');
+  };
+
+  const response = await worker.fetch(new Request('https://storyengine.example/healthz'), {
+    STORYENGINE_RUNTIME_ORIGIN: 'https://preview-disabled.invalid'
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-storyengine-edge'), 'runtime-unavailable');
+  assert.equal(called, false);
+});
+
 test('fails closed when an API request has no rate-limit binding', async () => {
   let called = false;
   globalThis.fetch = async () => {
@@ -150,18 +166,142 @@ test('wrangler config deploys the front door only with a first-class API rate-li
   }]);
 });
 
-test('deployed runtime origin matches canonical production domain authority', () => {
+test('wrangler preview is isolated from production runtime and rate-limit state', () => {
+  const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+
+  assert.equal(config.previews.vars, undefined);
+  assert.equal(config.previews.ratelimits.length, 1);
+  const [previewLimiter] = config.previews.ratelimits;
+  assert.equal(previewLimiter.name, 'STORYENGINE_API_RATE_LIMITER');
+  assert.match(previewLimiter.namespace_id, /^[1-9]\d*$/);
+  assert.notEqual(previewLimiter.namespace_id, config.ratelimits[0].namespace_id);
+  assert.deepEqual(previewLimiter.simple, config.ratelimits[0].simple);
+});
+
+test('public canonical origin and stateful runtime origin remain distinct', () => {
   const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
   const authority = JSON.parse(readFileSync(new URL('../config/domain-authority.json', import.meta.url), 'utf8'));
   assert.equal(authority.mode, 'production');
-  assert.equal(config.vars.STORYENGINE_RUNTIME_ORIGIN, authority.productionOrigin);
-  assert.equal(new URL(authority.productionOrigin).protocol, 'https:');
-  assert.equal(new URL(authority.productionOrigin).origin, authority.productionOrigin);
+  assert.equal(authority.productionOrigin, 'https://storyengine.jussco.company');
+  assert.equal(config.vars.STORYENGINE_RUNTIME_ORIGIN, authority.runtimeOrigin);
+  assert.notEqual(authority.productionOrigin, authority.runtimeOrigin);
+  for (const origin of [authority.productionOrigin, authority.runtimeOrigin]) {
+    assert.equal(new URL(origin).protocol, 'https:');
+    assert.equal(new URL(origin).origin, origin);
+  }
 });
 
 test('manual front-door proof defaults to runtime-equivalence mode', () => {
   const workflow = readFileSync(new URL('../../.github/workflows/cloudflare-frontdoor-proof.yml', import.meta.url), 'utf8');
   assert.match(workflow, /expected_runtime_sha:\s*\n\s+description:.*\n\s+required: false\s*\n\s+type: string/);
   assert.match(workflow, /Resolve runtime-equivalent Railway release[\s\S]*?if: env\.EXPECTED_RUNTIME_SHA == ''/);
+});
+
+
+test('protocol-relative paths stay on the configured runtime origin', async () => {
+  let upstream = null;
+  globalThis.fetch = async request => {
+    upstream = request.url;
+    return new Response('ok');
+  };
+
+  const response = await worker.fetch(new Request('https://storyengine.example//attacker.example/collect?x=1', {
+    headers: { cookie: 'l99_session=receipt' }
+  }), {
+    STORYENGINE_RUNTIME_ORIGIN: 'https://runtime.storyengine.example',
+    STORYENGINE_API_RATE_LIMITER: allowLimiter()
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(new URL(upstream).origin, 'https://runtime.storyengine.example');
+  assert.equal(new URL(upstream).pathname, '//attacker.example/collect');
+  assert.equal(new URL(upstream).search, '?x=1');
+});
+
+test('rotating session values cannot evade the shared per-IP API rate limit', async () => {
+  const counts = new Map();
+  const limiter = {
+    async limit({ key }) {
+      const next = (counts.get(key) || 0) + 1;
+      counts.set(key, next);
+      return { success: next <= 120 };
+    }
+  };
+  globalThis.fetch = async () => new Response('ok');
+
+  const statuses = [];
+  for (let i = 0; i < 130; i += 1) {
+    const response = await worker.fetch(new Request('https://storyengine.example/api/stories', {
+      headers: {
+        cookie: `l99_session=rotating-${i}`,
+        'cf-connecting-ip': '203.0.113.7'
+      }
+    }), {
+      STORYENGINE_RUNTIME_ORIGIN: 'https://runtime.storyengine.example',
+      STORYENGINE_API_RATE_LIMITER: limiter
+    });
+    statuses.push(response.status);
+  }
+
+  assert.equal(statuses.filter(status => status === 200).length, 120);
+  assert.equal(statuses.filter(status => status === 429).length, 10);
+});
+
+test('a throwing rate limiter fails closed without calling the runtime', async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response('unexpected');
+  };
+
+  const response = await worker.fetch(new Request('https://storyengine.example/api/stories'), {
+    STORYENGINE_RUNTIME_ORIGIN: 'https://runtime.storyengine.example',
+    STORYENGINE_API_RATE_LIMITER: {
+      async limit() {
+        throw new Error('limiter offline');
+      }
+    }
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(called, false);
+  assert.equal(response.headers.get('x-storyengine-edge'), 'rate-limit-unavailable');
+});
+
+test('preview deployments carry no production runtime origin', () => {
+  const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+  assert.equal(config.previews?.vars?.STORYENGINE_RUNTIME_ORIGIN, undefined);
+  assert.equal(config.previews.ratelimits.length, 1);
+  assert.notEqual(config.previews.ratelimits[0].namespace_id, config.ratelimits[0].namespace_id);
+});
+
+test('scheduled cron tick is a recorded no-op that never reaches the runtime', async () => {
+  let fetched = false;
+  globalThis.fetch = async () => {
+    fetched = true;
+    return new Response('unexpected');
+  };
+  const logs = [];
+  const originalLog = console.log;
+  console.log = line => logs.push(line);
+  try {
+    await worker.scheduled(
+      { cron: '0 */1 * * *', scheduledTime: 1793130000000 },
+      { STORYENGINE_RUNTIME_ORIGIN: 'https://runtime.example' },
+      { waitUntil() {} }
+    );
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(fetched, false);
+  assert.equal(logs.length, 1);
+  assert.deepEqual(JSON.parse(logs[0]), {
+    event: 'storyengine.cron.noop',
+    cron: '0 */1 * * *',
+    scheduledTime: 1793130000000
+  });
 });
