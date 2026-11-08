@@ -170,9 +170,7 @@ test('wrangler preview is isolated from production runtime and rate-limit state'
   const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
 
-  assert.deepEqual(config.previews.vars, {
-    STORYENGINE_RUNTIME_ORIGIN: 'https://preview-disabled.invalid'
-  });
+  assert.equal(config.previews.vars, undefined);
   assert.equal(config.previews.ratelimits.length, 1);
   const [previewLimiter] = config.previews.ratelimits;
   assert.equal(previewLimiter.name, 'STORYENGINE_API_RATE_LIMITER');
