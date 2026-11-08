@@ -215,6 +215,10 @@ test('normalized multi-shot route rejects stale cookie before any paid submissio
       visual_style: 'cinematic_realism',
       action_beats: ['Mina crosses the rain-soaked street.', 'Mina reaches for the glowing door.']
     });
+    // The chargeable adapter requires a previously validated preview.
+    // Make the fixture valid so this regression reaches the continuity-cookie gate.
+    db.prepare('UPDATE story_video_jobs SET status=?,validation_json=? WHERE job_id=?')
+      .run('preview_validated', JSON.stringify({ passed: true }), created.job_id);
     const before = getStoryVideoJob(db, created.job_id);
     const staleCookie = createContinuityCookie(before).value;
     ensureHeygenSchema(db);
