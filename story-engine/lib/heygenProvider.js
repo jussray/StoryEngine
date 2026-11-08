@@ -142,6 +142,9 @@ function setStatus(db, attemptId, status, providerVideoId = null) {
   return atomic(db, () => {
     const current = db.prepare('SELECT * FROM story_video_heygen_attempts WHERE attempt_id=?').get(attemptId);
     if (!current) throw problem('HEYGEN_ATTEMPT_NOT_FOUND', 'Attempt was not found.');
+    // A slow, older refresh must never rewind a terminal provider outcome.
+    // Enforce this on the freshly read row inside BEGIN IMMEDIATE.
+    if (['provider_completed_unverified', 'provider_failed', 'rejected'].includes(current.status)) return current;
     if (current.status === status && (!providerVideoId || providerVideoId === current.provider_video_id)) return current;
     db.prepare(
       'UPDATE story_video_heygen_attempts SET status=?,provider_video_id=COALESCE(?,provider_video_id),updated_at=? WHERE attempt_id=?'

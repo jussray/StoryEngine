@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { createRouter } from '../lib/miniRouter.js';
 import { PassThrough } from 'node:stream';
 import videoEngineRoutes from '../routes/videoEngine.js';
 import { createContinuityCookie } from '../lib/videoContinuity.js';
+import { createStoryVideoJob, getStoryVideoJob } from '../lib/videoEngine.js';
 import {
   ensureHeygenSchema, getHeygenAttempt, heygenReadiness,
   submitHeygenShot, refreshHeygenShot
@@ -192,6 +194,116 @@ test('provider completed status is NOT playable media proof and does not authori
     assert.equal(getHeygenAttempt(db, anotherWorkspace, sent.attempt_id), null);
     const stale = job({ source_revision_id: 'revision_two' });
     await assert.rejects(refreshHeygenShot(db, stale, sent.attempt_id, { env }), { code: 'HEYGEN_STALE_PLAN' });
+  } finally { db.close(); }
+});
+
+test('normalized multi-shot route rejects stale cookie before any paid submission', async () => {
+  const db = new DatabaseSync(':memory:');
+  const originalKey = process.env.HEYGEN_API_KEY;
+  const originalSwitch = process.env.HEYGEN_SUBMISSIONS_ENABLED;
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  try {
+    db.exec(readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8'));
+    db.prepare('INSERT INTO stories (workspace_id,title,genre,pitch) VALUES (?,?,?,?)')
+      .run('workspace-continuity', 'Violet Door', 'fantasy', 'Mina crosses a storm toward a glowing door.');
+    db.prepare('INSERT INTO chapters (workspace_id,chapter_id,title,content,position) VALUES (?,?,?,?,?)')
+      .run('workspace-continuity', 'chapter-1', 'Storm', 'Mina crosses the street and reaches for the glowing door.', 0);
+    const created = createStoryVideoJob(db, {
+      workspace_id: 'workspace-continuity',
+      mode: 'cinematic_3d',
+      visual_style: 'cinematic_realism',
+      action_beats: ['Mina crosses the rain-soaked street.', 'Mina reaches for the glowing door.']
+    });
+    const before = getStoryVideoJob(db, created.job_id);
+    const staleCookie = createContinuityCookie(before).value;
+    ensureHeygenSchema(db);
+    const router = createRouter();
+    videoEngineRoutes(router, db);
+    process.env.HEYGEN_API_KEY = env.HEYGEN_API_KEY;
+    process.env.HEYGEN_SUBMISSIONS_ENABLED = 'true';
+    globalThis.fetch = async () => {
+      providerCalls += 1;
+      return mockResponse({ data: { video_id: 'video_confirmed_401' } });
+    };
+
+    const submit = payload => new Promise(resolve => {
+      const req = new PassThrough();
+      Object.assign(req, {
+        method: 'POST',
+        url: '/api/video-engine/jobs/' + created.job_id + '/heygen',
+        headers: { 'content-type': 'application/json' },
+        auth: {
+          actor_id: 'founder_test', tenant_id: 'founder',
+          role: 'administrator', workspace_ids: ['workspace-continuity']
+        }
+      });
+      const res = {
+        writableEnded: false, statusCode: 0,
+        writeHead(status) { this.statusCode = status; },
+        end(body = '') {
+          this.writableEnded = true;
+          resolve({ status: this.statusCode, body: JSON.parse(String(body)) });
+        }
+      };
+      router.handle(req, res);
+      req.end(JSON.stringify(payload));
+    });
+
+    const rejected = await submit({ ...input(before), continuity_cookie: staleCookie });
+    assert.equal(rejected.status, 409);
+    assert.equal(rejected.body.code, 'HEYGEN_STALE_PLAN');
+    assert.equal(providerCalls, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM story_video_heygen_attempts').get().n, 0);
+
+    const current = getStoryVideoJob(db, created.job_id);
+    assert.notEqual(createContinuityCookie(current).value, staleCookie);
+    const accepted = await submit(input(current));
+    assert.equal(accepted.status, 202);
+    assert.equal(accepted.body.status, 'submitted');
+    assert.equal(providerCalls, 1);
+    const reused = await submit(input(current));
+    assert.equal(reused.status, 200);
+    assert.equal(reused.body.reused, true);
+    assert.equal(providerCalls, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM story_video_heygen_attempts').get().n, 1);
+  } finally {
+    if (originalKey === undefined) delete process.env.HEYGEN_API_KEY;
+    else process.env.HEYGEN_API_KEY = originalKey;
+    if (originalSwitch === undefined) delete process.env.HEYGEN_SUBMISSIONS_ENABLED;
+    else process.env.HEYGEN_SUBMISSIONS_ENABLED = originalSwitch;
+    globalThis.fetch = originalFetch;
+    db.close();
+  }
+});
+
+test('overlapping provider refreshes cannot regress completed media state', async () => {
+  const db = new DatabaseSync(':memory:');
+  const current = job();
+  try {
+    const submitted = await submitHeygenShot(db, current, input(current), {
+      env, fetchImpl: async () => mockResponse({ data: { video_id: 'video_confirmed_987' } })
+    });
+    let releaseOlder, releaseNewer;
+    const olderResponse = new Promise(resolve => { releaseOlder = resolve; });
+    const newerResponse = new Promise(resolve => { releaseNewer = resolve; });
+    const older = refreshHeygenShot(db, current, submitted.attempt_id, {
+      env, fetchImpl: async () => olderResponse
+    });
+    const newer = refreshHeygenShot(db, current, submitted.attempt_id, {
+      env, fetchImpl: async () => newerResponse
+    });
+    releaseNewer(mockResponse({ data: { id: 'video_confirmed_987', status: 'completed' } }));
+    const finished = await newer;
+    assert.equal(finished.status, 'provider_completed_unverified');
+    releaseOlder(mockResponse({ data: { id: 'video_confirmed_987', status: 'processing' } }));
+    const staleResult = await older;
+    assert.equal(staleResult.status, 'provider_completed_unverified');
+    const persisted = getHeygenAttempt(db, current, submitted.attempt_id);
+    assert.equal(persisted.status, 'provider_completed_unverified');
+    const events = db.prepare('SELECT event_type FROM story_video_heygen_events WHERE attempt_id=? ORDER BY sequence')
+      .all(submitted.attempt_id).map(row => row.event_type);
+    assert.deepEqual(events, ['submitting', 'submitted', 'provider_completed_unverified']);
   } finally { db.close(); }
 });
 

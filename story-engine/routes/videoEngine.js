@@ -132,8 +132,10 @@ export default function videoEngineRoutes(router, db) {
       const job = getStoryVideoJob(db, req.params.job_id);
       if (!job) return json(res, 404, { error: 'Video job not found.' });
       if (!requireWorkspaceAccess(req, res, job.workspace_id)) return;
-      ensureStoryVideoContinuityGate(db, job.job_id);
-      const attempt = await submitHeygenShot(db, job, req.body || {});
+      // The gate can rewrite the persisted blueprint and invalidate the old cookie.
+      // Never reserve provider spend against the pre-normalization job snapshot.
+      const { job: currentJob } = ensureStoryVideoContinuityGate(db, job.job_id);
+      const attempt = await submitHeygenShot(db, currentJob, req.body || {});
       json(res, attempt.reused ? 200 : 202, attempt);
     } catch (error) {
       const code = error?.code || 'HEYGEN_PROVIDER_FAILED';
