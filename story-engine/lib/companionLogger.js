@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { appendSupabaseCompanionRequest } from './supabaseCompanionTransport.js';
 
 const VALID_COMPANIONS = new Set(['raylene', 'rylane', 'cloud', 'night', 'oracle']);
 const VALID_FALLBACK_REASONS = new Set([
@@ -19,30 +20,6 @@ const VALID_FALLBACK_REASONS = new Set([
 
 export const FALLBACK_ENABLED =
   (process.env.COMPANION_GHOST_FALLBACK_ENABLED ?? 'true') === 'true';
-
-let supabaseClient = null;
-let supabaseLoadAttempted = false;
-
-async function getSupabase() {
-  if (supabaseClient) return supabaseClient;
-
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  if (supabaseLoadAttempted) return null;
-
-  supabaseLoadAttempted = true;
-  try {
-    const { createClient } = await import('@supabase/supabase-js');
-    supabaseClient = createClient(url, key, {
-      auth: { persistSession: false },
-    });
-    return supabaseClient;
-  } catch (error) {
-    console.error('[companionLogger] Supabase client unavailable:', error?.message);
-    return null;
-  }
-}
 
 function validate(row) {
   if (!row.user_id) throw new Error('user_id required');
@@ -63,37 +40,41 @@ function validate(row) {
   }
 }
 
+// Best-effort telemetry only; never blocks a creator request indefinitely.
+const MAX_PENDING = 500;
 const queue = [];
+let activeDrain = null;
 
-async function drainQueue(client) {
-  if (!queue.length) return;
-  const batch = queue.splice(0, queue.length);
-  for (const row of batch) {
-    try {
-      const { error } = await client.from('companion_requests').insert(row);
-      if (error) throw error;
-    } catch (_) {
-      queue.unshift(row);
-      break;
+async function drainQueue() {
+  if (activeDrain) return activeDrain;
+  activeDrain = (async () => {
+    let delivered = 0;
+    while (queue.length && delivered < 8) {
+      try {
+        const wrote = await appendSupabaseCompanionRequest(queue[0]);
+        if (!wrote) return; // Supabase not configured; SQLite remains runtime authority.
+        queue.shift();
+        delivered += 1;
+      } catch (error) {
+        console.error('[companionLogger] Supabase telemetry unavailable:', error?.message);
+        return; // Keep unsent rows for a later attempt.
+      }
     }
+  })();
+  try {
+    await activeDrain;
+  } finally {
+    activeDrain = null;
   }
 }
 
 async function write(row) {
-  const client = await getSupabase();
-  if (!client) {
-    queue.push(row);
-    return;
+  if (queue.length >= MAX_PENDING) {
+    queue.shift();
+    console.error('[companionLogger] volatile telemetry queue full; oldest record dropped');
   }
-
-  try {
-    const { error } = await client.from('companion_requests').insert(row);
-    if (error) throw error;
-    await drainQueue(client);
-  } catch (error) {
-    console.error('[companionLogger] Supabase write failed, queuing:', error?.message);
-    queue.push(row);
-  }
+  queue.push(row);
+  await drainQueue();
 }
 
 export async function record(opts = {}) {
