@@ -19,7 +19,7 @@ test('disabled telemetry never writes to Supabase', async () => {
 test('incomplete or mismatched configurations reject before any network call', async () => {
   for (const config of [
     { SUPABASE_URL: env.SUPABASE_URL },
-    { ...env, SUPABASE_URL: 'https://iuxworqsqnyilbxrfctv.supabase.co' },
+    { ...env, SUPABASE_URL: 'https://aaaaaaaaaaaaaaaaaaaa.supabase.co' },
     { ...env, SUPABASE_URL: `http://${ref}.supabase.co` },
     { ...env, SUPABASE_URL: `${env.SUPABASE_URL}/rest/v1` },
     { ...env, SUPABASE_SERVICE_ROLE_KEY: 'sb_publishable_fake' },
