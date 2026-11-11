@@ -643,3 +643,54 @@ jobs:
             story-engine/test-results/
           if-no-files-found: warn
           retention-days: 90
+  production-verdict:
+    # A green run is not runtime proof: a nonqualifying signal is a clean no-op
+    # (verify-production is skipped). This job names the real outcome so the run
+    # page, the jobs API and any monitor can tell VERIFIED from NOT VERIFIED.
+    # Rule for readers: CLEARED only when this job is named "Production verdict: VERIFIED".
+    name: >-
+      ${{ needs.authorize-signal.result == 'failure' && 'Production verdict: FAILED (authorization)'
+      || needs.authorize-signal.result != 'success' && 'Production verdict: NOT VERIFIED (no production signal)'
+      || needs.authorize-signal.outputs.authorized != 'true' && 'Production verdict: NOT VERIFIED (no qualifying signal)'
+      || needs.verify-production.result == 'success' && 'Production verdict: VERIFIED'
+      || 'Production verdict: FAILED (runtime proof)' }}
+    needs: [authorize-signal, verify-production]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report production verdict
+        shell: bash
+        env:
+          AUTHORIZE_RESULT: ${{ needs.authorize-signal.result }}
+          AUTHORIZED: ${{ needs.authorize-signal.outputs.authorized }}
+          VERIFY_RESULT: ${{ needs.verify-production.result }}
+          RELEASE_SHA: ${{ needs.authorize-signal.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$AUTHORIZE_RESULT" = "failure" ]; then
+            verdict='FAILED (authorization)'; code=1
+          elif [ "$AUTHORIZE_RESULT" != "success" ]; then
+            verdict='NOT VERIFIED (no production signal)'; code=0
+          elif [ "$AUTHORIZED" != "true" ]; then
+            verdict='NOT VERIFIED (no qualifying signal)'; code=0
+          elif [ "$VERIFY_RESULT" = "success" ]; then
+            verdict='VERIFIED'; code=0
+          else
+            verdict="FAILED (runtime proof: ${VERIFY_RESULT})"; code=1
+          fi
+          {
+            echo "## Production verdict: ${verdict}"
+            echo
+            echo "- authorize-signal: ${AUTHORIZE_RESULT} (authorized=${AUTHORIZED:-false})"
+            echo "- verify-production: ${VERIFY_RESULT}"
+            echo "- release_sha: ${RELEASE_SHA:-none}"
+            echo
+            echo "A green run without VERIFIED is a no-op, not production proof."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$verdict" = "VERIFIED" ]; then
+            echo "::notice title=Production verdict::VERIFIED release_sha=${RELEASE_SHA}"
+          else
+            echo "::warning title=Production verdict::${verdict}; production runtime was not verified by this run"
+          fi
+          exit "$code"
