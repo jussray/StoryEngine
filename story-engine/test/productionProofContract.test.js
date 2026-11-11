@@ -314,3 +314,17 @@ test('non-main Railway deployment signals no-op instead of failing production pr
   assert.ok(authorize.includes("appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\\n')"));
   assert.ok(authorize.includes('Ignoring non-main deployment signal branch='));
 });
+
+test('production verdict job names VERIFIED vs NOT VERIFIED so a skipped proof cannot read as cleared', () => {
+  const verdict = jobPrefix(proofWorkflow, 'production-verdict');
+  assert.ok(verdict.includes('needs: [authorize-signal, verify-production]'));
+  assert.ok(verdict.includes('if: ${{ always() }}'));
+  assert.ok(verdict.includes("'Production verdict: VERIFIED'"));
+  assert.ok(verdict.includes("'Production verdict: NOT VERIFIED (no qualifying signal)'"));
+  assert.ok(verdict.includes("needs.verify-production.result == 'success'"));
+  assert.doesNotMatch(verdict, /secrets\./);
+  assert.doesNotMatch(verdict, /actions\/checkout/);
+  const verifyIndex = proofWorkflow.indexOf('  verify-production:');
+  const verdictIndex = proofWorkflow.indexOf('  production-verdict:');
+  assert.ok(verdictIndex > verifyIndex);
+});
