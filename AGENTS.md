@@ -123,3 +123,14 @@ Never commit `.codex/.env`, `OPENAI_API_KEY`, `MODEL_API_KEY`, service-role keys
 ## Evidence report
 
 List files changed, contracts changed, tests run, Playwright result or inapplicability, artifacts produced, failures or skips, isolation impact, release impact, Cloudflare and Founder Control Room evidence when applicable, rollback, residual risk, and next gate.
+
+## Reds rule — implant on sight (standing law, installed 2026-10-26)
+
+Any error or red that surfaces in this repository — CI/Actions failure,
+failing test, broken build, runtime defect — is diagnosed and fixed in the
+same flow it is seen, with the smallest reversible change, landed through
+this repo's normal gate and verified green on the exact head. A seen red is
+never parked as a report. Never merge over a blocked mandatory gate or a
+red exact head. A credential- or founder-gated red gets a full diagnosis
+plus the one unblocking action named — never silence, never a faked fix.
+Full charter: `.github/agents/reds-implant.agent.md`.
