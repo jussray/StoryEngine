@@ -125,7 +125,7 @@ test('deployment authorization rejects stale, rerun, and cross-branch receipts',
   assert.ok(authorize.includes('triggeringHeadSha !== releaseSha'));
   assert.ok(authorize.includes('deployment signal SHA does not match triggering workflow head SHA'));
   assert.ok(authorize.includes('statusCreatedAt'));
-  assert.ok(authorize.includes('15 * 60 * 1000'));
+  assert.ok(authorize.includes('30 * 60 * 1000'));
   assert.ok(authorize.includes('deployment status is stale at authorization time'));
   assert.doesNotMatch(authorize, /TRIGGERING_RUN_CREATED_AT/);
 });
