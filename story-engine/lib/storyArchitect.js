@@ -5,6 +5,7 @@ import * as Outline from '../models/outlineModel.js';
 import { enqueueRuntime } from './runtimeDispatcher.js';
 import { log } from '../models/eventModel.js';
 import { getIdea } from './ideaForge.js';
+import { persistStoryGenome } from './storyGenome.js';
 
 const ACT_BLUEPRINTS = [
   { act: 1, name: 'Setup', purpose: 'Establish the promise, protagonist, stakes, and first irreversible disturbance.' },
@@ -216,7 +217,6 @@ function upsertArchitecture(db, workspaceId, ideaId, architecture, validation) {
 }
 
 function seedGenome(db, workspaceId, architecture) {
-  const now = Date.now();
   const existing = db.prepare('SELECT * FROM story_genomes WHERE workspace_id = ?').get(workspaceId);
   const current = existing ? JSON.parse(existing.genome_json || '{}') : {};
   const genome = {
@@ -233,14 +233,7 @@ function seedGenome(db, workspaceId, architecture) {
       timeline: architecture.timeline
     }
   };
-  if (existing) {
-    db.prepare(`UPDATE story_genomes SET genome_json = ?, version = version + 1, updated_at = ? WHERE workspace_id = ?`)
-      .run(JSON.stringify(genome), now, workspaceId);
-  } else {
-    db.prepare(`INSERT INTO story_genomes (workspace_id, genome_json, version, updated_at) VALUES (?, ?, 1, ?)`)
-      .run(workspaceId, JSON.stringify(genome), now);
-  }
-  return genome;
+  return persistStoryGenome(db, workspaceId, genome, { source: 'story_architect.seed' });
 }
 
 export function buildStoryArchitecture(db, input = {}) {
