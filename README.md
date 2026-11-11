@@ -170,6 +170,30 @@ tenant / workspace
 3. Add a runtime book-to-social artifact producer that implements `story-engine/BOOK_TO_SOCIAL_GATE_NOTES.md`, validates `story-engine/schemas/book_to_social_artifact.schema.json`, and proves any user-visible preview with Playwright before promotion.
 4. Expand the verified StoryEngine release path format by format, preserving the rule that consequential publishing/distribution remains behind explicit authority and outcome evidence.
 
+## Supabase development setup
+
+- `.mcp.json` already defines a `supabase` MCP server. Its URL carries a `project_ref`. Confirm that ref names the project you intend before using it, because a stale or wrong ref points tools at the wrong database. Authenticate once with `claude /mcp`.
+- `supabase/config.toml` sets `project_id = "storyengine"`. That names the local stack, not a hosted project ref.
+- For direct Postgres access, take credentials from your environment or the team secret store. Never commit a password, a connection string that contains one, or a `.env` file.
+
+```bash
+psql "host=db.<PROJECT_REF>.supabase.co port=5432 dbname=postgres user=postgres"
+```
+
+Supply the password through `PGPASSWORD` or the interactive prompt. Optional agent skills: `npx skills add supabase/agent-skills`.
+
+### Supabase companion telemetry runtime (candidate only)
+
+The Node companion logger has a server-only PostgREST transport with no additional package dependency. It is **not** a StoryEngine content-store cutover.
+
+- Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `STORYENGINE_SUPABASE_PROJECT_REF` together on the **server**, only after confirming the correct Supabase project through provider readback. Never put server credentials in public clients, git, or browser config.
+- The transport accepts only the exact HTTPS origin `https://<PROJECT_REF>.supabase.co` matching `STORYENGINE_SUPABASE_PROJECT_REF`. A mismatch or incomplete configuration fails closed before a network request.
+- When Supabase is unconfigured or unavailable, creator work continues and telemetry remains a **bounded volatile queue**, not durable logging proof. No write to a different project is attempted.
+- The historical companion observability DDL at `schemas/migrations/001_companion_requests.sql` is **not** in `supabase/migrations/`; do not assume it was applied. Verify its schema, authorization model, and actual provider table before enabling telemetry. Do not copy an old policy into production without a security review.
+- The content-plane migration under `supabase/migrations/` is separate. SQLite on Railway `/data` remains production persistence until a specifically authorized, independently verified cutover.
+
+Focused synthetic tests: `cd story-engine && node --test test/supabaseCompanionTransport.test.js`. A passing synthetic test does not prove project access, table existence, production credentials, or successful live writes.
+
 ## License
 
 Copyright © 2024–2026 Juss Ray. All rights reserved.
