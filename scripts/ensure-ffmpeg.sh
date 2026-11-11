@@ -22,6 +22,13 @@ for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
   fi
 done
 
+# Ubuntu 26.04 runner images resolve the archive through a mirror list
+# (/etc/apt/apt-mirrors.txt, "Mirrorlist" in apt output) instead of a URL in
+# the sources files, so the rewrite above no longer reaches the Azure mirror.
+if [ -f /etc/apt/apt-mirrors.txt ]; then
+  sudo sed -i 's|https\?://azure\.archive\.ubuntu\.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+fi
+
 sudo dpkg --configure -a || true
 sudo timeout 180 apt-get "${apt_opts[@]}" update
 
