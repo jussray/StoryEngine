@@ -10,7 +10,7 @@ export default defineRailway((ctx) => {
   const app = service("story-engine", {
     source: github("jussray/StoryEngine", { branch: "main", rootDirectory: "story-engine" }),
     healthcheck: "/healthz",
-    replicas: { iad: 1 },
+    // Replica placement is deferred until the provider import confirms the service-region key.
     domains: ["storyengine.jussco.company"],
     volumeMounts: { "/data": data },
     env: {
