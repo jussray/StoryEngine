@@ -1,0 +1,58 @@
+# Read-only plan only. Never apply or deploy from this workflow.
+name: Railway IaC plan only
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".railway/**"
+      - ".github/workflows/railway-iac-plan.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: railway-iac-plan-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify current main, exact PR head, and merge-result ancestry
+        shell: bash
+        env:
+          EVENT_MAIN: ${{ github.event.pull_request.base.sha }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          live_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          live_head="$(git ls-remote origin "refs/heads/$PR_HEAD_REF" | cut -f1)"
+          [[ "$live_main" == "$EVENT_MAIN" ]] || { echo '::error::main drift; re-plan'; exit 1; }
+          [[ "$live_head" == "$EVENT_HEAD" ]] || { echo '::error::PR head drift; re-plan'; exit 1; }
+          git merge-base --is-ancestor "$live_main" HEAD
+          git merge-base --is-ancestor "$live_head" HEAD
+      - name: Require existing environment-scoped Railway project token
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: test -n "$RAILWAY_TOKEN"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install IaC SDK in ephemeral runner only
+        run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund railway@3.12.0
+      - uses: railwayapp/config@v1
+        with:
+          command: plan
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
