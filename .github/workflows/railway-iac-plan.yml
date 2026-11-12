@@ -11,6 +11,7 @@ permissions:
   contents: read
   pull-requests: write
   actions: read
+  id-token: write
 
 concurrency:
   group: railway-iac-plan-${{ github.repository }}-${{ github.event.pull_request.number }}
