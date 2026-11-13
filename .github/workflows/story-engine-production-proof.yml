@@ -129,7 +129,7 @@ jobs:
           const owner = String(process.env.REPOSITORY_OWNER || '').trim();
           const token = String(process.env.GH_TOKEN || '');
           const authorizationTime = Date.now();
-          const maxSignalAgeMs = 15 * 60 * 1000;
+          const maxSignalAgeMs = 30 * 60 * 1000; // 30 min: GitHub runner backlog has delayed authorize >15 min (runs #69-#75, 2026-11-11)
 
           if (signal.schema !== 'juss/storyengine-production-signal@v1') throw new Error('unsupported production signal schema');
           if (signal.trust !== 'untrusted-input') throw new Error('signal must remain explicitly untrusted');
