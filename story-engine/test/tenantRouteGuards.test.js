@@ -12,6 +12,7 @@ import auditRoutes from '../routes/audit.js';
 import campaignStudioRoutes from '../routes/campaignStudio.js';
 import ipGrowthRoutes from '../routes/ipGrowth.js';
 import ipSeedRoutes from '../routes/ipSeed.js';
+import controlRoomRoutes from '../routes/controlRoom.js';
 
 function registerRoutes(install) {
   const routes = new Map();
@@ -53,6 +54,7 @@ const continuityAudit = registerRoutes(auditRoutes);
 const campaignStudio = registerRoutes(campaignStudioRoutes);
 const ipGrowth = registerRoutes(ipGrowthRoutes);
 const ipSeeds = registerRoutes(ipSeedRoutes);
+const controlRoom = registerRoutes(controlRoomRoutes);
 
 const cases = [
   [learning, 'GET /api/ooda/episodes/:workspace_id'],
@@ -99,7 +101,9 @@ for (const [routes, endpoint] of [
   [campaignStudio, 'GET /api/campaign-studio/overview'],
   [ipGrowth, 'GET /api/ip-growth/overview'],
   [ipSeeds, 'GET /api/ip-seeds/overview'],
-  [ipSeeds, 'GET /api/ip-seeds']
+  [ipSeeds, 'GET /api/ip-seeds'],
+  [controlRoom, 'PUT /api/control-room/operator'],
+  [controlRoom, 'POST /api/control-room/operator/event']
 ]) {
   test(endpoint + ' rejects non-admin callers', () => {
     const handler = routes.get(endpoint);
@@ -129,7 +133,9 @@ for (const [routes, endpoint] of [
   [campaignStudio, 'GET /api/campaign-studio/overview'],
   [ipGrowth, 'GET /api/ip-growth/overview'],
   [ipSeeds, 'GET /api/ip-seeds/overview'],
-  [ipSeeds, 'GET /api/ip-seeds']
+  [ipSeeds, 'GET /api/ip-seeds'],
+  [controlRoom, 'PUT /api/control-room/operator'],
+  [controlRoom, 'POST /api/control-room/operator/event']
 ]) {
   test(endpoint + ' rejects a workspace-limited administrator before data access', () => {
     const handler = routes.get(endpoint);
