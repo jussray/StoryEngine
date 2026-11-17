@@ -65,6 +65,14 @@ export async function rateLimitKey(request) {
   return sha256(material);
 }
 
+// Every API request counts against its client IP. Session and bearer values are
+// client-supplied, so a client could otherwise mint a fresh bucket per request
+// by rotating them. The session or bearer bucket applies on top when present.
+export async function clientIpKey(request) {
+  const ip = String(request.headers.get('cf-connecting-ip') || '').trim();
+  return sha256(`ip:${ip || 'anonymous'}`);
+}
+
 async function enforceApiRateLimit(request, env) {
   const pathname = new URL(request.url).pathname;
   if (pathname !== '/api' && !pathname.startsWith(API_PREFIX)) return null;
@@ -74,13 +82,23 @@ async function enforceApiRateLimit(request, env) {
     return unavailable(503, 'StoryEngine API rate limiter is not configured for this deployment.', 'rate-limit-unavailable');
   }
 
-  const key = await rateLimitKey(request);
-  const { success } = await limiter.limit({ key });
-  if (success) return null;
+  const ipKey = await clientIpKey(request);
+  const subjectKey = await rateLimitKey(request);
+  const keys = subjectKey === ipKey ? [ipKey] : [ipKey, subjectKey];
 
-  const response = unavailable(429, 'StoryEngine API rate limit exceeded.', 'rate-limited');
-  response.headers.set('retry-after', '60');
-  return response;
+  try {
+    for (const key of keys) {
+      const { success } = await limiter.limit({ key });
+      if (!success) {
+        const response = unavailable(429, 'StoryEngine API rate limit exceeded.', 'rate-limited');
+        response.headers.set('retry-after', '60');
+        return response;
+      }
+    }
+  } catch {
+    return unavailable(503, 'StoryEngine API rate limiter is temporarily unavailable.', 'rate-limit-unavailable');
+  }
+  return null;
 }
 
 export default {
@@ -94,7 +112,15 @@ export default {
     if (limited) return limited;
 
     const incoming = new URL(request.url);
-    const target = new URL(incoming.pathname + incoming.search, origin);
+    // Set the path on the origin URL rather than concatenating strings. A path
+    // starting with "//" would otherwise parse as a protocol-relative URL and send
+    // the request, cookies and authorization included, to another host.
+    const target = new URL(origin);
+    target.pathname = incoming.pathname;
+    target.search = incoming.search;
+    if (target.origin !== origin) {
+      return unavailable(400, 'StoryEngine request path is not valid.', 'invalid-path');
+    }
 
     try {
       return await fetch(new Request(target, request));
