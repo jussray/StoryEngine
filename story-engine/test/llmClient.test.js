@@ -321,3 +321,41 @@ test('Anthropic error type cannot reflect a credential into exceptions', { concu
       error => error.status === 400 && !String(error).includes(secret));
   } finally { globalThis.fetch = priorFetch; restoreEnv(priorEnv); }
 });
+
+
+test('Anthropic spending limit is classified as a safe external blocker without leaking provider text', { concurrency: false }, async () => {
+  const priorEnv = captureEnv();
+  const priorFetch = globalThis.fetch;
+  const secret = 'test-spending-limit-secret';
+  try {
+    process.env.ANTHROPIC_API_KEY = secret;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        message: `Your account has reached its spending limit. reflected=${secret}`
+      }
+    }), { status: 400 });
+
+    const { completeWithReceipt, llmRoutingSnapshot } = await freshClient();
+    await assert.rejects(
+      () => completeWithReceipt('hello', { provider: 'anthropic', maxRetries: 0 }),
+      error => {
+        assert.equal(error.code, 'llm_provider_http_error');
+        assert.equal(error.status, 400);
+        assert.equal(error.provider_error_type, 'invalid_request_error');
+        assert.equal(error.provider_error_reason, 'spending_limit');
+        assert.equal(error.blocker_reason, 'spending_limit');
+        assert.equal(String(error.message).includes(secret), false);
+        assert.equal(String(error.message).includes('spending limit'), false);
+        return true;
+      }
+    );
+    const snapshot = llmRoutingSnapshot();
+    assert.equal(snapshot.circuits.anthropic.last_error, 'anthropic blocked spending_limit');
+    assert.equal(JSON.stringify(snapshot).includes(secret), false);
+  } finally {
+    globalThis.fetch = priorFetch;
+    restoreEnv(priorEnv);
+  }
+});

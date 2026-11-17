@@ -1,5 +1,7 @@
 // lib/storyGenome.js
 
+import { createHash } from 'node:crypto';
+import './sqliteTransaction.js';
 import { log } from '../models/eventModel.js';
 
 function words(text) {
@@ -22,6 +24,104 @@ function povMarkers(text) {
   const first = (source.match(/\b(i|me|my|mine|we|our|ours)\b/g) || []).length;
   const third = (source.match(/\b(he|she|they|him|her|them|his|hers|their)\b/g) || []).length;
   return { first, third };
+}
+
+function ensureGenomeHistorySchema(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS story_genome_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      genome_hash TEXT NOT NULL,
+      genome_json TEXT NOT NULL DEFAULT '{}',
+      source TEXT NOT NULL DEFAULT 'unknown',
+      created_at INTEGER NOT NULL,
+      UNIQUE(workspace_id, version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_story_genome_versions_workspace
+      ON story_genome_versions(workspace_id, version DESC);
+  `);
+}
+
+function hashGenomeJson(genomeJson) {
+  return `sha256:${createHash('sha256').update(genomeJson).digest('hex')}`;
+}
+
+function ensureGenomeHistoryRow(db, row, source = 'legacy_current_backfill') {
+  if (!row) return null;
+  ensureGenomeHistorySchema(db);
+  const genomeJson = row.genome_json || '{}';
+  const genomeHash = hashGenomeJson(genomeJson);
+  const version = Number(row.version);
+  const existing = db.prepare(`
+    SELECT genome_hash, genome_json
+    FROM story_genome_versions
+    WHERE workspace_id = ? AND version = ?
+  `).get(row.workspace_id, version);
+
+  if (existing) {
+    if (existing.genome_hash !== genomeHash || existing.genome_json !== genomeJson) {
+      throw new Error(`Story Genome history mismatch for ${row.workspace_id} v${version}.`);
+    }
+    return { version, genome_hash: genomeHash };
+  }
+
+  db.prepare(`
+    INSERT INTO story_genome_versions (
+      workspace_id, version, genome_hash, genome_json, source, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    row.workspace_id,
+    version,
+    genomeHash,
+    genomeJson,
+    source,
+    Number(row.updated_at || Date.now())
+  );
+  return { version, genome_hash: genomeHash };
+}
+
+function hydrateGenome(row) {
+  if (!row) return null;
+  const genome = JSON.parse(row.genome_json || '{}');
+  return {
+    ...genome,
+    version: Number(row.version),
+    genome_hash: row.genome_hash || hashGenomeJson(row.genome_json || '{}'),
+    updated_at: row.updated_at ?? row.created_at
+  };
+}
+
+export function persistStoryGenome(db, workspaceId, genome, { source = 'story_genome' } = {}) {
+  ensureGenomeHistorySchema(db);
+  const current = db.prepare(
+    'SELECT workspace_id, genome_json, version, updated_at FROM story_genomes WHERE workspace_id = ?'
+  ).get(workspaceId);
+  const version = Number(current?.version || 0) + 1;
+  const updatedAt = Date.now();
+  const genomeJson = JSON.stringify(genome || {});
+  const genomeHash = hashGenomeJson(genomeJson);
+
+  db.transaction(() => {
+    if (current) ensureGenomeHistoryRow(db, current);
+
+    db.prepare(`
+      INSERT INTO story_genomes (workspace_id, genome_json, version, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(workspace_id) DO UPDATE SET
+        genome_json = excluded.genome_json,
+        version = excluded.version,
+        updated_at = excluded.updated_at
+    `).run(workspaceId, genomeJson, version, updatedAt);
+
+    db.prepare(`
+      INSERT INTO story_genome_versions (
+        workspace_id, version, genome_hash, genome_json, source, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(workspaceId, version, genomeHash, genomeJson, source, updatedAt);
+  })();
+
+  return { ...genome, version, genome_hash: genomeHash, updated_at: updatedAt };
 }
 
 export function buildStoryGenome(db, workspaceId) {
@@ -108,29 +208,49 @@ export function buildStoryGenome(db, workspaceId) {
     generated_at: Date.now()
   };
 
-  const current = db.prepare('SELECT version FROM story_genomes WHERE workspace_id = ?').get(workspaceId);
-  const version = Number(current?.version || 0) + 1;
-  db.prepare(`
-    INSERT INTO story_genomes (workspace_id, genome_json, version, updated_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(workspace_id) DO UPDATE SET
-      genome_json = excluded.genome_json,
-      version = excluded.version,
-      updated_at = excluded.updated_at
-  `).run(workspaceId, JSON.stringify(genome), version, Date.now());
+  const persisted = persistStoryGenome(db, workspaceId, genome, { source: 'story_genome.refresh' });
 
   log(db, {
     workspace_id: workspaceId,
     mode: 'lindymode',
     event_type: 'story_genome.refreshed',
-    payload: { version, chapter_count: chapters.length, total_words: totalWords }
+    payload: {
+      version: persisted.version,
+      genome_hash: persisted.genome_hash,
+      chapter_count: chapters.length,
+      total_words: totalWords
+    }
   });
 
-  return { ...genome, version };
+  return persisted;
 }
 
 export function getStoryGenome(db, workspaceId) {
+  ensureGenomeHistorySchema(db);
   const row = db.prepare('SELECT * FROM story_genomes WHERE workspace_id = ?').get(workspaceId);
   if (!row) return null;
-  return { ...JSON.parse(row.genome_json || '{}'), version: row.version, updated_at: row.updated_at };
+  const snapshot = ensureGenomeHistoryRow(db, row);
+  return hydrateGenome({ ...row, genome_hash: snapshot.genome_hash });
+}
+
+export function getStoryGenomeVersion(db, workspaceId, version) {
+  ensureGenomeHistorySchema(db);
+  const row = db.prepare(`
+    SELECT workspace_id, version, genome_hash, genome_json, source, created_at
+    FROM story_genome_versions
+    WHERE workspace_id = ? AND version = ?
+  `).get(workspaceId, Number(version));
+  return hydrateGenome(row);
+}
+
+export function listStoryGenomeVersions(db, workspaceId, limit = 50) {
+  ensureGenomeHistorySchema(db);
+  const bounded = Math.max(1, Math.min(Number(limit) || 50, 200));
+  return db.prepare(`
+    SELECT workspace_id, version, genome_hash, genome_json, source, created_at
+    FROM story_genome_versions
+    WHERE workspace_id = ?
+    ORDER BY version DESC
+    LIMIT ?
+  `).all(workspaceId, bounded).map(row => ({ ...hydrateGenome(row), source: row.source }));
 }

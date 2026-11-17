@@ -14,6 +14,8 @@ import {
   storyEngineBrainSnapshot
 } from '../lib/storyEngineOrchestrator.js';
 import { updateOperatorProfile } from '../lib/operatorProfile.js';
+import { setWorkspaceAssist } from '../lib/assistMode.js';
+import { drainRuntimeQueue } from '../lib/runtimeDispatcher.js';
 import { writeRunSummary, getRunSummary } from '../lib/runSummary.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -162,4 +164,61 @@ test('Control Room historian writes a searchable permanent run summary', async (
   assert.ok(summary.stage_timings.length >= 8);
   assert.equal(getRunSummary(db, run.run_id).summary_id, summary.summary_id);
   db.close();
+});
+
+
+test('Anthropic spending limit blocks autonomous runtime without becoming a failed Story Engine run', async () => {
+  const priorAnthropic = process.env.ANTHROPIC_API_KEY;
+  const priorFetch = globalThis.fetch;
+  const secret = 'runtime-spending-limit-secret';
+  const db = createDb();
+  try {
+    process.env.ANTHROPIC_API_KEY = secret;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        message: `Account spending limit reached. reflected=${secret}`
+      }
+    }), { status: 400 });
+
+    const started = await startStoryEngineRun(db, {
+      story_vision: 'Write a compact fantasy book about a lighthouse that remembers lost ships.',
+      medium: 'book',
+      audience: 'adult',
+      story_kind: 'fantasy',
+      emotional_effect: 'wonder',
+      estimated_cost: 0,
+      ...TEST_IDENTITY
+    });
+
+    assert.equal(started.status, 'runtime_queued');
+    assert.equal(started.ghost_plan.draft.blocker_reason, 'spending_limit');
+    assert.equal(JSON.stringify(started.ghost_plan).includes(secret), false);
+
+    setWorkspaceAssist(db, started.workspace_id, { assist_mode: 'autonomous_studio' });
+    const drained = await drainRuntimeQueue(db, 1);
+    assert.equal(drained.length, 1);
+    assert.equal(drained[0].status, 'blocked');
+    assert.equal(drained[0].blocker_reason, 'spending_limit');
+    assert.equal(drained[0].error_code, 'writing_provider_blocked');
+
+    const dispatch = db.prepare('SELECT * FROM runtime_dispatch_queue WHERE dispatch_id=?').get(started.dispatch_id);
+    assert.equal(dispatch.status, 'blocked');
+    assert.equal(dispatch.blocker_reason, 'spending_limit');
+    assert.equal(dispatch.error_code, 'writing_provider_blocked');
+    assert.equal(String(dispatch.error).includes(secret), false);
+
+    const resumed = await getStoryEngineRun(db, started.run_id);
+    assert.equal(resumed.status, 'needs_review');
+    const runtimeStage = resumed.stages.filter(stage => stage.stage === 'runtime').at(-1);
+    assert.equal(runtimeStage.status, 'blocked');
+    assert.equal(runtimeStage.details.blocker_reason, 'spending_limit');
+    assert.equal(JSON.stringify(runtimeStage).includes(secret), false);
+  } finally {
+    db.close();
+    globalThis.fetch = priorFetch;
+    if (priorAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = priorAnthropic;
+  }
 });

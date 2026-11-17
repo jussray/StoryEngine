@@ -112,6 +112,7 @@ jobs:
           fi
 
           node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
           import { readFile, writeFile } from 'node:fs/promises';
 
           const signal = JSON.parse(await readFile(process.env.SIGNAL_PATH, 'utf8'));
@@ -128,7 +129,7 @@ jobs:
           const owner = String(process.env.REPOSITORY_OWNER || '').trim();
           const token = String(process.env.GH_TOKEN || '');
           const authorizationTime = Date.now();
-          const maxSignalAgeMs = 15 * 60 * 1000;
+          const maxSignalAgeMs = 30 * 60 * 1000; // 30 min: GitHub runner backlog has delayed authorize >15 min (runs #69-#75, 2026-11-11)
 
           if (signal.schema !== 'juss/storyengine-production-signal@v1') throw new Error('unsupported production signal schema');
           if (signal.trust !== 'untrusted-input') throw new Error('signal must remain explicitly untrusted');
@@ -159,6 +160,21 @@ jobs:
           const releaseSha = String(signal.release_sha || '').trim().toLowerCase();
           if (!/^[0-9a-f]{40}$/.test(releaseSha)) throw new Error('release_sha must be an exact 40-character Git SHA');
 
+          if (triggeringEvent === 'deployment_status' && triggeringHeadBranch !== 'main') {
+            appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\n');
+            console.log(`Ignoring non-main deployment signal branch=${triggeringHeadBranch || 'missing'}; production verification is a clean no-op.`);
+            process.exit(0);
+          }
+
+          if (triggeringEvent === 'deployment_status' && signal.qualifies !== true) {
+            appendFileSync(process.env.GITHUB_OUTPUT, 'authorized=false\n');
+            console.log(`Non-success deployment signal state=${String(signal.deployment_state || 'missing')}; production verification is a clean no-op.`);
+            process.exit(0);
+          }
+          if (triggeringEvent === 'workflow_dispatch' && signal.qualifies !== true) {
+            throw new Error('manual production signal must be qualifying');
+          }
+
           let deploymentId = 'manual';
           let signalMode = null;
           const headers = {
@@ -173,9 +189,6 @@ jobs:
             const deploymentStatusId = String(signal.github_deployment_status_id || '');
             if (!/^\d+$/.test(deploymentId) || !/^\d+$/.test(deploymentStatusId)) {
               throw new Error('deployment signal must carry numeric deployment and status ids');
-            }
-            if (triggeringHeadBranch !== 'main') {
-              throw new Error(`deployment signal branch is ${triggeringHeadBranch || 'missing'}, expected main`);
             }
             if (!/^[0-9a-f]{40}$/.test(triggeringHeadSha) || triggeringHeadSha !== releaseSha) {
               throw new Error('deployment signal SHA does not match triggering workflow head SHA');
@@ -202,8 +215,18 @@ jobs:
               throw new Error(`deployment status did not originate from Railway App (creator=${statusCreator || 'missing'}, app=${statusAppSlug || 'missing'})`);
             }
             if (status.state !== 'success') throw new Error(`deployment status is ${status.state}`);
-            if (String(deployment.environment || '').toLowerCase() !== 'production') {
+            const deploymentEnvironment = String(deployment.environment || '').trim().toLowerCase();
+            const repositoryName = repository.split('/').pop()?.trim().toLowerCase() || '';
+            const acceptedProductionEnvironments = new Set([
+              'production',
+              `${repositoryName} / production`
+            ]);
+            if (!acceptedProductionEnvironments.has(deploymentEnvironment)) {
               throw new Error(`deployment environment is ${deployment.environment}`);
+            }
+            const signaledEnvironment = String(signal.deployment_environment || '').trim().toLowerCase();
+            if (signaledEnvironment && signaledEnvironment !== deploymentEnvironment) {
+              throw new Error('deployment environment does not match signal');
             }
             if (String(deployment.sha || '').toLowerCase() !== releaseSha) {
               throw new Error('deployment SHA does not match signal release SHA');
@@ -243,6 +266,10 @@ jobs:
             }, null, 2) + '\n'
           );
           NODE
+
+          if [ ! -f production-signal/authorized.json ]; then
+            exit 0
+          fi
 
           release_sha="$(node -p "JSON.parse(require('fs').readFileSync('production-signal/authorized.json','utf8')).release_sha")"
           deployment_id="$(node -p "JSON.parse(require('fs').readFileSync('production-signal/authorized.json','utf8')).github_deployment_id")"
@@ -616,3 +643,54 @@ jobs:
             story-engine/test-results/
           if-no-files-found: warn
           retention-days: 90
+  production-verdict:
+    # A green run is not runtime proof: a nonqualifying signal is a clean no-op
+    # (verify-production is skipped). This job names the real outcome so the run
+    # page, the jobs API and any monitor can tell VERIFIED from NOT VERIFIED.
+    # Rule for readers: CLEARED only when this job is named "Production verdict: VERIFIED".
+    name: >-
+      ${{ needs.authorize-signal.result == 'failure' && 'Production verdict: FAILED (authorization)'
+      || needs.authorize-signal.result != 'success' && 'Production verdict: NOT VERIFIED (no production signal)'
+      || needs.authorize-signal.outputs.authorized != 'true' && 'Production verdict: NOT VERIFIED (no qualifying signal)'
+      || needs.verify-production.result == 'success' && 'Production verdict: VERIFIED'
+      || 'Production verdict: FAILED (runtime proof)' }}
+    needs: [authorize-signal, verify-production]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report production verdict
+        shell: bash
+        env:
+          AUTHORIZE_RESULT: ${{ needs.authorize-signal.result }}
+          AUTHORIZED: ${{ needs.authorize-signal.outputs.authorized }}
+          VERIFY_RESULT: ${{ needs.verify-production.result }}
+          RELEASE_SHA: ${{ needs.authorize-signal.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$AUTHORIZE_RESULT" = "failure" ]; then
+            verdict='FAILED (authorization)'; code=1
+          elif [ "$AUTHORIZE_RESULT" != "success" ]; then
+            verdict='NOT VERIFIED (no production signal)'; code=0
+          elif [ "$AUTHORIZED" != "true" ]; then
+            verdict='NOT VERIFIED (no qualifying signal)'; code=0
+          elif [ "$VERIFY_RESULT" = "success" ]; then
+            verdict='VERIFIED'; code=0
+          else
+            verdict="FAILED (runtime proof: ${VERIFY_RESULT})"; code=1
+          fi
+          {
+            echo "## Production verdict: ${verdict}"
+            echo
+            echo "- authorize-signal: ${AUTHORIZE_RESULT} (authorized=${AUTHORIZED:-false})"
+            echo "- verify-production: ${VERIFY_RESULT}"
+            echo "- release_sha: ${RELEASE_SHA:-none}"
+            echo
+            echo "A green run without VERIFIED is a no-op, not production proof."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$verdict" = "VERIFIED" ]; then
+            echo "::notice title=Production verdict::VERIFIED release_sha=${RELEASE_SHA}"
+          else
+            echo "::warning title=Production verdict::${verdict}; production runtime was not verified by this run"
+          fi
+          exit "$code"
