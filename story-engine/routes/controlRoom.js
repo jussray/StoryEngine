@@ -12,7 +12,7 @@ import { campaignStudioOverview } from '../lib/campaignStudio.js';
 import { founderEconomicsOverview } from '../lib/bootstrapEngine.js';
 import { ipSeedOverview } from '../lib/ipSeedMemoryGraph.js';
 import { llmRoutingSnapshot } from '../lib/llmClient.js';
-import { authSnapshot, requireRole, requireWorkspaceAccess } from '../lib/securityContext.js';
+import { authSnapshot, requireRole, requireWorkspaceAccess, requireGlobalAdministrator } from '../lib/securityContext.js';
 import {
   ProductBuildDirectiveValidationError,
   executeProductBuildDirective,
@@ -222,13 +222,13 @@ function registerOperatorRoutes(router, db, basePath) {
   router.get(`${basePath}/options`, (req, res) => json(res, 200, OPERATOR_PROFILE_OPTIONS));
   router.get(basePath, (req, res) => { try { json(res, 200, getOperatorSummary(db)); } catch (error) { json(res, 500, { error: error.message }); } });
   router.put(basePath, (req, res) => {
-    requireRole('administrator')(req, res, () => {
+    requireGlobalAdministrator(req, res, () => {
       try { const profile = updateOperatorProfile(db, req.body || {}); json(res, 200, { profile, summary: getOperatorSummary(db) }); }
       catch (error) { json(res, 400, { error: error.message }); }
     });
   });
   router.post(`${basePath}/event`, (req, res) => {
-    requireRole('release_manager')(req, res, () => {
+    requireGlobalAdministrator(req, res, () => {
       try { const event = recordOperatorEvent(db, req.body || {}); json(res, 201, { event, summary: getOperatorSummary(db) }); }
       catch (error) { json(res, 400, { error: error.message }); }
     });
