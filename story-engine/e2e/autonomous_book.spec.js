@@ -46,6 +46,15 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
 
   await page.goto(artifactHref);
   await expect(page.getByTestId('l99-artifact')).toBeVisible();
+  await expect(page.getByTestId('visual-studio')).toBeVisible();
+  const chapterVisualOptIn = page.locator('#enableChapterArt');
+  const firstVisualButton = page.getByRole('button', { name: 'Generate optional visual for chapter 1' });
+  await expect(chapterVisualOptIn).not.toBeChecked();
+  await expect(firstVisualButton).toBeDisabled();
+  await chapterVisualOptIn.check();
+  await expect(firstVisualButton).toBeEnabled();
+  await chapterVisualOptIn.uncheck();
+  await expect(firstVisualButton).toBeDisabled();
   await expect(page.getByTestId('story-unit')).toHaveCount(6);
   const unitText = await page.getByTestId('story-unit-content').allTextContents();
   expect(unitText).toHaveLength(6);
