@@ -10,9 +10,9 @@ function responseJson(data, status = 201) {
 }
 
 test('not configured returns a receipt and does not call provider', async () => {
-  const result = await generateImageWithReceipt('Art', { provider, model, token: '', fetchImpl: () => { throw Error('unexpected fetch'); } });
-  // Empty overrides may fall back to env; tests only require the explicit result contract.
-  assert.equal(['not_configured', 'failed'].includes(result.status), true);
+  const result = await generateImageWithReceipt('Art', { provider: 'disabled', model, token: '', fetchImpl: () => { throw Error('unexpected fetch'); } });
+  assert.equal(result.status, 'not_configured');
+  assert.equal(result.receipt.code, 'image_provider_not_configured');
   assert.equal(typeof result.receipt.prompt_hash, 'string');
 });
 
