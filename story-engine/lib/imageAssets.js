@@ -133,6 +133,7 @@ function attachCompletedImages(db, artifactId) {
     html = html.slice(0, headingEnd + 5) + markup + html.slice(headingEnd + 5);
   }
   const metadata = { ...artifact.metadata,
+    base_content_hash: artifact.metadata.base_content_hash || artifact.content_hash,
     cover_image_id: cover?.image_id || null,
     chapter_image_ids: Object.fromEntries([...byChapter.entries()].map(([index, item]) => [index, item.image_id])),
     visual_overlay_validation: 'unverified',
