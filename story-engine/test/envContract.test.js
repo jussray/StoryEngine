@@ -20,3 +20,11 @@ test('runtime keeps the legacy API key behind an explicit production escape hatc
     /process\.env\.NODE_ENV !== 'production' \|\| process\.env\.ALLOW_LEGACY_API_KEY === 'true'/,
   );
 });
+
+test('optional image provider contract keeps storage and spending disabled by default', () => {
+  assert.match(envExample, /^IMAGE_PROVIDER=$/m);
+  assert.match(envExample, /^REPLICATE_IMAGE_MODEL=$/m);
+  assert.match(envExample, /^REPLICATE_API_TOKEN=$/m);
+  assert.match(envExample, /^L99_IMAGE_OUTPUT_DIR=$/m);
+  assert.match(envExample, /^IMAGE_MAX_PER_ARTIFACT=8$/m);
+});
