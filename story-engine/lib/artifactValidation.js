@@ -137,17 +137,29 @@ function renderArtifactHtml({ title, intent, chapters, runId, profile }) {
       </section>`).join('\n')
     : '<section class="empty" data-testid="artifact-empty">No persisted story units are available for this artifact.</section>';
 
+  const visualMarkup = ['book', 'picture_book'].includes(intent?.medium || 'book')
+    ? '<section class="companion" data-testid="visual-studio">' +
+      '<h2>Book visuals</h2><p>Generate cover artwork from your manuscript. Chapter visuals are optional.</p>' +
+      '<button type="button" id="generateBookCover">Generate cover</button> ' +
+      '<label><input id="enableChapterArt" type="checkbox"> Add optional chapter visuals</label>' +
+      '<p id="imageGenerationStatus" role="status" aria-live="polite"></p>' +
+      '<div id="imageAssetList" aria-label="Saved image assets"></div>' +
+      '</section>'
+    : '';
+
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(title)}</title>
+  <script src="/story_images.js" defer></script>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#faf8f3;color:#1f1d1b;line-height:1.6}
     main{max-width:820px;margin:0 auto;padding:36px 18px 64px}
     header{border-bottom:2px solid #ded6c8;margin-bottom:24px;padding-bottom:18px}
     h1{font-size:clamp(32px,6vw,56px);line-height:1.05;margin:0 0 10px}
+    .visual-button,button#generateBookCover{padding:9px 13px;border:1px solid #7165a7;border-radius:9px;background:#33275d;color:#fff;cursor:pointer}.visual-button:disabled{opacity:.5}.visual-chapter-action{margin-top:10px}#imageGenerationStatus{min-height:1.5em}
     .meta{color:#6d655d;font-size:14px}.unit,.companion,.empty{background:#fff;border:1px solid #e3ddd1;border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 8px 24px #0000000a}.unit h2,.companion h2{margin-top:0}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:700}dd{margin:0}.companion article{border-top:1px solid #eee5d8;padding:12px 0}.companion small{color:#6d655d}
   </style>
 </head>
@@ -158,6 +170,7 @@ function renderArtifactHtml({ title, intent, chapters, runId, profile }) {
       <div class="meta">${escapeHtml(intent?.medium || 'story')} · ${escapeHtml(intent?.audience || 'audience')} · ${escapeHtml(intent?.story_kind || 'story')}</div>
     </header>
     ${chapterMarkup}
+    ${visualMarkup}
     ${renderCompanionMaterials(profile, chapters)}
   </main>
 </body>
