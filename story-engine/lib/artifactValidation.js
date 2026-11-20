@@ -189,7 +189,11 @@ export function generateStoryArtifact(db, { runId, workspaceId, intent = {} }) {
   const existing = runId ? db.prepare('SELECT * FROM story_artifacts WHERE run_id=? ORDER BY created_at DESC LIMIT 1').get(runId) : null;
   const now = Date.now();
 
-  if (existing && existing.content_hash === hash) return hydrateArtifact(existing);
+  // Images are optional projections. Replaying unchanged manuscript HTML must not
+  // duplicate the artifact merely because its stored HTML now includes generated art.
+  if (existing && (existing.content_hash === hash || safeJson(existing.metadata_json).base_content_hash === hash)) {
+    return hydrateArtifact(existing);
+  }
 
   const artifactId = `artifact_${randomUUID()}`;
   const childProfile = profile?.resolved_rules?.children_book_profile || null;
