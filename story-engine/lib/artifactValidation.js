@@ -143,6 +143,7 @@ function renderArtifactHtml({ title, intent, chapters, runId, profile }) {
       '<button type="button" id="generateBookCover">Generate cover</button> ' +
       '<label><input id="enableChapterArt" type="checkbox"> Add optional chapter visuals</label>' +
       '<p id="imageGenerationStatus" role="status" aria-live="polite"></p>' +
+      '<p id="imageCostSummary">Image spending is not checked yet.</p>' +
       '<div id="imageAssetList" aria-label="Saved image assets"></div>' +
       '</section>'
     : '';
