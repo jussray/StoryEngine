@@ -38,6 +38,7 @@ test('creator pages include the core story flow and shared browser clients', () 
   assert.ok(CREATOR_PAGES.has('/makevideo_storyboard_import.js'));
   assert.ok(CREATOR_PAGES.has('/l99_auth.js'));
   assert.ok(CREATOR_PAGES.has('/video_control_room.js'));
+  assert.ok(CREATOR_PAGES.has('/story_images.js'));
 });
 
 test('operator pages include all backstage dashboards', () => {
@@ -151,5 +152,19 @@ test('MakeVideo import helper requires a creator session but remains readable to
     const res=mockRes();
     assert.equal(enforcePageAccess('/makevideo_storyboard_import.js', {method:'GET',headers:{cookie:session.cookie}}, res,()=>{called=true;}),true);
     assert.equal(called,true);
+  } finally { revokeSession(session.token); }
+});
+
+test('story image controls script is creator-only and served to an authorized creator', () => {
+  const unauth = mockRes();
+  let called = false;
+  assert.equal(enforcePageAccess('/story_images.js', { method: 'GET', headers: {} }, unauth, () => { called = true; }), false);
+  assert.equal(called, false);
+  assert.equal(unauth.statusCode, 401);
+  const session = cookieFor('creator');
+  try {
+    const res = mockRes();
+    assert.equal(enforcePageAccess('/story_images.js', { method: 'GET', headers: { cookie: session.cookie } }, res, () => { called = true; }), true);
+    assert.equal(called, true);
   } finally { revokeSession(session.token); }
 });

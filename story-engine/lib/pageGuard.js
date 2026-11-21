@@ -23,7 +23,8 @@ const CREATOR_PAGES = new Set([
   '/video_studio.html',
   '/makevideo_storyboard_import.js',
   '/l99_auth.js',
-  '/video_control_room.js'
+  '/video_control_room.js',
+  '/story_images.js'
 ]);
 
 const OPERATOR_PAGES = new Set([

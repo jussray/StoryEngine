@@ -41,63 +41,7 @@
       if (report) {
         const artifact = await request('/api/artifacts/' + artifactId);
         const spend = await request('/api/workspaces/' + encodeURIComponent(artifact.workspace_id) + '/image-spend');
-        report.textContent = 'Known image spend: 
-    } catch {
-      show('Could not load saved images. Your book is unchanged.');
-    }
-  }
-  async function poll(imageId) {
-    for (let attempt = 0; attempt < 25; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 1800));
-      const item = await request('/api/images/' + encodeURIComponent(imageId) + '/refresh', 'POST');
-      show(describe(item));
-      if (item.status === 'complete') { location.reload(); return; }
-      if (item.status !== 'pending') { await reloadAssets(); return; }
-    }
-    show('The image is still processing. Refresh the page to check the saved status.');
-  }
-  async function submit(path, payload, button) {
-    button.disabled = true;
-    show('Submitting image request. Your book remains available.');
-    try {
-      const item = await request(path, 'POST', payload);
-      show(describe(item));
-      await reloadAssets();
-      if (item.status === 'complete') location.reload();
-      else if (item.status === 'pending') await poll(item.image_id);
-      else if (item.status === 'not_configured') show('Image generation is not configured. Your book is still ready.');
-      else if (item.status === 'failed') show('The image failed. Your book is unaffected.');
-    } catch (error) {
-      show('Image request failed: ' + error.message + '. Your book is unaffected.');
-    } finally { button.disabled = false; }
-  }
-  coverButton.addEventListener('click', () => submit(
-    existingCover ? '/api/images/' + encodeURIComponent(existingCover.image_id) + '/regenerate'
-      : '/api/images/artifacts/' + artifactId + '/cover', null, coverButton
-  ));
-  const chapters = [...document.querySelectorAll('[data-testid="story-unit"]')];
-  chapters.forEach((unit, index) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'visual-button visual-chapter-action';
-    button.textContent = 'Generate optional visual for chapter ' + (index + 1);
-    button.disabled = true;
-    button.addEventListener('click', () => submit(
-      '/api/images/artifacts/' + artifactId + '/chapter',
-      { include_visual: true, chapter_index: index + 1 }, button
-    ));
-    unit.append(button);
-    chapterButtons.push(button);
-  });
-  visualToggle.addEventListener('change', () => {
-    chapterButtons.forEach(button => { button.disabled = !visualToggle.checked; });
-    show(visualToggle.checked
-      ? 'Chapter visuals are optional. Choose individual chapters below.'
-      : 'Chapter visuals are off. No images will be generated for chapters.');
-  });
-  reloadAssets();
-})();
- + Number(spend.known_cost_usd || 0).toFixed(3) +
+        report.textContent = 'Known image spend: ' + Number(spend.known_cost_usd || 0).toFixed(3) +
           (spend.has_unknown_cost ? ' · Some provider costs are still unknown.' : '');
       }
     } catch {
@@ -130,7 +74,8 @@
     } finally { button.disabled = false; }
   }
   coverButton.addEventListener('click', () => submit(
-    '/api/images/artifacts/' + artifactId + '/cover', null, coverButton
+    existingCover ? '/api/images/' + encodeURIComponent(existingCover.image_id) + '/regenerate'
+      : '/api/images/artifacts/' + artifactId + '/cover', null, coverButton
   ));
   const chapters = [...document.querySelectorAll('[data-testid="story-unit"]')];
   chapters.forEach((unit, index) => {
