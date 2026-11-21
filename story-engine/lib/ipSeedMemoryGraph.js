@@ -5,6 +5,7 @@ import { buildStoryBlueprint, getStoryBlueprint, listBlueprintConversions } from
 import { listProductionPacks } from './ipStudio.js';
 import { listCampaignPacks } from './campaignStudio.js';
 import { log } from '../models/eventModel.js';
+import { seedEdges } from './seedGraphEdges.js';
 
 function parseJson(value, fallback) {
   try { return JSON.parse(value || ''); } catch { return fallback; }
@@ -154,26 +155,6 @@ function seedNodes(blueprint) {
   return nodes;
 }
 
-function seedEdges(seedId, nodes) {
-  const story = nodes.find(node => node.node_type === 'story');
-  if (!story) return [];
-  const edges = [];
-  const add = (from, to, relation, edge = {}, confidence_score = 75) => {
-    if (!from || !to) return;
-    edges.push({ seed_id: seedId, from, to, relation, edge, confidence_score });
-  };
-  for (const node of nodes) {
-    if (node === story) continue;
-    add(story.name, node.name, node.node_type === 'character' ? 'contains_character' : `defines_${node.node_type}`, { source: 'blueprint' }, node.confidence_score);
-  }
-  const characters = nodes.filter(node => node.node_type === 'character');
-  const beats = nodes.filter(node => node.node_type === 'emotional_beat');
-  for (const character of characters) {
-    for (const beat of beats) add(character.name, beat.name, 'appears_in_or_influences', { heuristic: true }, 55);
-  }
-  return edges;
-}
-
 function buildSeedObject(blueprint, seedVersion, lineage) {
   return {
     seed_version: seedVersion,
@@ -276,15 +257,17 @@ export function buildIpSeed(db, sourceWorkspaceId) {
     db.prepare('DELETE FROM ip_seed_nodes WHERE seed_id=?').run(seedId);
     db.prepare('DELETE FROM ip_seed_edges WHERE seed_id=?').run(seedId);
     const nodeInsert = db.prepare(`INSERT INTO ip_seed_nodes (node_id, seed_id, node_type, name, node_json, confidence_score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-    const nameToId = new Map();
+    // Persisted IDs are assigned in node order, never indexed by display name.
+    // Distinct story/character/beat nodes can legitimately share a name.
+    const nodeIds = [];
     for (const node of nodes) {
       const nodeId = `seed_node_${randomUUID()}`;
-      nameToId.set(node.name, nodeId);
+      nodeIds.push(nodeId);
       nodeInsert.run(nodeId, seedId, node.node_type, node.name, JSON.stringify(node.node), node.confidence_score, now, now);
     }
     const edgeInsert = db.prepare(`INSERT INTO ip_seed_edges (edge_id, seed_id, from_node_id, to_node_id, relation, edge_json, confidence_score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    for (const edge of seedEdges(seedId, nodes)) {
-      edgeInsert.run(`seed_edge_${randomUUID()}`, seedId, nameToId.get(edge.from), nameToId.get(edge.to), edge.relation, JSON.stringify(edge.edge), edge.confidence_score, now, now);
+    for (const edge of seedEdges(seedId, nodes, nodeIds)) {
+      edgeInsert.run(`seed_edge_${randomUUID()}`, seedId, edge.from_node_id, edge.to_node_id, edge.relation, JSON.stringify(edge.edge), edge.confidence_score, now, now);
     }
     db.prepare(`INSERT INTO ip_seed_versions (version_id, seed_id, seed_version, change_type, change_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(`seed_version_${randomUUID()}`, seedId, seedVersion, existing ? 'rebuilt_from_blueprint' : 'created_from_blueprint', JSON.stringify({ blueprint_id: row.blueprint_id, health }), now);
