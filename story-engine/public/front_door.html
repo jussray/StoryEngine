@@ -109,6 +109,24 @@
 
     .status { min-height: 20px; margin: 0; color: var(--muted); font-size: 14px; text-align: center; }
     .status.error { color: var(--error); }
+    .access-panel {
+      width: 100%; padding: 22px; border-radius: 22px;
+      border: 1px solid var(--line); background: var(--panel);
+      box-shadow: 0 0 36px rgba(157, 124, 255, 0.15);
+    }
+    .access-panel h3 { margin: 0 0 8px; font: 400 26px Georgia, serif; }
+    .access-panel p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
+    .access-panel form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+    .access-panel label { display: grid; gap: 8px; flex: 1 1 210px; font-size: 14px; }
+    .access-panel input {
+      width: 100%; min-height: 48px; padding: 12px; border-radius: 12px;
+      border: 1px solid var(--line); color: var(--text); background: #151029;
+      font: inherit;
+    }
+    .access-panel input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .access-panel .primary { flex: 0 1 200px; height: 48px; font-size: 15px; }
+    .access-panel .status { margin: 12px 0 0; text-align: left; }
+
 
     .shape-view { gap: 20px; }
     .idea-card {
@@ -275,6 +293,17 @@
         <button class="primary" id="continueBtn" type="button">Continue to studio <span aria-hidden="true">→</span></button>
       </div>
       <p class="status" id="status" aria-live="polite"></p>
+      <section id="creatorAccess" class="access-panel hidden" aria-labelledby="creatorAccessTitle">
+        <h3 id="creatorAccessTitle">Private creator access</h3>
+        <p>StoryEngine's studio is in private testing. Public creator accounts are not enabled yet. Invited creators can continue securely below.</p>
+        <form id="creatorAccessForm">
+          <label for="creatorAccessKey">Invitation access key
+            <input id="creatorAccessKey" type="password" autocomplete="off" required />
+          </label>
+          <button class="primary" id="creatorAccessSubmit" type="submit">Enter studio</button>
+        </form>
+        <p id="creatorAccessStatus" class="status" aria-live="polite"></p>
+      </section>
     </section>
   </main>
 
@@ -289,6 +318,11 @@
     const statusEl = document.getElementById('status');
     const frontStatusEl = document.getElementById('frontStatus');
     const charCount = document.getElementById('charCount');
+    const accessPanel = document.getElementById('creatorAccess');
+    const accessForm = document.getElementById('creatorAccessForm');
+    const accessKey = document.getElementById('creatorAccessKey');
+    const accessSubmit = document.getElementById('creatorAccessSubmit');
+    const accessStatus = document.getElementById('creatorAccessStatus');
 
     const selections = {
       medium: 'book',
@@ -316,6 +350,8 @@
     });
 
     editIdea.addEventListener('click', () => {
+      accessPanel.classList.add('hidden');
+      accessKey.value = '';
       shapeView.classList.add('hidden');
       frontView.classList.remove('hidden');
       visionEl.focus();
@@ -332,14 +368,7 @@
       });
     });
 
-    continueBtn.addEventListener('click', async () => {
-      const vision = visionEl.value.trim();
-      if (vision.length < 10) {
-        statusEl.textContent = 'Add a little more to your idea before continuing.';
-        statusEl.className = 'status error';
-        return;
-      }
-
+    async function createStudioRun() {
       continueBtn.disabled = true;
       statusEl.textContent = 'Opening your studio…';
       statusEl.className = 'status';
@@ -349,7 +378,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            story_vision: vision,
+            story_vision: visionEl.value.trim(),
             medium: selections.medium,
             audience: selections.audience,
             story_kind: 'other',
@@ -373,6 +402,53 @@
         statusEl.textContent = error.message || 'Something went wrong. Try again.';
         statusEl.className = 'status error';
         continueBtn.disabled = false;
+      }
+    }
+
+    continueBtn.addEventListener('click', async () => {
+      if (visionEl.value.trim().length < 10) {
+        statusEl.textContent = 'Add a little more to your idea before continuing.';
+        statusEl.className = 'status error';
+        return;
+      }
+      // Keep the cinematic, anonymous idea-shaping journey public. Creation
+      // requires an actual server session; it must never trigger a JS key prompt.
+      continueBtn.disabled = true;
+      try {
+        const session = await window.L99Auth.currentSession();
+        if (!session?.authenticated) {
+          accessPanel.classList.remove('hidden');
+          accessStatus.textContent = '';
+          accessKey.focus();
+          return;
+        }
+        await createStudioRun();
+      } catch {
+        accessPanel.classList.remove('hidden');
+        accessStatus.textContent = 'Creator sign-in is required to open the studio.';
+        accessKey.focus();
+      } finally {
+        continueBtn.disabled = false;
+      }
+    });
+
+    accessForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (visionEl.value.trim().length < 10) return;
+      const key = accessKey.value;
+      accessKey.value = '';
+      accessSubmit.disabled = true;
+      accessStatus.textContent = 'Checking private creator access…';
+      accessStatus.className = 'status';
+      try {
+        await window.L99Auth.signInWithAccessKey(key);
+        accessPanel.classList.add('hidden');
+        await createStudioRun();
+      } catch {
+        accessStatus.textContent = 'Private access could not be verified. Check your invitation credential.';
+        accessStatus.className = 'status error';
+      } finally {
+        accessSubmit.disabled = false;
       }
     });
 
