@@ -8,11 +8,6 @@
     }
   }
 
-  function askBootstrapKey() {
-    const entered = window.prompt('Enter the L99 bootstrap key for this session:');
-    return String(entered || '').trim();
-  }
-
   // Older builds persisted the bootstrap credential in web storage. Purge that
   // state immediately. New credentials remain in memory only long enough to be
   // exchanged for the server-issued HttpOnly SameSite session cookie.
@@ -36,9 +31,16 @@
       purgeLegacyBootstrapKey();
       return existing;
     }
+    // Browsing the public StoryEngine front door never requests a private
+    // credential. Protected APIs remain inaccessible without a server session.
+    throw new Error('Creator sign-in required.');
+  }
 
-    const key = askBootstrapKey();
-    if (!key) throw new Error('Authentication required.');
+  // Transitional private-beta access only. Public account creation and
+  // recovery must be implemented separately before a general-audience launch.
+  async function signInWithAccessKey(rawKey) {
+    const key = String(rawKey || '').trim();
+    if (!key) throw new Error('Enter your private access key.');
 
     try {
       const response = await originalFetch('/api/auth/session', {
@@ -48,11 +50,13 @@
         body: '{}'
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || `Authentication failed (${response.status}).`);
+      if (!response.ok || !payload.authenticated) {
+        throw new Error(payload.message || payload.error || 'Private access was not accepted.');
+      }
+      sessionPromise = Promise.resolve(payload);
       return payload;
     } finally {
-      // The lexical key reference becomes unreachable after this call returns;
-      // there is deliberately no localStorage/sessionStorage persistence path.
+      // No access credential is persisted or added to ordinary API requests.
       purgeLegacyBootstrapKey();
     }
   }
@@ -70,6 +74,7 @@
   window.L99Auth = {
     ensureSession,
     currentSession,
+    signInWithAccessKey,
     async logout() {
       await originalFetch('/api/auth/logout', {
         method: 'POST',
@@ -95,5 +100,5 @@
     });
   };
 
-  void ensureSession().catch(() => {});
+  // Do not ask visitors for an internal key on initial page load.
 })();
