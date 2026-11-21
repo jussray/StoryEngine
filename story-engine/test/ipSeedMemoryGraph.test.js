@@ -95,3 +95,16 @@ test('IP Seed records proposed updates without mutating the validated seed', () 
   assert.ok(refetched.versions.some(version => version.change_type === 'proposed_update'));
   db.close();
 });
+
+test('IP Seed persists only resolvable edge endpoints', () => {
+  const db = createDb();
+  const workspaceId = createBook(db);
+  const seed = buildIpSeed(db, workspaceId);
+  const persistedNodeIds = new Set(seed.nodes.map(node => node.node_id));
+  assert.ok(seed.edges.length > 0);
+  for (const edge of seed.edges) {
+    assert.ok(persistedNodeIds.has(edge.from_node_id), 'edge source ID must exist');
+    assert.ok(persistedNodeIds.has(edge.to_node_id), 'edge target ID must exist');
+  }
+  db.close();
+});
