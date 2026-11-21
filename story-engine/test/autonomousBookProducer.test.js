@@ -115,6 +115,15 @@ test('Autonomous Studio persists a complete book before runtime and cannot relea
     assert.ok(blockers.includes('artifact_real_route_playwright'));
     assert.ok(!blockers.includes('chapter_presence'));
     assert.ok(!blockers.includes('chapter_completeness'));
+
+    // An older proof must not survive removal of the original creator's authority.
+    db.prepare(`UPDATE story_artifacts SET status='validated', validation_json=? WHERE artifact_id=?`)
+      .run(JSON.stringify({ passed: true, real_route_proof: true }), runAfterRuntime.artifact.artifact_id);
+    db.prepare('DELETE FROM workspace_memberships WHERE workspace_id=?').run(started.workspace_id);
+    const afterRevocation = await getStoryEngineRun(db, started.run_id, { resume: true });
+    assert.equal(afterRevocation.artifact.validation.passed, false);
+    assert.equal(afterRevocation.artifact.validation.real_route_proof, false);
+    assert.equal(afterRevocation.artifact.validation.playwright.skipped_reason, 'real_route_context_required');
   } finally {
     db.close();
     await provider.close();

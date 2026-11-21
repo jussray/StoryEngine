@@ -89,3 +89,35 @@ test('creator can answer StoryEngine questions and receive a persisted six-chapt
   await expect(page).toHaveURL(new RegExp(`story_engine\\.html\\?.*run_id=${created.run_id}`));
   await expect(page.locator('#runStatus')).toHaveText('complete');
 });
+
+test('background resume validates the actual artifact route without creator-page recovery', async ({ page }) => {
+  await establishBrowserSession(page, TENANT_CREATOR_BOOTSTRAP_KEY);
+  const createdResponse = await page.context().request.post('/api/story-engine/runs', {
+    data: {
+      story_vision: 'A young explorer finds a map showing the future of her town and must decide what to protect.',
+      medium: 'book', audience: 'middle_grade', story_kind: 'mystery',
+      emotional_effect: 'wonder', assist_mode: 'autonomous_studio'
+    }
+  });
+  expect(createdResponse.status()).toBe(201);
+  const created = await createdResponse.json();
+  expect(created.status).toBe('runtime_queued');
+  const drainResponse = await page.context().request.post('/api/runtime/drain', {
+    headers: { 'x-api-key': ADMIN_BOOTSTRAP_KEY },
+    data: { limit: 5 }
+  });
+  expect(drainResponse.status()).toBe(200);
+  const drain = await drainResponse.json();
+  expect(drain.processed.find(item => item.dispatch_id === created.dispatch_id)?.status).toBe('completed');
+
+  // No page visit or manual POST /api/artifacts/:id/validate before resume.
+  const resumedResponse = await page.context().request.post(`/api/story-engine/runs/${created.run_id}/resume`, { data: {} });
+  expect(resumedResponse.status()).toBe(200);
+  const resumed = await resumedResponse.json();
+  expect(resumed.artifact.validation).toMatchObject({
+    passed: true, real_route_proof: true, validator: 'playwright_real_route_artifact_gate'
+  });
+  expect(resumed.artifact.validation.playwright).toMatchObject({
+    passed: true, http_status: 200, expected_unit_count: 6, unit_count: 6
+  });
+});

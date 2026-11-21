@@ -8,6 +8,7 @@ import { evaluateWorkspace, persistDecision, runReleaseAudit } from './decisionE
 import { enqueueRuntime } from './runtimeDispatcher.js';
 import { evaluateOperatorConstraint } from './operatorProfile.js';
 import { generateStoryArtifact, validateArtifactWithPlaywright } from './artifactValidation.js';
+import { issueSession, revokeSession, roleAtLeast, sessionCookie } from './securityContext.js';
 import { writeRunSummary } from './runSummary.js';
 import { draftStoryUnit, ghostCommandOptions } from './ghostWriter.js';
 
@@ -371,6 +372,43 @@ export function approveStoryEngineRun(db, runId) {
   return hydrateRun(db, runId);
 }
 
+// Background proof uses the existing session membrane, scoped to the run's
+// original creator and workspace. Revoked memberships never mint proof access.
+async function validateRunArtifactWithPlaywright(db, run, artifactId) {
+  const originalCreator = db.prepare(`
+    SELECT s.tenant_id, s.created_by_actor_id AS actor_id, wm.role
+    FROM stories s
+    JOIN workspace_memberships wm
+      ON wm.workspace_id = s.workspace_id
+     AND wm.tenant_id = s.tenant_id
+     AND wm.actor_id = s.created_by_actor_id
+    WHERE s.workspace_id = ?
+  `).get(run.workspace_id);
+  const port = Number(process.env.PORT || 3000);
+  if (!originalCreator?.tenant_id || !originalCreator?.actor_id ||
+      !roleAtLeast(originalCreator, 'creator') ||
+      !Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    // Missing or revoked creator authority invalidates even an older successful proof.
+    return validateArtifactWithPlaywright(db, artifactId, { allowCachedProof: false });
+  }
+
+  const proofSession = issueSession({
+    actor_id: originalCreator.actor_id,
+    tenant_id: originalCreator.tenant_id,
+    role: 'creator',
+    workspace_ids: [run.workspace_id]
+  });
+  try {
+    return await validateArtifactWithPlaywright(db, artifactId, {
+      // Loopback avoids sending proof-only cookies to external configured hosts.
+      baseUrl: `http://127.0.0.1:${port}`,
+      cookieHeader: sessionCookie(proofSession.token, proofSession.max_age_seconds).split(';', 1)[0]
+    });
+  } finally {
+    revokeSession(proofSession.token);
+  }
+}
+
 export async function resumeStoryEngineRun(db, runId) {
   ensureStoryEngineSchema(db);
   const run = hydrateRun(db, runId);
@@ -407,7 +445,7 @@ export async function resumeStoryEngineRun(db, runId) {
   setStage(db, runId, run.workspace_id, 'learning_engine', 'completed', 'Learning Engine recorded the execution lesson.', { learning });
 
   const previewArtifact = generateStoryArtifact(db, { runId, workspaceId: run.workspace_id, intent: run.intent });
-  const validatedArtifact = await validateArtifactWithPlaywright(db, previewArtifact.artifact_id);
+  const validatedArtifact = await validateRunArtifactWithPlaywright(db, run, previewArtifact.artifact_id);
   db.prepare('UPDATE story_engine_runs SET artifact_json=? WHERE run_id=?').run(JSON.stringify({ artifact_id: validatedArtifact.artifact_id, status: validatedArtifact.status, title: validatedArtifact.title, validation: validatedArtifact.validation, phase: 'playwright_preview' }), runId);
   setStage(db, runId, run.workspace_id, 'playwright_validation', validatedArtifact.validation.passed ? 'completed' : 'blocked', validatedArtifact.validation.passed ? 'Runtime surface passed Playwright validation.' : 'Runtime surface failed Playwright validation.', { artifact_id: validatedArtifact.artifact_id, validation: validatedArtifact.validation });
 

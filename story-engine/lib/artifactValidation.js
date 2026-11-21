@@ -307,7 +307,7 @@ export async function validateArtifactWithPlaywright(db, artifactId, options = {
   const artifact = hydrateArtifact(db.prepare('SELECT * FROM story_artifacts WHERE artifact_id=?').get(artifactId));
   if (!artifact) throw new Error('Artifact not found.');
 
-  if (!options.baseUrl && artifact.validation?.passed === true && artifact.validation?.real_route_proof === true) {
+  if (!options.baseUrl && options.allowCachedProof !== false && artifact.validation?.passed === true && artifact.validation?.real_route_proof === true) {
     return artifact;
   }
 
