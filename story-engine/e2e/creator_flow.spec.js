@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { establishBrowserSession } from './session.js';
+import { ADMIN_BOOTSTRAP_KEY, establishBrowserSession } from './session.js';
 
 test('front door preserves base context through shape step and hands exact run identity to the StoryEngine studio', async ({ page }) => {
   const run = {
@@ -100,4 +100,71 @@ test('front door preserves base context through shape step and hands exact run i
 
   expect(requestedRunIds).toEqual([run.run_id]);
   expect(requestedRunIds).not.toContain(run.workspace_id);
+});
+
+test('anonymous front door is cinematic and never asks for a bootstrap credential', async ({ page, request }) => {
+  const dialogs = [];
+  let createRequests = 0;
+  page.on('dialog', dialog => {
+    dialogs.push(dialog.message());
+    void dialog.dismiss();
+  });
+  page.on('request', req => {
+    if (new URL(req.url()).pathname === '/api/story-engine/runs' && req.method() === 'POST') {
+      createRequests += 1;
+    }
+  });
+
+  const unauthenticated = await request.get('/api/auth/me');
+  expect(unauthenticated.status()).toBe(401);
+
+  const landing = await page.goto('/');
+  expect(landing?.status()).toBe(200);
+  await expect(page.getByRole('heading', { name: 'What do you want to create?' })).toBeVisible();
+  await expect(page.locator('.hero-art')).toBeVisible();
+  await expect(page.locator('#creatorAccess')).toBeHidden();
+
+  await page.locator('#vision').fill('A lighthouse becomes a portal to a world of living books.');
+  await page.getByRole('button', { name: /Begin creating/ }).click();
+  await expect(page.getByRole('heading', { name: 'Let’s shape your idea.' })).toBeVisible();
+  await page.getByRole('button', { name: /Continue to studio/ }).click();
+
+  await expect(page.locator('#creatorAccess')).toBeVisible();
+  await expect(page.locator('#creatorAccessKey')).toBeEmpty();
+  expect(dialogs).toEqual([]);
+  expect(createRequests).toBe(0);
+
+  await page.locator('#creatorAccessKey').fill('invalid-invitation');
+  await page.getByRole('button', { name: 'Enter studio' }).click();
+  await expect(page.locator('#creatorAccessStatus')).toContainText('could not be verified');
+  await expect(page.locator('#creatorAccessKey')).toBeEmpty();
+  expect(createRequests).toBe(0);
+});
+
+test('explicit private beta sign-in creates a server session before the creator run', async ({ page }) => {
+  let createRequests = 0;
+  await page.route('**/api/story-engine/runs', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    createRequests += 1;
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ run_id: 'private-run', workspace_id: 'private-workspace' })
+    });
+  });
+
+  await page.goto('/front_door.html');
+  await page.locator('#vision').fill('A city of ink and paper opens its gates to creators.');
+  await page.getByRole('button', { name: /Begin creating/ }).click();
+  await page.getByRole('button', { name: /Continue to studio/ }).click();
+  await expect(page.locator('#creatorAccess')).toBeVisible();
+
+  await page.locator('#creatorAccessKey').fill(ADMIN_BOOTSTRAP_KEY);
+  await page.getByRole('button', { name: 'Enter studio' }).click();
+
+  await expect(page).toHaveURL(/\/story_engine\.html\?run_id=private-run&workspace_id=private-workspace$/);
+  expect(createRequests).toBe(1);
+  const me = await page.context().request.get('/api/auth/me');
+  expect(me.status()).toBe(200);
+  expect((await me.json()).authenticated).toBe(true);
 });
