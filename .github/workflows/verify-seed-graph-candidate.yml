@@ -1,0 +1,35 @@
+name: Verify Seed Graph Candidate
+
+on:
+  push:
+    branches:
+      - fix/ip-seed-edge-identity-20261121
+    paths:
+      - 'story-engine/lib/ipSeedMemoryGraph.js'
+      - 'story-engine/lib/seedGraphEdges.js'
+      - 'story-engine/test/ipSeedMemoryGraph.test.js'
+      - 'story-engine/test/seedGraphEdges.test.js'
+      - '.github/workflows/verify-seed-graph-candidate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  seed-graph:
+    name: Exact-head StoryEngine seed graph
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Prove exact commit
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Run focused graph and persisted-edge regression tests
+        working-directory: story-engine
+        run: node --test test/seedGraphEdges.test.js test/ipSeedMemoryGraph.test.js
