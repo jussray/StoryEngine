@@ -78,6 +78,9 @@ test('front door preserves base context through shape step and hands exact run i
 
   await page.getByRole('button', { name: /Continue to studio/ }).click();
 
+  // Session verification introduces one real async hop before the POST.
+  // Wait for the observed request instead of asserting during that hop.
+  await expect.poll(() => createPayload, { message: 'creator run POST was issued' }).not.toBeNull();
   expect(createPayload).toMatchObject({
     story_vision: baseContext,
     medium: 'book',
