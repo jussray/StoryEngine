@@ -1,5 +1,20 @@
 # StoryEngine / L99
 
+<!-- public-summary:start -->
+## Product overview
+
+**StoryEngine helps creators develop an idea into a finished creative work, starting with a book.** Its product direction connects writing, revision, optional visuals, packaging, release preparation, and creator-controlled distribution. Books are not assumed to be illustrated or storybooks; visuals should be optional and appropriate to the project.
+
+**What to show today:** the source-backed creator and workflow experience that is demonstrably functional, with L99 as the governed state, provenance, and release-gate runtime underneath StoryEngine. The larger multi-format publishing journey remains a product goal, not a claim that every stage already operates end to end.
+
+**Evidence boundary (21 November 2026):** `main` at `4a9e0f8` recorded successful build and source-contract checks, but those checks alone do **not** prove live image generation, all-provider integration, customer checkout, distribution, or publication.
+
+**Public demonstration rule:** use rights-cleared examples and synthetic creator materials. Do not show unpublished customer works, private operational receipts, secrets, or provider configuration.
+
+---
+<!-- public-summary:end -->
+
+
 > **Copyright © 2024–2026 Juss Ray. All rights reserved.**
 > This is proprietary software. No license to use, copy, modify, distribute,
 > sublicense, or create derivative works is granted. See [LICENSE](LICENSE).
