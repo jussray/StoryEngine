@@ -26,6 +26,8 @@ jobs:
     name: Validate Story Schemas
     runs-on: ubuntu-latest
     steps:
+      - name: Install upstream Git security release before checkout
+        uses: jussray/founder-control-room/.github/actions/refresh-git-security@0a739664e85443fb79cfe58202e2eea6ce01d7ff
       - name: Checkout exact head
         uses: actions/checkout@v4
         with:
