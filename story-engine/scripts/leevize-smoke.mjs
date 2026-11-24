@@ -56,6 +56,10 @@ async function main() {
   const mime=ref.toLowerCase().endsWith('.png')?'image/png':ref.toLowerCase().endsWith('.webp')?'image/webp':/\.jpe?g$/i.test(ref)?'image/jpeg':null;
   if(!mime) fail('REFERENCE_FORMAT');
   const bytes=readFileSync(ref);
+  const fixturePath=env.LEEVIZE_SMOKE_FIXTURE_MANIFEST;
+  if(!fixturePath||statSync(fixturePath).size>65536) fail('FIXTURE_MANIFEST_REQUIRED');
+  const fixture=JSON.parse(readFileSync(fixturePath,'utf8'));
+  if(fixture.schema!=='leevize/smoke-fixture@v1'||fixture.reference_sha256!==hash(bytes)||fixture.modelFrames!==121||fixture.deliveryFrames!==120||fixture.fps!==24||fixture.width!==832||fixture.height!==480||fixture.duration_seconds!==5||shot.duration_seconds!==5||job.blueprint.aspect_ratio!=='16:9'||shot.action!==fixture.action) fail('FIXTURE_CONTRACT_MISMATCH');
   const prior=await json(jobPath+'/open-renders');
   if((prior.renders||[]).some(r=>r.shot_id===shotId&&['submitted','rendering'].includes(r.status))) fail('EXISTING_RENDER_IN_FLIGHT');
   const started=Date.now();
@@ -79,7 +83,7 @@ async function main() {
     const file=join(dir,'shot.mp4');writeFileSync(file,media,{flag:'wx'});
     const probe=JSON.parse(command('ffprobe',['-v','error','-select_streams','v:0','-count_frames','-show_entries','stream=width,height,nb_read_frames,r_frame_rate:format=duration','-of','json',file]));
     const v=probe.streams?.[0], expected=result.receipt.output_contract;
-    if(!v||!expected||v.width!==expected.width||v.height!==expected.height||Number(v.nb_read_frames)!==expected.frames) fail('DECODED_CONTRACT_MISMATCH');
+    if(!v||!expected||expected.frames!==fixture.modelFrames||expected.delivery_frames!==fixture.deliveryFrames||expected.fps!==fixture.fps||v.width!==fixture.width||v.height!==fixture.height||Number(v.nb_read_frames)!==expected.frames) fail('DECODED_CONTRACT_MISMATCH');
     command('ffmpeg',['-nostdin','-v','error','-xerror','-i',file,'-map','0:v:0','-f','null','-']);
     console.log(JSON.stringify({phase:'artifact_verified',render_id:renderId,sha256:sha,frames:Number(v.nb_read_frames),width:v.width,height:v.height,elapsed_ms:Date.now()-started,expected_source_sha:env.LEEVIZE_SMOKE_EXPECTED_SHA||null,deployed_source_sha_verified:false,peak_vram_verified:false,publication_authority:false}));
   } finally {rmSync(dir,{recursive:true,force:true});}
