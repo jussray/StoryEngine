@@ -19,6 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { getStoryVideoJob } from './videoEngine.js';
 import { cinematicDirection } from './cinematicDirection.js';
 import { validateCompiledGraph, framePlan, classifyHistory } from './renderGraphContract.js';
+import { inspectShotBoundary, invalidChainShots } from './shotArtifactContract.js';
 import { createContinuityCookie, createProofCookie, classifyReceiptContinuity } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
 
@@ -539,7 +540,23 @@ export async function submitOpenVideoShot(db, jobId, shotId, options = {}) {
     throw error;
   }
 
-  const reference = await uploadReferenceImage(options.reference_image_data_url).catch(error => {
+  let referenceInput = options.reference_image_data_url;
+  let chainFrom = null;
+  if (options.chain_from_previous === true) {
+    if (!cinematicDirection(shot, job) || referenceInput) throw Object.assign(new Error('Frame chaining requires a cinematic shot and no competing reference image.'), { code: 'OPEN_RENDER_CHAIN_INPUT_INVALID' });
+    const approved = latestApprovedShotFiles(db, job);
+    const index = approved.findIndex(item => item.shot_id === shotId);
+    const predecessor = approved[index - 1]?.row;
+    if (!predecessor) throw Object.assign(new Error('Previous shot must have an approved current artifact.'), { code: 'OPEN_RENDER_CHAIN_PREDECESSOR_MISSING' });
+    const prior = JSON.parse(predecessor.receipt_json || '{}');
+    const expected = prior.media_probe?.boundary;
+    if (!expected) throw Object.assign(new Error('Previous shot lacks a decoded boundary receipt.'), { code: 'OPEN_RENDER_CHAIN_PREDECESSOR_MISSING' });
+    const actual = inspectShotBoundary(predecessor.output_path, expected.delivery_frames, { ffmpeg: ffmpegBinary(), ffprobe: ffprobeBinary() });
+    if (actual.tail_frame_sha256 !== expected.tail_frame_sha256) throw Object.assign(new Error('Previous shot boundary changed.'), { code: 'OPEN_RENDER_CHAIN_STALE' });
+    referenceInput = 'data:image/png;base64,' + actual.png.toString('base64');
+    chainFrom = { shot_id: predecessor.shot_id, tail_frame_sha256: actual.tail_frame_sha256, delivery_frames: actual.delivery_frames };
+  }
+  const reference = await uploadReferenceImage(referenceInput).catch(error => {
     const failure = recordFailure(db, job, { shot_id: shotId, failure_class: error.code || 'BLOCKED_CANON_REFERENCE', message: error.message });
     error.failure_receipts = [failure];
     throw error;
@@ -595,6 +612,7 @@ export async function submitOpenVideoShot(db, jobId, shotId, options = {}) {
     workflow_sha256,
     seed: seedFor(continuity.value, shotId, attempt),
     reference_sha256: reference.sha256,
+    chain_from: chainFrom,
     continuity_cookie: continuity.value,
     prompt_receipt: { present: true, ...graphProof, node_contract_pin_configured: Boolean(text(process.env.LEEVIZE_NODE_CONTRACT_SHA256)) },
     output_contract: { width: dimensions.width, height: dimensions.height, fps: DEFAULT_FPS, frames: cinematicDirection(shot, job) ? framePlan(Number(shot.duration_seconds), DEFAULT_FPS).modelFrames : framesFor(shot.duration_seconds, DEFAULT_FPS), ...(cinematicDirection(shot, job) ? { delivery_frames: framePlan(Number(shot.duration_seconds), DEFAULT_FPS).deliveryFrames } : {}) },
@@ -709,6 +727,10 @@ export async function pollOpenVideoRender(db, renderId) {
       if (mediaProbe.width !== expected.width || mediaProbe.height !== expected.height || Math.abs(mediaProbe.duration_seconds - expectedDuration) > 2 / expected.fps) {
         throw Object.assign(new Error('Generated dimensions or duration differ from compiled contract.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
       }
+      const { png, ...boundary } = inspectShotBoundary(filePath, expected.delivery_frames, { ffmpeg: ffmpegBinary(), ffprobe: ffprobeBinary() });
+      const [numerator, denominator] = String(boundary.frame_rate).split('/').map(Number);
+      if (boundary.frame_count !== expected.frames || !denominator || Math.abs(numerator / denominator - expected.fps) > 0.001) throw Object.assign(new Error('Decoded frame count or frame rate differs from compiled contract.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
+      mediaProbe.boundary = boundary;
     }
     const latest = getStoryVideoJob(db, row.job_id);
     if (!latest || createContinuityCookie(latest).value !== row.continuity_cookie) throw Object.assign(new Error('Shot plan changed while receiving the artifact.'), { code: 'OPEN_RENDER_STALE_CONTINUITY' });
@@ -810,7 +832,7 @@ export function getOpenVideoRenderFile(db, renderId) {
 
 function latestApprovedShotFiles(db, job) {
   const cookie = createContinuityCookie(job).value;
-  return (job.blueprint?.shots || []).map(shot => {
+  const entries = (job.blueprint?.shots || []).map(shot => {
     const row = db.prepare(`SELECT * FROM story_video_open_renders WHERE job_id=? AND shot_id=? AND continuity_cookie=? AND status='complete' AND technical_status='passed' AND continuity_status='approved' AND editorial_status='approved' ORDER BY created_at DESC LIMIT 1`).get(job.job_id, shot.shot_id, cookie);
     let intact = false;
     if (row?.output_path && row.output_sha256 && existsSync(row.output_path)) {
@@ -818,6 +840,15 @@ function latestApprovedShotFiles(db, job) {
     }
     return { shot_id: shot.shot_id, row: intact ? row : null };
   });
+  if (job.blueprint?.cinematic_profile) {
+    const links = entries.map(item => {
+      const receipt = JSON.parse(item.row?.receipt_json || '{}');
+      return { shot_id: item.shot_id, boundary: receipt.media_probe?.boundary || null, chain_from: receipt.chain_from || null };
+    });
+    const invalid = new Set(invalidChainShots(links));
+    return entries.map(item => invalid.has(item.shot_id) ? { ...item, row: null } : item);
+  }
+  return entries;
 }
 
 export function assembleOpenVideoMaster(db, jobId) {
@@ -843,7 +874,10 @@ export function assembleOpenVideoMaster(db, jobId) {
     const normalized = [];
     for (let index = 0; index < entries.length; index += 1) {
       const target = join(work, `shot-${String(index + 1).padStart(2, '0')}.mp4`);
-      const filter = `scale=${dims.width}:${dims.height}:force_original_aspect_ratio=decrease,pad=${dims.width}:${dims.height}:(ow-iw)/2:(oh-ih)/2,fps=${DEFAULT_FPS}`;
+      const receipt = JSON.parse(entries[index].row.receipt_json || '{}');
+      const deliveryFrames = receipt.media_probe?.boundary?.delivery_frames;
+      const trim = deliveryFrames ? `,trim=end_frame=${deliveryFrames},setpts=PTS-STARTPTS` : '';
+      const filter = `scale=${dims.width}:${dims.height}:force_original_aspect_ratio=decrease,pad=${dims.width}:${dims.height}:(ow-iw)/2:(oh-ih)/2,fps=${DEFAULT_FPS}${trim}`;
       const result = spawnSync(ffmpegBinary(), ['-y', '-v', 'error', '-i', entries[index].row.output_path, '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000', '-map', '0:v:0', '-map', '1:a:0', '-vf', filter, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', target], { encoding: 'utf8' });
       if (result.error || result.status !== 0) throw Object.assign(new Error('Shot normalization failed.'), { code: 'OPEN_RENDER_ASSEMBLY_NORMALIZE_FAILED' });
       normalized.push(target);
