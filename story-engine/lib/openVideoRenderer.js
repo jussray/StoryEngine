@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import { getStoryVideoJob } from './videoEngine.js';
+import { cinematicDirection } from './cinematicDirection.js';
 import { createContinuityCookie, createProofCookie, classifyReceiptContinuity } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
 
@@ -187,9 +188,9 @@ function replaceTokens(value, replacements) {
   }
   if (typeof value !== 'string') return value;
   if (Object.prototype.hasOwnProperty.call(replacements, value)) return replacements[value];
-  let next = value;
-  for (const [token, replacement] of Object.entries(replacements)) next = next.replaceAll(token, String(replacement));
-  return next;
+  return value.replace(/__LEEVIZE_[A-Z_]+__/g, token =>
+    Object.prototype.hasOwnProperty.call(replacements, token) ? String(replacements[token]) : token
+  );
 }
 
 export function compileComfyWorkflow(workflow, shot, job, attempt = 0, runtime = {}) {
@@ -197,9 +198,10 @@ export function compileComfyWorkflow(workflow, shot, job, attempt = 0, runtime =
   const dimensions = dimensionsFor(job.blueprint?.aspect_ratio || '16:9');
   const model = runtime.model || modelConfig();
   const fps = boundedInt(runtime.fps, DEFAULT_FPS, 8, 60);
+  const direction = cinematicDirection(shot, job);
   const replacements = {
-    '__LEEVIZE_PROMPT__': text(shot.provider_prompt || shot.action || shot.narration),
-    '__LEEVIZE_NEGATIVE_PROMPT__': (shot.negative_constraints || []).join(', '),
+    '__LEEVIZE_PROMPT__': direction?.prompt ?? text(shot.provider_prompt || shot.action || shot.narration),
+    '__LEEVIZE_NEGATIVE_PROMPT__': direction?.negative ?? (shot.negative_constraints || []).join(', '),
     '__LEEVIZE_SEED__': seedFor(cookie.value, shot.shot_id, attempt),
     '__LEEVIZE_WIDTH__': boundedInt(runtime.width, dimensions.width, 256, 1920),
     '__LEEVIZE_HEIGHT__': boundedInt(runtime.height, dimensions.height, 144, 1080),
