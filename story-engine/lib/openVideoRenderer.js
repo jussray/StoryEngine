@@ -21,6 +21,7 @@ import { cinematicDirection } from './cinematicDirection.js';
 import { validateCompiledGraph, framePlan, classifyHistory, parseFrameRate } from './renderGraphContract.js';
 import { inspectShotBoundary, invalidChainShots } from './shotArtifactContract.js';
 import { inspectFrameChanges } from './frameChangeEvidence.js';
+import { fetchBoundedBytes } from './workerTransport.mjs';
 import { completedVideo, saveVideoNodeId } from '../scripts/wan22-smoke-output.mjs';
 import { createContinuityCookie, createProofCookie, classifyReceiptContinuity } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
@@ -239,64 +240,18 @@ function readWorkflow() {
   return { workflow, workflow_sha256: hashBytes(bytes) };
 }
 
-async function boundedResponseBytes(response, maxBytes) {
-  const declared = Number(response.headers.get('content-length') || 0);
-  if (declared > maxBytes) {
-    const error = new Error('Renderer response exceeded the configured size limit.');
-    error.code = 'OPEN_RENDER_RESPONSE_TOO_LARGE';
-    throw error;
-  }
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.byteLength > maxBytes) {
-    const error = new Error('Renderer response exceeded the configured size limit.');
-    error.code = 'OPEN_RENDER_RESPONSE_TOO_LARGE';
-    throw error;
-  }
-  return bytes;
-}
-
-async function comfyFetch(path, init = {}, timeoutMs = 10_000) {
+async function comfyBytes(path, init = {}, timeoutMs = 10_000, maxBytes = MAX_JSON_BYTES) {
   const base = rendererBaseUrl();
-  if (!base) {
-    const error = new Error('No founder-controlled ComfyUI runtime is configured.');
-    error.code = 'OPEN_RENDER_COMPUTE_UNCONFIGURED';
-    throw error;
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (!base) throw Object.assign(new Error('No founder-controlled ComfyUI runtime is configured.'), {code:'OPEN_RENDER_COMPUTE_UNCONFIGURED'});
   const token = rendererToken();
-  try {
-    const response = await fetch(`${base}${path}`, {
-      ...init,
-      redirect: 'error',
-      signal: controller.signal,
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers || {}) }
-    });
-    if (!response.ok) {
-      const error = new Error(`ComfyUI request failed with HTTP ${response.status}.`);
-      error.code = `COMFYUI_HTTP_${response.status}`;
-      error.status = response.status;
-      throw error;
-    }
-    return response;
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      const timeout = new Error('ComfyUI request timed out.');
-      timeout.code = 'OPEN_RENDER_COMPUTE_TIMEOUT';
-      throw timeout;
-    }
-    if (error?.code) throw error;
-    const safe = new Error('ComfyUI request failed.');
-    safe.code = 'OPEN_RENDER_COMPUTE_UNREACHABLE';
-    throw safe;
-  } finally {
-    clearTimeout(timer);
-  }
+  return fetchBoundedBytes(`${base}${path}`, {
+    ...init,
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers || {}) }
+  }, {timeoutMs,maxBytes});
 }
 
 async function comfyJson(path, init = {}, timeoutMs = 10_000) {
-  const response = await comfyFetch(path, init, timeoutMs);
-  const bytes = await boundedResponseBytes(response, MAX_JSON_BYTES);
+  const bytes = await comfyBytes(path, init, timeoutMs, MAX_JSON_BYTES);
   try { return JSON.parse(bytes.toString('utf8')); }
   catch {
     const error = new Error('ComfyUI returned invalid JSON.');
@@ -713,8 +668,7 @@ export async function pollOpenVideoRender(db, renderId) {
 
   const query = new URLSearchParams({ filename: output.filename, type: output.type || 'output' });
   if (output.subfolder) query.set('subfolder', output.subfolder);
-  const response = await comfyFetch(`/view?${query.toString()}`, {}, 60_000);
-  const bytes = await boundedResponseBytes(response, MAX_VIDEO_BYTES);
+  const bytes = await comfyBytes(`/view?${query.toString()}`, {}, 60_000, MAX_VIDEO_BYTES);
   const extension = ['.mp4', '.webm', '.mov', '.mkv'].includes(extname(output.filename).toLowerCase()) ? extname(output.filename).toLowerCase() : '.mp4';
   const dir = join(outputRoot(), job.workspace_id, job.job_id);
   mkdirSync(dir, { recursive: true });
