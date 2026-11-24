@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 
 import { getStoryVideoJob } from './videoEngine.js';
 import { cinematicDirection } from './cinematicDirection.js';
-import { validateCompiledGraph, framePlan, classifyHistory } from './renderGraphContract.js';
+import { validateCompiledGraph, framePlan, classifyHistory, parseFrameRate } from './renderGraphContract.js';
 import { inspectShotBoundary, invalidChainShots } from './shotArtifactContract.js';
 import { createContinuityCookie, createProofCookie, classifyReceiptContinuity } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
@@ -728,8 +728,8 @@ export async function pollOpenVideoRender(db, renderId) {
         throw Object.assign(new Error('Generated dimensions or duration differ from compiled contract.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
       }
       const { png, ...boundary } = inspectShotBoundary(filePath, expected.delivery_frames, { ffmpeg: ffmpegBinary(), ffprobe: ffprobeBinary() });
-      const [numerator, denominator] = String(boundary.frame_rate).split('/').map(Number);
-      if (boundary.frame_count !== expected.frames || !denominator || Math.abs(numerator / denominator - expected.fps) > 0.001) throw Object.assign(new Error('Decoded frame count or frame rate differs from compiled contract.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
+      const actualFps = parseFrameRate(boundary.frame_rate);
+      if (boundary.frame_count !== expected.frames || !Number.isFinite(actualFps) || Math.abs(actualFps - expected.fps) > 0.001) throw Object.assign(new Error('Decoded frame count or frame rate differs from compiled contract.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
       mediaProbe.boundary = boundary;
     }
     const latest = getStoryVideoJob(db, row.job_id);
