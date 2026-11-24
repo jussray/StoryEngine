@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { framePlan } from '../lib/renderGraphContract.js';
 
 export function smokeFixture() {
-  const width=832,height=480,fps=24,duration=3.25;
+  const width=832,height=480,fps=24,duration=5;
   const rgb=Buffer.alloc(width*height*3);
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
     const i=(y*width+x)*3;
