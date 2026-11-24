@@ -649,7 +649,9 @@ function probeMedia(filePath) {
     error.code = 'OPEN_RENDER_MEDIA_INVALID';
     throw error;
   }
-  return { verifier: 'ffprobe', verified: true, duration_seconds: duration, width: Number(video.width || 0), height: Number(video.height || 0), codec_name: video.codec_name || null, frame_rate: video.r_frame_rate || null };
+  const decoded = spawnSync(ffmpegBinary(), ['-nostdin', '-v', 'error', '-xerror', '-i', filePath, '-map', '0:v:0', '-f', 'null', '-'], { encoding: 'utf8', timeout: 180_000 });
+  if (decoded.error || decoded.status !== 0) throw Object.assign(new Error('Rendered media failed full video decoding.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
+  return { verifier: 'ffprobe', verified: true, full_video_decode: true, duration_seconds: duration, width: Number(video.width || 0), height: Number(video.height || 0), codec_name: video.codec_name || null, frame_rate: video.r_frame_rate || null };
 }
 
 export async function pollOpenVideoRender(db, renderId) {
@@ -699,7 +701,18 @@ export async function pollOpenVideoRender(db, renderId) {
   const filePath = join(dir, `${row.shot_id}-${row.continuity_cookie}-${renderId}${extension}`);
   writeFileSync(filePath, bytes);
   let mediaProbe;
-  try { mediaProbe = probeMedia(filePath); }
+  try {
+    mediaProbe = probeMedia(filePath);
+    const expected = JSON.parse(row.receipt_json || '{}').output_contract;
+    if (expected?.delivery_frames) {
+      const expectedDuration = expected.frames / expected.fps;
+      if (mediaProbe.width !== expected.width || mediaProbe.height !== expected.height || Math.abs(mediaProbe.duration_seconds - expectedDuration) > 2 / expected.fps) {
+        throw Object.assign(new Error('Generated dimensions or duration differ from compiled contract.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
+      }
+    }
+    const latest = getStoryVideoJob(db, row.job_id);
+    if (!latest || createContinuityCookie(latest).value !== row.continuity_cookie) throw Object.assign(new Error('Shot plan changed while receiving the artifact.'), { code: 'OPEN_RENDER_STALE_CONTINUITY' });
+  }
   catch (error) {
     rmSync(filePath, { force: true });
     const failure = recordFailure(db, job, { shot_id: row.shot_id, render_id: renderId, failure_class: error.code || 'OPEN_RENDER_MEDIA_INVALID', message: 'Generated shot failed playable-media verification.' });
@@ -799,7 +812,11 @@ function latestApprovedShotFiles(db, job) {
   const cookie = createContinuityCookie(job).value;
   return (job.blueprint?.shots || []).map(shot => {
     const row = db.prepare(`SELECT * FROM story_video_open_renders WHERE job_id=? AND shot_id=? AND continuity_cookie=? AND status='complete' AND technical_status='passed' AND continuity_status='approved' AND editorial_status='approved' ORDER BY created_at DESC LIMIT 1`).get(job.job_id, shot.shot_id, cookie);
-    return { shot_id: shot.shot_id, row: row && row.output_path && existsSync(row.output_path) ? row : null };
+    let intact = false;
+    if (row?.output_path && row.output_sha256 && existsSync(row.output_path)) {
+      try { intact = hashBytes(readFileSync(row.output_path)) === row.output_sha256; } catch { intact = false; }
+    }
+    return { shot_id: shot.shot_id, row: intact ? row : null };
   });
 }
 
@@ -809,6 +826,7 @@ export function assembleOpenVideoMaster(db, jobId) {
   assertJobReady(job);
   assertMediaTooling();
   const entries = latestApprovedShotFiles(db, job);
+  if (!entries.length) throw Object.assign(new Error('No shots to assemble.'), { code: 'OPEN_RENDER_SHOTS_NOT_APPROVED' });
   const missing = entries.filter(item => !item.row).map(item => item.shot_id);
   if (missing.length) {
     const failure = recordFailure(db, job, { failure_class: 'OPEN_RENDER_SHOTS_NOT_APPROVED', message: `Current continuity cookie lacks approved footage for: ${missing.join(', ')}` });
@@ -835,7 +853,7 @@ export function assembleOpenVideoMaster(db, jobId) {
     const dir = join(outputRoot(), job.workspace_id, job.job_id);
     mkdirSync(dir, { recursive: true });
     const continuity = createContinuityCookie(job);
-    const masterPath = join(dir, `master-${continuity.value}.mp4`);
+    const masterPath = join(dir, `master-${continuity.value}-${randomUUID()}.mp4`);
     const concat = spawnSync(ffmpegBinary(), ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-movflags', '+faststart', masterPath], { encoding: 'utf8' });
     if (concat.error || concat.status !== 0) throw Object.assign(new Error('Master assembly failed.'), { code: 'OPEN_RENDER_ASSEMBLY_FAILED' });
     const mediaProbe = probeMedia(masterPath);
@@ -857,6 +875,7 @@ export function assembleOpenVideoMaster(db, jobId) {
       output_sha256: outputSha,
       media_probe: mediaProbe,
       shot_count: entries.length,
+      source_artifacts: entries.map(item => ({ shot_id: item.shot_id, render_id: item.row.render_id, sha256: item.row.output_sha256 })),
       vendor_credit_required: false,
       picture_lock: true,
       release_ready: false,
