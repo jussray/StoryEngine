@@ -13,8 +13,35 @@
       "diffusion_model": "wan2.2_ti2v_5B_fp16.safetensors",
       "text_encoder": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "vae": "wan2.2_vae.safetensors",
-      "supports": ["text-to-video", "image-to-video"],
-      "runtime_truth": "Presence in this manifest verifies the intended model/license contract only. Production readiness still requires live ComfyUI node and model-file evidence."
+      "supports": [
+        "text-to-video",
+        "image-to-video"
+      ],
+      "runtime_truth": "Presence in this manifest verifies the intended model/license contract only. Production readiness still requires live ComfyUI node and model-file evidence.",
+      "weight_integrity": {
+        "revision": "c068c8957dbc644d773ab161ea667e5f1554abd2",
+        "source_type": "publisher_reported_sha256",
+        "files": [
+          {
+            "role": "diffusion_model",
+            "path": "diffusion_models/wan2.2_ti2v_5B_fp16.safetensors",
+            "sha256": "456f901338bd9eadbded3828b819109a9b68e8a525ca5cf8d0049a69fcfeca1e",
+            "source": "https://huggingface.co/Comfy-Org/Wan-2.2/blob/c068c8957dbc644d773ab161ea667e5f1554abd2/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
+          },
+          {
+            "role": "text_encoder",
+            "path": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68",
+            "source": "https://huggingface.co/Comfy-Org/Wan-2.2/blob/c068c8957dbc644d773ab161ea667e5f1554abd2/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+          },
+          {
+            "role": "vae",
+            "path": "vae/wan2.2_vae.safetensors",
+            "sha256": "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156",
+            "source": "https://huggingface.co/Comfy-Org/Wan-2.2/blob/c068c8957dbc644d773ab161ea667e5f1554abd2/split_files/vae/wan2.2_vae.safetensors"
+          }
+        ]
+      }
     }
   ]
 }
