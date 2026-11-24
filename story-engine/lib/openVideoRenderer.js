@@ -21,6 +21,7 @@ import { cinematicDirection } from './cinematicDirection.js';
 import { validateCompiledGraph, framePlan, classifyHistory, parseFrameRate } from './renderGraphContract.js';
 import { inspectShotBoundary, invalidChainShots } from './shotArtifactContract.js';
 import { inspectFrameChanges } from './frameChangeEvidence.js';
+import { completedVideo, saveVideoNodeId } from '../scripts/wan22-smoke-output.mjs';
 import { createContinuityCookie, createProofCookie, classifyReceiptContinuity } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
 
@@ -566,8 +567,9 @@ export async function submitOpenVideoShot(db, jobId, shotId, options = {}) {
   const model = modelConfig();
   const attempt = boundedInt(options.attempt, 0, 0, 9);
   const compiled = compileComfyWorkflow(workflow, shot, job, attempt, { model, input_image_name: reference.name });
-  let graphProof;
+  let graphProof, saveNodeId;
   try {
+    saveNodeId = saveVideoNodeId(compiled);
     // Read after upload so LoadImage's current worker-side choices include the reference.
     const objectInfo = await comfyJson('/object_info');
     graphProof = validateCompiledGraph(compiled, objectInfo, { requiredTypes: REQUIRED_NODE_TYPES, referenceName: reference.name });
@@ -615,7 +617,7 @@ export async function submitOpenVideoShot(db, jobId, shotId, options = {}) {
     reference_sha256: reference.sha256,
     chain_from: chainFrom,
     continuity_cookie: continuity.value,
-    prompt_receipt: { present: true, ...graphProof, node_contract_pin_configured: Boolean(text(process.env.LEEVIZE_NODE_CONTRACT_SHA256)) },
+    prompt_receipt: { present: true, save_video_node_id: saveNodeId, ...graphProof, node_contract_pin_configured: Boolean(text(process.env.LEEVIZE_NODE_CONTRACT_SHA256)) },
     output_contract: { width: dimensions.width, height: dimensions.height, fps: DEFAULT_FPS, frames: cinematicDirection(shot, job) ? framePlan(Number(shot.duration_seconds), DEFAULT_FPS).modelFrames : framesFor(shot.duration_seconds, DEFAULT_FPS), ...(cinematicDirection(shot, job) ? { delivery_frames: framePlan(Number(shot.duration_seconds), DEFAULT_FPS).deliveryFrames } : {}) },
     qa: { technical: 'pending', continuity: 'pending', editorial: 'pending' },
     authority_granted: false,
@@ -632,23 +634,8 @@ export async function submitOpenVideoShot(db, jobId, shotId, options = {}) {
   return publicRender(db.prepare('SELECT * FROM story_video_open_renders WHERE render_id=?').get(renderId), job);
 }
 
-function outputCandidates(historyEntry) {
-  const found = [];
-  function walk(value) {
-    if (Array.isArray(value)) { value.forEach(walk); return; }
-    if (!value || typeof value !== 'object') return;
-    if (typeof value.filename === 'string') {
-      const ext = extname(value.filename).toLowerCase();
-      if (['.mp4', '.webm', '.mov', '.mkv', '.gif'].includes(ext)) found.push({ filename: value.filename, subfolder: text(value.subfolder), type: text(value.type, 'output') });
-    }
-    Object.values(value).forEach(walk);
-  }
-  walk(historyEntry);
-  return found;
-}
-
 function probeMedia(filePath) {
-  const result = spawnSync(ffprobeBinary(), ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,codec_name,width,height,r_frame_rate', '-of', 'json', filePath], { encoding: 'utf8' });
+  const result = spawnSync(ffprobeBinary(), ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,codec_name,width,height,r_frame_rate', '-of', 'json', filePath], { encoding: 'utf8', timeout: 180_000 });
   if (result.error || result.status !== 0) {
     const error = new Error('Rendered media failed ffprobe verification.');
     error.code = 'OPEN_RENDER_MEDIA_INVALID';
@@ -698,8 +685,22 @@ export async function pollOpenVideoRender(db, renderId) {
     db.prepare(`UPDATE story_video_open_renders SET status='rendering',updated_at=? WHERE render_id=?`).run(Date.now(), renderId);
     return publicRender(db.prepare('SELECT * FROM story_video_open_renders WHERE render_id=?').get(renderId), job);
   }
-  const output = outputCandidates(entry.outputs || {}).filter(item => item.type === 'output').at(-1);
-  const failureClass = classifyHistory(entry, Boolean(output));
+  let output, failureClass = classifyHistory(entry, true);
+  if (!failureClass) {
+    try {
+      const priorReceipt = JSON.parse(row.receipt_json || '{}');
+      let saveNodeId = priorReceipt.prompt_receipt?.save_video_node_id;
+      if (!saveNodeId) {
+        // Legacy in-flight rows may use the configured graph only if its bytes match.
+        const priorWorkflow = readWorkflow();
+        if (priorWorkflow.workflow_sha256 !== row.workflow_sha256) throw new Error('OPEN_RENDER_WORKFLOW_DRIFT');
+        saveNodeId = saveVideoNodeId(priorWorkflow.workflow);
+      }
+      output = completedVideo(entry, saveNodeId);
+    } catch (error) {
+      failureClass = /^[A-Z0-9_]+$/.test(error.message) ? error.message : 'OPEN_RENDER_OUTPUT_CONTRACT_INVALID';
+    }
+  }
   if (failureClass) {
     const failure = recordFailure(db, job, { shot_id: row.shot_id, render_id: renderId, failure_class: failureClass, message: 'ComfyUI reported a terminal render failure.' });
     db.prepare(`UPDATE story_video_open_renders SET status='failed',failure_json=?,updated_at=? WHERE render_id=?`).run(JSON.stringify(failure), Date.now(), renderId);
@@ -718,7 +719,8 @@ export async function pollOpenVideoRender(db, renderId) {
   const dir = join(outputRoot(), job.workspace_id, job.job_id);
   mkdirSync(dir, { recursive: true });
   const filePath = join(dir, `${row.shot_id}-${row.continuity_cookie}-${renderId}${extension}`);
-  writeFileSync(filePath, bytes);
+  if (!bytes.length) throw Object.assign(new Error('Empty worker artifact.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
+  writeFileSync(filePath, bytes, { flag: 'wx' });
   let mediaProbe;
   try {
     mediaProbe = probeMedia(filePath);
@@ -740,7 +742,7 @@ export async function pollOpenVideoRender(db, renderId) {
     if (!latest || createContinuityCookie(latest).value !== row.continuity_cookie) throw Object.assign(new Error('Shot plan changed while receiving the artifact.'), { code: 'OPEN_RENDER_STALE_CONTINUITY' });
   }
   catch (error) {
-    rmSync(filePath, { force: true });
+    // Preserve rejected bytes for operator diagnosis; never attach them to a completed render.
     const failure = recordFailure(db, job, { shot_id: row.shot_id, render_id: renderId, failure_class: error.code || 'OPEN_RENDER_MEDIA_INVALID', message: 'Generated shot failed playable-media verification.' });
     db.prepare(`UPDATE story_video_open_renders SET status='failed',technical_status='rejected',failure_json=?,updated_at=? WHERE render_id=?`).run(JSON.stringify(failure), Date.now(), renderId);
     return publicRender(db.prepare('SELECT * FROM story_video_open_renders WHERE render_id=?').get(renderId), job);
