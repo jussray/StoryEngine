@@ -139,3 +139,32 @@ decoded frames and checks dimensions, then fully decodes video. It does not
 resubmit, approve, publish, buy compute, or establish exact deployed source
 SHA or peak VRAM. The latter two remain separate evidence gates. A timeout
 requires reconciling the existing render ID before another attempt.
+
+
+## Locked pre-GPU fixture and weight integrity
+
+Run the worker verifier **on the actual ComfyUI host** with Node 24+ and the
+trusted models root. It reads the three files, compares their SHA-256 against
+the pinned Comfy Org release revision, and checks local FFmpeg/FFprobe:
+
+```sh
+cd story-engine
+LEEVIZE_MODELS_ROOT=/path/to/ComfyUI/models node scripts/verify-leevize-worker.mjs
+node scripts/prepare-leevize-smoke.mjs ./new-smoke-fixture
+node --test test/renderGraphContract.test.js test/shotArtifactContract.test.js test/modelWeightIntegrity.test.js test/leevizeSmokeFixture.test.js
+```
+
+The generated reference is a synthetic amber sphere on a blue background.
+Use fixture.json's exact action in an existing approved five-second 16:9
+shot. Set LEEVIZE_SMOKE_FIXTURE_MANIFEST to the generated fixture.json and
+LEEVIZE_SMOKE_REFERENCE to reference.png, alongside the previously documented
+operator settings. Expected resolution is 832x480, 24 fps, 20 sampling steps,
+121 model frames and 120 delivered frames. The submit runner checks the
+reference hash, action and delivery contract.
+
+The published hashes are expected values, not actual installation proof.
+The worker verifier is a separate operator preflight; the remote StoryEngine
+status endpoint does not attest worker filesystem bytes or prove that a
+running ComfyUI process loaded them. Use a trusted immutable worker model
+mount and retain the local verification evidence. Automatic repair execution,
+live GPU telemetry and full repository CI remain independent gates.
