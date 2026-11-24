@@ -62,12 +62,22 @@ export function validateCompiledGraph(graph,info,{requiredTypes=[],referenceName
   return {nodes:entries.length,compiled_sha256:graphDigest(graph),node_contract_sha256:graphDigest(Object.fromEntries([...types].sort().map(t=>[t,contractShape(t)])))};
 }
 
+export function parseFrameRate(rate) {
+  if (typeof rate !== 'number' && typeof rate !== 'string') return NaN;
+  const parts = String(rate).trim().split('/').map(part => part.trim());
+  if (parts.length > 2 || parts.some(part => !/^\d+(?:\.\d+)?$/.test(part))) return NaN;
+  const numerator = Number(parts[0]), denominator = parts.length === 2 ? Number(parts[1]) : 1;
+  const fps = numerator / denominator;
+  return Number.isFinite(fps) && numerator > 0 && denominator > 0 ? fps : NaN;
+}
+
 export function classifyHistory(entry,hasOutput) {
   const messages=Array.isArray(entry?.status?.messages)?entry.status.messages:[];
-  if(messages.some(m=>Array.isArray(m)&&m[0]==='execution_interrupted')) return 'OPEN_RENDER_INTERRUPTED';
-  const errors=messages.filter(m=>Array.isArray(m)&&m[0]==='execution_error');
-  if(errors.some(m=>/outofmemory|out of memory|cuda oom/i.test(String(m[1]?.exception_type||'')+' '+String(m[1]?.exception_message||'')))) return 'OPEN_RENDER_GPU_OOM';
-  if(errors.length||entry?.status?.status_str==='error') return 'OPEN_RENDER_EXECUTION_FAILED';
+  const normalized=messages.map(m=>Array.isArray(m)?{kind:m[0],payload:m[1]}:{kind:m?.type,payload:m?.data??m?.payload??m});
+  if(normalized.some(m=>m.kind==='execution_interrupted')) return 'OPEN_RENDER_INTERRUPTED';
+  const errors=normalized.filter(m=>m.kind==='execution_error');
+  if(errors.some(m=>/outofmemory|out of memory|cuda oom/i.test(String(m.payload?.exception_type||'')+' '+String(m.payload?.exception_message||'')))) return 'OPEN_RENDER_GPU_OOM';
+  if(errors.length||entry?.status?.status_str==='error'||(entry?.status?.completed===true&&entry.status.status_str!=='success')) return 'OPEN_RENDER_EXECUTION_FAILED';
   if(entry?.status?.completed===true&&!hasOutput) return 'OPEN_RENDER_OUTPUT_MISSING';
   return null;
 }
