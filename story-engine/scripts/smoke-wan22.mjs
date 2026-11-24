@@ -10,6 +10,7 @@ import { inspectShotBoundary } from '../lib/shotArtifactContract.js';
 import { smokeFixture } from './leevize-smoke-fixture.mjs';
 import { completedVideo, saveVideoNodeId } from './wan22-smoke-output.mjs';
 import { inspectFrameChanges, gpuSnapshot } from '../lib/frameChangeEvidence.js';
+import { fetchBoundedBytes } from '../lib/workerTransport.mjs';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=code=>{throw new Error(code);};
@@ -26,12 +27,7 @@ async function main(){
   const request=async(path,init={},max=2*1024*1024)=>{
     const remaining=deadline-Date.now();
     if(remaining<=0)fail('WORKER_SMOKE_DEADLINE');
-    const res=await fetch(new URL(path,base),{...init,redirect:'error',signal:AbortSignal.timeout(Math.min(remaining,90000)),headers:{...(env.LEEVIZE_COMFYUI_TOKEN?{Authorization:'Bearer '+env.LEEVIZE_COMFYUI_TOKEN}:{}),...init.headers}});
-    if(!res.ok)fail('WORKER_HTTP_'+res.status);
-    if(!res.body||Number(res.headers.get('content-length')||0)>max)fail('WORKER_RESPONSE_SIZE');
-    const chunks=[];let size=0;
-    for await(const chunk of res.body){size+=chunk.length;if(size>max)fail('WORKER_RESPONSE_SIZE');chunks.push(Buffer.from(chunk));}
-    return Buffer.concat(chunks,size);
+    return fetchBoundedBytes(new URL(path,base),{...init,headers:{...(env.LEEVIZE_COMFYUI_TOKEN?{Authorization:'Bearer '+env.LEEVIZE_COMFYUI_TOKEN}:{}),...init.headers}},{timeoutMs:Math.min(remaining,90000),maxBytes:max});
   };
   const json=async(path,init)=>JSON.parse((await request(path,init)).toString('utf8'));
   const exec=(bin,args)=>{
