@@ -69,3 +69,43 @@ A paid vendor at zero credits is not one of them.
 ## Product surface
 
 Story Video Studio displays the open-render runtime state separately from the Playwright plan gate and from actual rendered-shot evidence. This prevents a validated storyboard or preview from being presented as a finished movie.
+
+
+## Delivery-frame chaining and repair dependencies
+
+For a cinematic-profile shot, the renderer decodes and counts real frames and
+extracts the last **delivery** frame, not the last model-padding frame. The
+media probe stores the boundary PNG SHA-256, delivered frame count, decoded
+frame count and dimensions. The PNG itself is not stored in the public receipt.
+
+On the existing authenticated single-shot open-render submit route, explicitly
+set `chain_from_previous: true` and omit `reference_image_data_url` to use the
+immediately preceding approved, current shot's decoded delivery frame as
+ComfyUI's LoadImage conditioning input. An independent cut instead uses the
+ordinary explicit reference. The renderer rejects a missing or changed parent
+and the assembly gate invalidates a changed tail or delivery-frame count
+transitively until an independent cut. Existing files are preserved; this
+does not authorize automatic GPU retries. Earlier cinematic-profile artifacts
+without decoded boundary evidence cannot satisfy this new assembly gate.
+
+Picture-lock normalization trims model padding. It remains silent, with
+release readiness false, until audio, captions and final master verification.
+
+### Verification boundaries
+
+```sh
+cd story-engine
+node --test test/renderGraphContract.test.js test/shotArtifactContract.test.js
+npm test
+```
+
+The focused tests exercise schema/repair selection with fixtures and real
+FFmpeg boundary extraction. They do not prove worker inference, quality
+similarity, or actual peak VRAM. For live promotion, configure the existing
+worker, approved model and license; obtain its exact node contract fingerprint
+and independently verify model weight hashes on the worker; submit a single
+approved short shot through the existing route and read back its decoded output
+and render ledger. Record hardware identity, frame count, resolution, steps,
+peak VRAM and elapsed time before establishing a calibrated envelope. Do not
+substitute a guessed hash, synthetic GPU receipt, or CPU FFmpeg fixture for
+that live evidence.
