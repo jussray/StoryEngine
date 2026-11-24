@@ -21,3 +21,10 @@ test('fails on ambiguous output, OOM and completed missing output',()=>{
  assert.throws(()=>completedVideo({status:{messages:[['execution_error',{exception_type:'OutOfMemoryError'}]]}},'58'),/GPU_OOM/);
  assert.throws(()=>completedVideo({status:{completed:true,status_str:'success'}},'58'),/OUTPUT_MISSING/);
 });
+
+test('terminal failure takes priority over ambiguous partial artifacts',()=>{
+  assert.throws(()=>completedVideo({status:{messages:[{type:'execution_error',data:{exception_type:'OutOfMemoryError'}}]},outputs:{'58':{videos:[item,item]}}},'58'),/GPU_OOM/);
+});
+test('completed non-success state fails immediately even with a video',()=>{
+  assert.throws(()=>completedVideo({status:{completed:true,status_str:'unknown'},outputs:{'58':{videos:[item]}}},'58'),/EXECUTION_FAILED/);
+});
