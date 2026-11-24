@@ -24,3 +24,9 @@ export function completedVideo(entry,nodeId) {
   if(entry?.status?.completed===true && entry.status.status_str==='success') return output;
   return null;
 }
+
+export function saveVideoNodeId(graph) {
+  const ids=Object.entries(graph||{}).filter(([,node])=>node?.class_type==='SaveVideo').map(([id])=>id);
+  if(ids.length!==1||!/^[a-zA-Z0-9_-]{1,80}$/.test(ids[0])) throw new Error('SINGLE_SAVEVIDEO_REQUIRED');
+  return ids[0];
+}
