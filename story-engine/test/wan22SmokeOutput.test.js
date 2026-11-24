@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectSavedVideo, completedVideo } from '../scripts/wan22-smoke-output.mjs';
+import { selectSavedVideo, completedVideo, saveVideoNodeId } from '../scripts/wan22-smoke-output.mjs';
 const item={filename:'shot_00001.mp4',subfolder:'video/leevize',type:'output'};
 for(const bucket of ['videos','animated','images']){
  test('accepts SaveVideo '+bucket+' only after successful completion',()=>{
@@ -27,4 +27,10 @@ test('terminal failure takes priority over ambiguous partial artifacts',()=>{
 });
 test('completed non-success state fails immediately even with a video',()=>{
   assert.throws(()=>completedVideo({status:{completed:true,status_str:'unknown'},outputs:{'58':{videos:[item]}}},'58'),/EXECUTION_FAILED/);
+});
+
+test('compiled SaveVideo identity is unique and exact',()=>{
+  assert.equal(saveVideoNodeId({'58':{class_type:'SaveVideo'},'99':{class_type:'PreviewImage'}}),'58');
+  assert.throws(()=>saveVideoNodeId({'99':{class_type:'PreviewImage'}}),/SAVEVIDEO/);
+  assert.throws(()=>saveVideoNodeId({'58':{class_type:'SaveVideo'},'59':{class_type:'SaveVideo'}}),/SAVEVIDEO/);
 });
