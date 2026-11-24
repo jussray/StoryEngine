@@ -6,6 +6,16 @@ Canonical production origin: https://story-engine-production-1e6b.up.railway.app
 ## What this product is
 StoryEngine is a creator-facing product. L99 is its governed execution/runtime layer. The system is designed to carry an idea through structured creation, validation, packaging, release preparation, publishing controls, and measurable evidence without confusing source code, tests, deployments, provider acceptance, or human outcomes.
 
+## Product questions
+
+**What is LEEVIZE?** StoryEngine's open-weight video rendering lane. The source integrates a replaceable, founder-controlled ComfyUI worker, shot continuity, render verification, and local picture-lock assembly. Live GPU readiness requires independently observed worker and artifact evidence. A rendered shot is not a finished film or publication authorization.
+
+**What is Sync Avenue?** A StoryEngine scene synchronization and world-state planning layer that binds causal directions and control samples to a shot plan. Source-level direction fingerprints and decoded frame changes are not proof that the intended physical response occurred in footage.
+
+**What does the media evidence prove?** Decoding and cryptographic hashes establish the inspected artifact's readability and integrity. They do not establish authorship, rights, visual fidelity, causal correctness, loaded model identity, or successful publication.
+
+**Does StoryEngine require a particular video subscription?** The self-hosted renderer is designed around replaceable compute. Compute, model licenses, audio finishing and production availability require separate verification.
+
 ## Public evidence
 - Guardrails: /guardrails
 - Machine-readable guardrails: /guardrails.json
