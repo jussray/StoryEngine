@@ -7,6 +7,7 @@ on:
       - fix/leevize-self-hosted-renderer
       - fix/leevize-renderer-product-design-v2
       - fix/makevideo-storyengine-handoff
+      - feat/leevize-cinematic-direction-20261124
     paths:
       - 'story-engine/.dockerignore'
       - 'story-engine/lib/pageGuard.js'
@@ -16,6 +17,16 @@ on:
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/openVideoRenderer.js'
+      - 'story-engine/lib/renderGraphContract.js'
+      - 'story-engine/lib/shotArtifactContract.js'
+      - 'story-engine/lib/frameChangeEvidence.js'
+      - 'story-engine/lib/cinematicDirection.js'
+      - 'story-engine/lib/modelWeightIntegrity.js'
+      - 'story-engine/lib/syncAvenue*.js'
+      - 'story-engine/config/leevize-*.json'
+      - 'story-engine/scripts/**'
+      - 'story-engine/test/**'
+      - 'story-engine/public/llms.txt'
       - 'story-engine/lib/videoContinuity.js'
       - 'story-engine/lib/videoShotContinuityGate.js'
       - 'story-engine/lib/videoShotPlanEditor.js'
@@ -54,6 +65,16 @@ on:
       - 'story-engine/lib/videoEngine.js'
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/openVideoRenderer.js'
+      - 'story-engine/lib/renderGraphContract.js'
+      - 'story-engine/lib/shotArtifactContract.js'
+      - 'story-engine/lib/frameChangeEvidence.js'
+      - 'story-engine/lib/cinematicDirection.js'
+      - 'story-engine/lib/modelWeightIntegrity.js'
+      - 'story-engine/lib/syncAvenue*.js'
+      - 'story-engine/config/leevize-*.json'
+      - 'story-engine/scripts/**'
+      - 'story-engine/test/**'
+      - 'story-engine/public/llms.txt'
       - 'story-engine/lib/videoContinuity.js'
       - 'story-engine/lib/videoShotContinuityGate.js'
       - 'story-engine/lib/videoShotPlanEditor.js'
@@ -116,6 +137,8 @@ jobs:
       - name: Verify portable Juss OS command contract
         working-directory: .
         run: node scripts/verify-juss-os-commands.mjs
+      - name: Verify native worker and media artifact contracts
+        run: node --test test/renderGraphContract.test.js test/shotArtifactContract.test.js test/modelWeightIntegrity.test.js test/leevizeSmokeFixture.test.js test/wan22SmokeOutput.test.js test/frameRateContract.test.js test/frameChangeEvidence.test.js test/cinematicDirection.test.js
       - name: Run full Story Engine Node suite
         run: npm test
       - name: Run repository promotion contracts
