@@ -20,6 +20,7 @@ import { getStoryVideoJob } from './videoEngine.js';
 import { cinematicDirection } from './cinematicDirection.js';
 import { validateCompiledGraph, framePlan, classifyHistory, parseFrameRate } from './renderGraphContract.js';
 import { inspectShotBoundary, invalidChainShots } from './shotArtifactContract.js';
+import { inspectFrameChanges } from './frameChangeEvidence.js';
 import { createContinuityCookie, createProofCookie, classifyReceiptContinuity } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
 
@@ -731,6 +732,9 @@ export async function pollOpenVideoRender(db, renderId) {
       const actualFps = parseFrameRate(boundary.frame_rate);
       if (boundary.frame_count !== expected.frames || !Number.isFinite(actualFps) || Math.abs(actualFps - expected.fps) > 0.001) throw Object.assign(new Error('Decoded frame count or frame rate differs from compiled contract.'), { code: 'OPEN_RENDER_MEDIA_INVALID' });
       mediaProbe.boundary = boundary;
+      mediaProbe.frame_changes = inspectFrameChanges(filePath, expected.delivery_frames, { ffmpeg: ffmpegBinary() });
+      const sync = (job.blueprint?.shots || []).find(shot => shot.shot_id === row.shot_id)?.sync_avenue;
+      if (sync) mediaProbe.sync_avenue = { world_state_fingerprint: sync.world_state_fingerprint || null, renderer_bridge_fingerprint: sync.renderer_bridge?.fingerprint || null, causal_synchronization_verified: false, authority_granted: false };
     }
     const latest = getStoryVideoJob(db, row.job_id);
     if (!latest || createContinuityCookie(latest).value !== row.continuity_cookie) throw Object.assign(new Error('Shot plan changed while receiving the artifact.'), { code: 'OPEN_RENDER_STALE_CONTINUITY' });
