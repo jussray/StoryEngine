@@ -16,6 +16,8 @@ export function selectSavedVideo(entry, nodeId) {
 }
 
 export function completedVideo(entry,nodeId) {
+  const early=classifyHistory(entry,true);
+  if(early) throw new Error(early);
   const output=selectSavedVideo(entry,nodeId);
   const failure=classifyHistory(entry,Boolean(output));
   if(failure) throw new Error(failure);
