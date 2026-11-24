@@ -1,0 +1,9 @@
+{
+  "project": "StoryEngine",
+  "status": "draft",
+  "intendedUseCases": [
+    "Organize creative work",
+    "Prepare work for reviewed release"
+  ],
+  "verifiedCapabilities": []
+}
