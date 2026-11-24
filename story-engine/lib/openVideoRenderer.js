@@ -18,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 
 import { getStoryVideoJob } from './videoEngine.js';
 import { cinematicDirection } from './cinematicDirection.js';
+import { validateCompiledGraph, framePlan, classifyHistory } from './renderGraphContract.js';
 import { createContinuityCookie, createProofCookie, classifyReceiptContinuity } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
 
@@ -206,7 +207,7 @@ export function compileComfyWorkflow(workflow, shot, job, attempt = 0, runtime =
     '__LEEVIZE_WIDTH__': boundedInt(runtime.width, dimensions.width, 256, 1920),
     '__LEEVIZE_HEIGHT__': boundedInt(runtime.height, dimensions.height, 144, 1080),
     '__LEEVIZE_FPS__': fps,
-    '__LEEVIZE_FRAMES__': framesFor(runtime.duration_seconds || shot.duration_seconds, fps),
+    '__LEEVIZE_FRAMES__': direction ? framePlan(Number(runtime.duration_seconds ?? shot.duration_seconds), fps).modelFrames : framesFor(runtime.duration_seconds || shot.duration_seconds, fps),
     '__LEEVIZE_SHOT_ID__': text(shot.shot_id),
     '__LEEVIZE_CONTINUITY_COOKIE__': cookie.value,
     '__LEEVIZE_MODEL__': model.diffusion_model,
@@ -547,6 +548,18 @@ export async function submitOpenVideoShot(db, jobId, shotId, options = {}) {
   const model = modelConfig();
   const attempt = boundedInt(options.attempt, 0, 0, 9);
   const compiled = compileComfyWorkflow(workflow, shot, job, attempt, { model, input_image_name: reference.name });
+  let graphProof;
+  try {
+    // Read after upload so LoadImage's current worker-side choices include the reference.
+    const objectInfo = await comfyJson('/object_info');
+    graphProof = validateCompiledGraph(compiled, objectInfo, { requiredTypes: REQUIRED_NODE_TYPES, referenceName: reference.name });
+    const pinned = text(process.env.LEEVIZE_NODE_CONTRACT_SHA256);
+    if (pinned && graphProof.node_contract_sha256 !== pinned) throw Object.assign(new Error('Worker node contract drifted.'), { code: 'OPEN_RENDER_NODE_CONTRACT_DRIFT' });
+  } catch (error) {
+    const failure = recordFailure(db, job, { shot_id: shotId, failure_class: error.code || 'OPEN_RENDER_GRAPH_INVALID', message: 'Compiled graph preflight failed.' });
+    error.failure_receipts = [failure];
+    throw error;
+  }
   const prompt = await comfyJson('/prompt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -583,8 +596,8 @@ export async function submitOpenVideoShot(db, jobId, shotId, options = {}) {
     seed: seedFor(continuity.value, shotId, attempt),
     reference_sha256: reference.sha256,
     continuity_cookie: continuity.value,
-    prompt_receipt: { present: true },
-    output_contract: { width: dimensions.width, height: dimensions.height, fps: DEFAULT_FPS, frames: framesFor(shot.duration_seconds, DEFAULT_FPS) },
+    prompt_receipt: { present: true, ...graphProof, node_contract_pin_configured: Boolean(text(process.env.LEEVIZE_NODE_CONTRACT_SHA256)) },
+    output_contract: { width: dimensions.width, height: dimensions.height, fps: DEFAULT_FPS, frames: cinematicDirection(shot, job) ? framePlan(Number(shot.duration_seconds), DEFAULT_FPS).modelFrames : framesFor(shot.duration_seconds, DEFAULT_FPS), ...(cinematicDirection(shot, job) ? { delivery_frames: framePlan(Number(shot.duration_seconds), DEFAULT_FPS).deliveryFrames } : {}) },
     qa: { technical: 'pending', continuity: 'pending', editorial: 'pending' },
     authority_granted: false,
     created_at: Date.now()
@@ -650,6 +663,11 @@ export async function pollOpenVideoRender(db, renderId) {
   const job = getStoryVideoJob(db, row.job_id);
   if (!job) throw Object.assign(new Error('Video job not found.'), { code: 'OPEN_RENDER_JOB_NOT_FOUND' });
   if (['complete', 'failed'].includes(row.status)) return publicRender(row, job);
+  if (row.continuity_cookie !== createContinuityCookie(job).value) {
+    const failure = recordFailure(db, job, { shot_id: row.shot_id, render_id: renderId, failure_class: 'OPEN_RENDER_STALE_CONTINUITY', message: 'Shot plan changed after submission; old output cannot satisfy the current job.' });
+    db.prepare(`UPDATE story_video_open_renders SET status='failed',failure_json=?,updated_at=? WHERE render_id=?`).run(JSON.stringify(failure), Date.now(), renderId);
+    return publicRender(db.prepare('SELECT * FROM story_video_open_renders WHERE render_id=?').get(renderId), job);
+  }
   const history = await comfyJson(`/history/${encodeURIComponent(row.prompt_id)}`, {}, 20_000).catch(error => {
     error.code ||= 'OPEN_RENDER_HISTORY_UNAVAILABLE';
     throw error;
@@ -659,13 +677,13 @@ export async function pollOpenVideoRender(db, renderId) {
     db.prepare(`UPDATE story_video_open_renders SET status='rendering',updated_at=? WHERE render_id=?`).run(Date.now(), renderId);
     return publicRender(db.prepare('SELECT * FROM story_video_open_renders WHERE render_id=?').get(renderId), job);
   }
-  const executionError = entry.status?.status_str === 'error' || (entry.status?.messages || []).some(item => Array.isArray(item) && item[0] === 'execution_error');
-  if (executionError) {
-    const failure = recordFailure(db, job, { shot_id: row.shot_id, render_id: renderId, failure_class: 'OPEN_RENDER_EXECUTION_FAILED', message: 'ComfyUI reported an execution error for this shot.' });
+  const output = outputCandidates(entry.outputs || {}).filter(item => item.type === 'output').at(-1);
+  const failureClass = classifyHistory(entry, Boolean(output));
+  if (failureClass) {
+    const failure = recordFailure(db, job, { shot_id: row.shot_id, render_id: renderId, failure_class: failureClass, message: 'ComfyUI reported a terminal render failure.' });
     db.prepare(`UPDATE story_video_open_renders SET status='failed',failure_json=?,updated_at=? WHERE render_id=?`).run(JSON.stringify(failure), Date.now(), renderId);
     return publicRender(db.prepare('SELECT * FROM story_video_open_renders WHERE render_id=?').get(renderId), job);
   }
-  const output = outputCandidates(entry).at(-1);
   if (!output) {
     db.prepare(`UPDATE story_video_open_renders SET status='rendering',updated_at=? WHERE render_id=?`).run(Date.now(), renderId);
     return publicRender(db.prepare('SELECT * FROM story_video_open_renders WHERE render_id=?').get(renderId), job);
@@ -740,7 +758,11 @@ export async function renderOpenVideoShotSet(db, jobId, options = {}) {
   const results = [];
   for (const shot of job.blueprint?.shots || []) {
     if (requested && !requested.has(shot.shot_id)) continue;
-    try { results.push({ shot_id: shot.shot_id, status: 'complete', render: await renderOpenVideoShot(db, jobId, shot.shot_id, options) }); }
+    try {
+      const render = await renderOpenVideoShot(db, jobId, shot.shot_id, options);
+      results.push({ shot_id: shot.shot_id, status: render.status, render });
+      if (render.status !== 'complete' && options.continue_on_failure !== true) break;
+    }
     catch (error) {
       results.push({ shot_id: shot.shot_id, status: 'failed', failures: error.failure_receipts || [{ failure_class: error.code || 'OPEN_RENDER_FAILED', safe_message: 'Render failed.' }] });
       if (options.continue_on_failure !== true) break;
