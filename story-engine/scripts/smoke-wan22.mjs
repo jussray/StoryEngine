@@ -8,7 +8,7 @@ import { verifyModelWeights } from '../lib/modelWeightIntegrity.js';
 import { validateCompiledGraph, parseFrameRate } from '../lib/renderGraphContract.js';
 import { inspectShotBoundary } from '../lib/shotArtifactContract.js';
 import { smokeFixture } from './leevize-smoke-fixture.mjs';
-import { completedVideo } from './wan22-smoke-output.mjs';
+import { completedVideo, saveVideoNodeId } from './wan22-smoke-output.mjs';
 import { inspectFrameChanges, gpuSnapshot } from '../lib/frameChangeEvidence.js';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -65,9 +65,7 @@ async function main(){
   const requiredTypes=[...new Set(Object.values(graph).map(n=>n.class_type))];
   const proof=validateCompiledGraph(compiled,info,{requiredTypes,referenceName:filename});
   if(proof.node_contract_sha256!==env.LEEVIZE_NODE_CONTRACT_SHA256)fail('OPEN_RENDER_NODE_CONTRACT_DRIFT');
-  const saves=Object.entries(compiled).filter(([,n])=>n.class_type==='SaveVideo');
-  if(saves.length!==1)fail('SINGLE_SAVEVIDEO_REQUIRED');
-  const saveId=saves[0][0];
+  const saveId=saveVideoNodeId(compiled);
   // Preserve correlation even if submission succeeds but its response is lost.
   const clientId='leevize-smoke-'+randomUUID();
   writeFileSync(join(out,'submission.json'),JSON.stringify({client_id:clientId,graph:proof,fixture,weights,submitted_at:new Date().toISOString(),publication_authority:false},null,2),{flag:'wx'});
