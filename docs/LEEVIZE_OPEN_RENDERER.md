@@ -168,3 +168,46 @@ status endpoint does not attest worker filesystem bytes or prove that a
 running ComfyUI process loaded them. Use a trusted immutable worker model
 mount and retain the local verification evidence. Automatic repair execution,
 live GPU telemetry and full repository CI remain independent gates.
+
+
+## Direct Wan worker diagnostic (before the authenticated application smoke)
+
+Use only on the dedicated, authorized GPU host with an approved commercial
+model, an immutable trusted model mount, and a reviewed node-contract pin.
+The direct diagnostic uses the existing StoryEngine graph compiler, not a
+second renderer. It generates only the synthetic reference fixture.
+
+Set the following in the trusted operator environment:
+`LEEVIZE_MODELS_ROOT`, `LEEVIZE_RENDER_WORKER_ID`,
+`LEEVIZE_MODEL_LICENSE_STATUS=verified-commercial`,
+`LEEVIZE_NODE_CONTRACT_SHA256` (independently reviewed worker schema hash),
+`LEEVIZE_WORKER_SMOKE_OUT` (new local directory),
+`LEEVIZE_WORKER_SMOKE_APPROVAL=one-shot-local-worker`.
+The worker URL defaults to http://127.0.0.1:8188; remote origins are rejected.
+The optional existing worker token stays in the operator environment.
+
+```sh
+cd story-engine
+node scripts/smoke-wan22.mjs --submit
+```
+
+The diagnostic verifies the three local weight files, checks GPU enumeration,
+uploads a fresh synthetic PNG, compiles and validates the exact graph, compares
+the node-contract pin, submits once, and requires successful terminal history
+from its SaveVideo node. It accepts video artifacts in videos, animated, or
+images, rejects ambiguous output and path traversal, bounds response sizes and
+request time, and preserves the submission correlation ID for reconciliation.
+It checks 121 decoded frames at 832x480 and 24 fps, extracts delivery frame
+120, and exports and re-decodes the 120-frame MP4. Original output, delivery
+MP4, boundary PNG, and evidence remain in the new local directory.
+
+This is worker-level evidence only. It neither creates nor approves a
+StoryEngine job, verifies the deployed application SHA, attests weights loaded
+by the running process, nor measures peak VRAM. Do not retry automatically
+after transport ambiguity; reconcile the existing client/prompt ID first.
+Follow a successful diagnostic with the authenticated application smoke.
+
+Focused output-selection tests:
+```sh
+node --test test/wan22SmokeOutput.test.js
+```
