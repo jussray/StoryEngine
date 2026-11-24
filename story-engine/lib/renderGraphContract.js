@@ -51,7 +51,15 @@ export function validateCompiledGraph(graph,info,{requiredTypes=[],referenceName
   }
   for(const [id] of entries) visit(id);
   if(!entries.some(([,n])=>info[n.class_type]?.output_node===true)) fail('Graph has no advertised output node.');
-  return {nodes:entries.length,compiled_sha256:graphDigest(graph),node_contract_sha256:graphDigest(Object.fromEntries([...types].sort().map(t=>[t,info[t]])))};
+  // Asset choice lists are dynamic; pin their contract shape, not tenant filenames.
+  const contractShape = type => {
+    const schema=info[type];
+    const inputs=Object.fromEntries(['required','optional'].map(group=>[group,
+      Object.fromEntries(Object.entries(schema.input?.[group]||{}).map(([key,value])=>
+        [key,Array.isArray(value?.[0])?['ENUM',...value.slice(1)]:value]))]));
+    return {input:inputs,output:schema.output,output_node:schema.output_node===true};
+  };
+  return {nodes:entries.length,compiled_sha256:graphDigest(graph),node_contract_sha256:graphDigest(Object.fromEntries([...types].sort().map(t=>[t,contractShape(t)])))};
 }
 
 export function classifyHistory(entry,hasOutput) {
