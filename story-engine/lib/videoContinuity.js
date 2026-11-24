@@ -4,6 +4,8 @@ import {
   rawSha256
 } from './makevideoProtocol.js';
 
+import { cinematicDirection, CINEMATIC_PROFILE } from './cinematicDirection.js';
+
 export const VIDEO_CONTINUITY_COOKIE_CONTRACT = 'leevize/video-continuity-cookie@v2';
 export const VIDEO_PROOF_COOKIE_CONTRACT = 'leevize/video-proof-cookie@v2';
 
@@ -29,6 +31,10 @@ export function continuityBasis(job) {
     canon_versions: blueprint.canon_versions || null,
     character_bible: blueprint.character_bible || [],
     world_bible: blueprint.world_bible || {},
+    ...(blueprint.cinematic_profile === CINEMATIC_PROFILE ? {
+      cinematic_profile: CINEMATIC_PROFILE,
+      cinematic_directions: (blueprint.shots || []).map(shot => cinematicDirection(shot, job))
+    } : {}),
     shots: (blueprint.shots || []).map(shot => ({
       shot_id: clean(shot.shot_id),
       duration_seconds: Number(shot.duration_seconds || 0),
