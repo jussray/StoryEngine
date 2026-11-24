@@ -39,3 +39,10 @@ test('node contract pin remains stable when worker gains another image',()=>{
  next.LoadImage.input.required.image[0].push('second.png');
  assert.equal(validateCompiledGraph(graph,next,{referenceName:'canon.png'}).node_contract_sha256,first.node_contract_sha256);
 });
+
+test('object-form worker errors retain OOM and interruption classification',()=>{
+  assert.equal(classifyHistory({status:{messages:[{type:'execution_error',data:{exception_type:'OutOfMemoryError'}}]}},true),'OPEN_RENDER_GPU_OOM');
+  assert.equal(classifyHistory({status:{messages:[{type:'execution_error',exception_message:'CUDA out of memory'}]}},false),'OPEN_RENDER_GPU_OOM');
+  assert.equal(classifyHistory({status:{messages:[{type:'execution_interrupted'}]}},true),'OPEN_RENDER_INTERRUPTED');
+  assert.equal(classifyHistory({status:{messages:[{type:'execution_error'}]}},false),'OPEN_RENDER_EXECUTION_FAILED');
+});
