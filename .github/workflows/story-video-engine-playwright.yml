@@ -18,6 +18,7 @@ on:
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/openVideoRenderer.js'
       - 'story-engine/lib/renderGraphContract.js'
+      - 'story-engine/lib/workerTransport.mjs'
       - 'story-engine/lib/shotArtifactContract.js'
       - 'story-engine/lib/frameChangeEvidence.js'
       - 'story-engine/lib/cinematicDirection.js'
@@ -66,6 +67,7 @@ on:
       - 'story-engine/lib/videoExport.js'
       - 'story-engine/lib/openVideoRenderer.js'
       - 'story-engine/lib/renderGraphContract.js'
+      - 'story-engine/lib/workerTransport.mjs'
       - 'story-engine/lib/shotArtifactContract.js'
       - 'story-engine/lib/frameChangeEvidence.js'
       - 'story-engine/lib/cinematicDirection.js'
@@ -138,7 +140,7 @@ jobs:
         working-directory: .
         run: node scripts/verify-juss-os-commands.mjs
       - name: Verify native worker and media artifact contracts
-        run: node --test test/renderGraphContract.test.js test/shotArtifactContract.test.js test/modelWeightIntegrity.test.js test/leevizeSmokeFixture.test.js test/wan22SmokeOutput.test.js test/frameRateContract.test.js test/frameChangeEvidence.test.js test/cinematicDirection.test.js
+        run: node --test test/renderGraphContract.test.js test/shotArtifactContract.test.js test/modelWeightIntegrity.test.js test/leevizeSmokeFixture.test.js test/wan22SmokeOutput.test.js test/frameRateContract.test.js test/frameChangeEvidence.test.js test/cinematicDirection.test.js test/workerTransport.test.mjs
       - name: Run full Story Engine Node suite
         run: npm test
       - name: Run repository promotion contracts
