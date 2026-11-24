@@ -9,6 +9,7 @@ import { validateCompiledGraph, parseFrameRate } from '../lib/renderGraphContrac
 import { inspectShotBoundary } from '../lib/shotArtifactContract.js';
 import { smokeFixture } from './leevize-smoke-fixture.mjs';
 import { completedVideo } from './wan22-smoke-output.mjs';
+import { inspectFrameChanges, gpuSnapshot } from '../lib/frameChangeEvidence.js';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=code=>{throw new Error(code);};
@@ -43,6 +44,7 @@ async function main(){
   if(!model||model.id!=='wan2.2-ti2v-5b'||model.commercial_use_allowed!==true)fail('MODEL_NOT_APPROVED');
   const weights=await verifyModelWeights(model,env.LEEVIZE_MODELS_ROOT);
   const {png,manifest:fixture}=smokeFixture();
+  if(!Buffer.isBuffer(png)||!png.length||hash(png)!==fixture.reference_sha256)fail('INVALID_SMOKE_REFERENCE_IMAGE');
   const graph=readConfig('leevize-wan22-ti2v-5b-api.json');
   const {compileComfyWorkflow}=await import('../lib/openVideoRenderer.js');
   const shot={shot_id:'wan22-smoke',duration_seconds:fixture.duration_seconds,provider_prompt:fixture.action,action:fixture.action,negative_constraints:['static subject','text','unrequested camera movement']};
@@ -82,6 +84,7 @@ async function main(){
   if(!media)fail('WORKER_SMOKE_DEADLINE');
   const params=new URLSearchParams({filename:media.filename,subfolder:media.subfolder||'',type:'output'});
   const bytes=await request('/view?'+params,{},512*1024*1024);
+  if(!bytes.length)fail('EMPTY_MODEL_OUTPUT');
   const source=join(out,'model-output.'+media.filename.split('.').at(-1).toLowerCase());
   writeFileSync(source,bytes,{flag:'wx'});
   exec('ffmpeg',['-nostdin','-v','error','-xerror','-i',source,'-map','0:v:0','-f','null','-']);
@@ -89,12 +92,15 @@ async function main(){
   const fps=parseFrameRate(boundary.frame_rate);
   if(boundary.frame_count!==fixture.modelFrames||boundary.width!==fixture.width||boundary.height!==fixture.height||fps!==fixture.fps)fail('WORKER_MEDIA_CONTRACT_MISMATCH');
   writeFileSync(join(out,'delivery-tail.png'),tail,{flag:'wx'});
+  const motion=inspectFrameChanges(source,fixture.deliveryFrames);
+  if(!motion.frame_change_observed)fail('SMOKE_FRAME_CHANGE_NOT_OBSERVED');
   const trimmed=join(out,'delivery.mp4');
   exec('ffmpeg',['-nostdin','-n','-v','error','-xerror','-i',source,'-map','0:v:0','-an','-frames:v',String(fixture.deliveryFrames),'-c:v','libx264','-pix_fmt','yuv420p',trimmed]);
   const {png:unused,...delivery}=inspectShotBoundary(trimmed,fixture.deliveryFrames);
-  if(delivery.frame_count!==fixture.deliveryFrames)fail('DELIVERY_TRIM_MISMATCH');
+  if(delivery.frame_count!==fixture.deliveryFrames||delivery.width!==fixture.width||delivery.height!==fixture.height||parseFrameRate(delivery.frame_rate)!==fixture.fps)fail('DELIVERY_TRIM_MISMATCH');
   exec('ffmpeg',['-nostdin','-v','error','-xerror','-i',trimmed,'-map','0:v:0','-f','null','-']);
-  const receipt={scope:'direct_worker_diagnostic',prompt_id:promptId,worker_id:env.LEEVIZE_RENDER_WORKER_ID,model_id:model.id,graph:proof,weights,model_output_sha256:hash(bytes),model_output_bytes:bytes.length,boundary,delivery,delivery_sha256:hash(readFileSync(trimmed)),elapsed_ms:Date.now()-started,gpu_devices:stats.devices.map(d=>({type:d.type,vram_total:Number(d.vram_total||0)})),peak_vram_verified:false,storyengine_job_verified:false,loaded_weight_attestation_verified:false,publication_authority:false};
+  const postStats=await json('/system_stats').catch(()=>null);
+  const receipt={reference_sha256:hash(png),delivery_tail_sha256:hash(tail),delivery_bytes:readFileSync(trimmed).length,motion,gpu_devices_before:gpuSnapshot(stats),gpu_devices_after:gpuSnapshot(postStats),scope:'direct_worker_diagnostic',prompt_id:promptId,worker_id:env.LEEVIZE_RENDER_WORKER_ID,model_id:model.id,graph:proof,weights,model_output_sha256:hash(bytes),model_output_bytes:bytes.length,boundary,delivery,delivery_sha256:hash(readFileSync(trimmed)),elapsed_ms:Date.now()-started,gpu_devices:gpuSnapshot(stats),peak_vram_verified:false,storyengine_job_verified:false,loaded_weight_attestation_verified:false,publication_authority:false};
   writeFileSync(join(out,'receipt.json'),JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
   console.log(JSON.stringify(receipt));
 }
