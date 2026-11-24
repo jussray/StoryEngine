@@ -228,6 +228,7 @@ export function buildStoryVideoBlueprint(db, input = {}) {
   };
   return {
     schema_version: '1.3.0',
+    cinematic_profile: 'leevize/cinematic-direction@v1',
     blueprint_id: `video_blueprint_${randomUUID()}`,
     workspace_id: workspaceId,
     source_revision_id: revisionFor(story, chapters, characters),
