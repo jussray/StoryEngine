@@ -109,3 +109,33 @@ and render ledger. Record hardware identity, frame count, resolution, steps,
 peak VRAM and elapsed time before establishing a calibrated envelope. Do not
 substitute a guessed hash, synthetic GPU receipt, or CPU FFmpeg fixture for
 that live evidence.
+
+
+## Operator single-shot smoke command
+
+Run from the trusted operator environment against the already configured,
+authorized StoryEngine deployment. The default is a read-only status check:
+
+```sh
+cd story-engine
+LEEVIZE_SMOKE_ORIGIN=https://YOUR-STORYENGINE-ORIGIN node scripts/leevize-smoke.mjs
+```
+
+To execute exactly one existing approved short shot (1–5 seconds), set
+`LEEVIZE_SMOKE_APPROVAL=one-shot-existing-worker`,
+`LEEVIZE_SMOKE_JOB_ID`, `LEEVIZE_SMOKE_SHOT_ID`,
+`LEEVIZE_SMOKE_REFERENCE` (rights-cleared local PNG/JPEG/WebP), and
+`LEEVIZE_SMOKE_COOKIE` through the trusted local environment. Do not put
+session credentials into source, chat, or shell history. Then run:
+
+```sh
+node scripts/leevize-smoke.mjs --submit
+```
+
+The script refuses unready workers and existing in-flight renders, sends a
+single submission, polls with a deadline, downloads the actual media from
+the authenticated route, compares SHA-256 against the stored receipt, counts
+decoded frames and checks dimensions, then fully decodes video. It does not
+resubmit, approve, publish, buy compute, or establish exact deployed source
+SHA or peak VRAM. The latter two remain separate evidence gates. A timeout
+requires reconciling the existing render ID before another attempt.
