@@ -32,3 +32,10 @@ test('history distinguishes OOM, interruptions and successful empty output',()=>
 test('repair selection preserves passing shots and caps attempts',()=>{
   assert.deepEqual(repairSelection([{id:'a',passed:true},{id:'b',passed:false,attempt:0},{id:'c',passed:false,attempt:2}],2),{retry:['b'],blocked:['c']});
 });
+
+test('node contract pin remains stable when worker gains another image',()=>{
+ const first=validateCompiledGraph(graph,info,{referenceName:'canon.png'});
+ const next=structuredClone(info);
+ next.LoadImage.input.required.image[0].push('second.png');
+ assert.equal(validateCompiledGraph(graph,next,{referenceName:'canon.png'}).node_contract_sha256,first.node_contract_sha256);
+});
