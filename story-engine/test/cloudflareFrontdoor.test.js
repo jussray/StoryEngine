@@ -233,8 +233,20 @@ test('a throwing rate limiter fails closed without calling the runtime', async (
   assert.equal(response.headers.get('x-storyengine-edge'), 'rate-limit-unavailable');
 });
 
-test('preview deployments carry no production runtime origin', () => {
+test('preview runtime origin is explicitly empty and fails closed', async () => {
   const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
-  assert.equal(config.previews?.vars?.STORYENGINE_RUNTIME_ORIGIN, undefined);
+  assert.equal(config.previews?.vars?.STORYENGINE_RUNTIME_ORIGIN, '');
+
+  let forwarded = false;
+  globalThis.fetch = async () => {
+    forwarded = true;
+    return new Response('unexpected');
+  };
+  const response = await worker.fetch(new Request('https://storyengine.example/'), {
+    STORYENGINE_RUNTIME_ORIGIN: config.previews.vars.STORYENGINE_RUNTIME_ORIGIN
+  });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-storyengine-edge'), 'runtime-unavailable');
+  assert.equal(forwarded, false);
 });
