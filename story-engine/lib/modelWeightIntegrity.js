@@ -27,3 +27,24 @@ export async function verifyModelWeights(model,modelsRoot) {
   }
   return {model_id:model.id,revision:model.weight_integrity.revision,files:evidence,scope:'local_files_only',verified_at:new Date().toISOString(),authority_granted:false};
 }
+
+const roles=['diffusion_model','text_encoder','vae'];
+const envKeys={diffusion_model:'LEEVIZE_WAN_MODEL',text_encoder:'LEEVIZE_WAN_TEXT_ENCODER',vae:'LEEVIZE_WAN_VAE'};
+const text=(value,fallback='')=>String(value??'').trim()||fallback;
+
+// Match the selected filenames to the publisher's pinned manifest. This is
+// configuration validation only, not proof of installed or loaded weights.
+export function resolveManifestModel(manifest,env={}) {
+  const id=text(env.LEEVIZE_MODEL_ID,manifest?.default_model_id);
+  const entry=manifest?.models?.find(item=>item.id===id);
+  const selected=Object.fromEntries(roles.map(role=>[role,text(env[envKeys[role]],entry?.[role]||'')]));
+  const pins=entry?.weight_integrity?.files;
+  const pinned=Array.isArray(pins)&&pins.length===roles.length&&roles.every(role=>{
+    const matches=pins.filter(pin=>pin.role===role);
+    return matches.length===1&&typeof matches[0].path==='string'&&
+      matches[0].path.split('/').at(-1)===entry[role]&&
+      /^[a-f0-9]{64}$/.test(matches[0].sha256)&&selected[role]===entry[role];
+  });
+  return {...(entry||{id,license:null,commercial_use_allowed:false}),...selected,
+    verified:Boolean(pinned&&entry?.commercial_use_allowed===true&&text(entry.license)&&text(env.LEEVIZE_MODEL_LICENSE_STATUS)==='verified-commercial')};
+}
