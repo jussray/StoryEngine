@@ -143,6 +143,7 @@ function renderRun(run) {
   $('runMeta').textContent = `${assistLabel ? `${assistLabel} · ` : ''}${stageLabel}`;
   // Keep the raw status value in this stable DOM contract for existing proof consumers.
   $('runStatus').textContent = run.status;
+  window.storyCompanion?.setActive(shouldPoll(run), $('runMeta'), stageLabel);
   $('approve').classList.toggle('hidden', run.status !== 'awaiting_approval');
 
   const byStage = new Map();
@@ -221,6 +222,7 @@ async function refreshRun() {
     renderRun(run);
     return run;
   } catch (error) {
+    window.storyCompanion?.setActive(false);
     enterStudioMode();
     $('runPanel').classList.remove('hidden');
     $('runMeta').textContent = creatorCopy(error.message);
@@ -250,6 +252,7 @@ $('storyForm').addEventListener('submit', async event => {
   event.preventDefault();
   $('start').disabled = true;
   $('start').textContent = 'Opening studio…';
+  window.storyCompanion?.setActive(true, $('start'), 'Opening studio…');
   try {
     const payload = {
       story_vision: $('vision').value.trim(),
@@ -266,6 +269,7 @@ $('storyForm').addEventListener('submit', async event => {
   } catch (error) {
     alert(creatorCopy(error.message));
   } finally {
+    if (!currentRunId) window.storyCompanion?.setActive(false);
     $('start').disabled = false;
     $('start').textContent = START_LABELS[assistMode] || START_LABELS.writer;
   }
@@ -274,6 +278,7 @@ $('storyForm').addEventListener('submit', async event => {
 $('approve').addEventListener('click', async () => {
   if (!currentRunId) return;
   $('approve').disabled = true;
+  window.storyCompanion?.setActive(true, $('runMeta'), 'Submitting approval…');
   try {
     const run = await api(`/api/story-engine/runs/${encodeURIComponent(currentRunId)}/approve`, { method: 'POST', body: '{}' });
     renderRun(run);
@@ -282,6 +287,7 @@ $('approve').addEventListener('click', async () => {
     alert(creatorCopy(error.message));
   } finally {
     $('approve').disabled = false;
+    if ($('runStatus').textContent === 'awaiting_approval') window.storyCompanion?.setActive(false);
   }
 });
 
