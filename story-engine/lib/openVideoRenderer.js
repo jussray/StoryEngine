@@ -22,6 +22,7 @@ import { validateCompiledGraph, framePlan, classifyHistory, parseFrameRate } fro
 import { inspectShotBoundary, invalidChainShots } from './shotArtifactContract.js';
 import { inspectFrameChanges } from './frameChangeEvidence.js';
 import { fetchBoundedBytes } from './workerTransport.mjs';
+import { resolveManifestModel } from './modelWeightIntegrity.js';
 import { completedVideo, saveVideoNodeId } from '../scripts/wan22-smoke-output.mjs';
 import { createContinuityCookie, createProofCookie, classifyReceiptContinuity } from './videoContinuity.js';
 import { log } from '../models/eventModel.js';
@@ -121,27 +122,7 @@ function modelManifest() {
 }
 
 function modelConfig() {
-  const manifest = modelManifest();
-  const requestedId = text(process.env.LEEVIZE_MODEL_ID, manifest.default_model_id);
-  const entry = (manifest.models || []).find(item => item.id === requestedId);
-  if (!entry) {
-    return {
-      id: requestedId,
-      verified: false,
-      license: null,
-      commercial_use_allowed: false,
-      diffusion_model: text(process.env.LEEVIZE_WAN_MODEL),
-      text_encoder: text(process.env.LEEVIZE_WAN_TEXT_ENCODER),
-      vae: text(process.env.LEEVIZE_WAN_VAE)
-    };
-  }
-  return {
-    ...entry,
-    verified: entry.commercial_use_allowed === true && Boolean(text(entry.license)) && text(process.env.LEEVIZE_MODEL_LICENSE_STATUS) === 'verified-commercial',
-    diffusion_model: text(process.env.LEEVIZE_WAN_MODEL, entry.diffusion_model),
-    text_encoder: text(process.env.LEEVIZE_WAN_TEXT_ENCODER, entry.text_encoder),
-    vae: text(process.env.LEEVIZE_WAN_VAE, entry.vae)
-  };
+  return resolveManifestModel(modelManifest(), process.env);
 }
 
 function outputRoot() {
@@ -272,7 +253,7 @@ export async function probeOpenVideoRenderer() {
   let workflowSha = null;
   try { workflowSha = readWorkflow().workflow_sha256; }
   catch (error) { blockers.push({ id: 'WF-01', code: error.code, reason: error.message }); }
-  if (!model.verified) blockers.push({ id: 'LIC-01', code: 'BLOCKED_LICENSE_REVIEW', reason: 'Configured model is not verified by the locked model manifest for commercial use.' });
+  if (!model.verified) blockers.push({ id: 'LIC-01', code: 'BLOCKED_LICENSE_REVIEW', reason: 'Configured model or selected filenames do not match the commercially approved pinned model manifest.' });
   if (!mediaToolingReady()) blockers.push({ id: 'MEDIA-01', code: 'OPEN_RENDER_MEDIA_TOOLING_UNAVAILABLE', reason: 'FFmpeg or ffprobe is unavailable.' });
   if (!base) blockers.push({ id: 'GPU-01', code: 'OPEN_RENDER_COMPUTE_UNCONFIGURED', reason: 'No ComfyUI GPU runtime is configured.' });
 
