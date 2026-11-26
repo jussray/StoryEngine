@@ -267,6 +267,7 @@ $('storyForm').addEventListener('submit', async event => {
     renderRun(run);
     if (shouldPoll(run)) startPolling();
   } catch (error) {
+    window.storyCompanion?.setActive(false);
     alert(creatorCopy(error.message));
   } finally {
     if (!currentRunId) window.storyCompanion?.setActive(false);
@@ -284,6 +285,7 @@ $('approve').addEventListener('click', async () => {
     renderRun(run);
     if (shouldPoll(run)) startPolling();
   } catch (error) {
+    window.storyCompanion?.setActive(false);
     alert(creatorCopy(error.message));
   } finally {
     $('approve').disabled = false;
