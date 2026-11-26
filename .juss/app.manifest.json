@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "registryVersion": "2.0.0",
+  "id": "storyengine",
+  "name": "StoryEngine",
+  "repository": "StoryEngine",
+  "defaultBranch": "main",
+  "sourceHeadAtAudit": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+  "identityStatus": "source-verified",
+  "role": "creator-studio-with-l99-provenance-and-execution-runtime",
+  "authorityOwner": "storyengine",
+  "authorityScope": "Creator workflows, authorship, tenant isolation, provenance, and release preparation; external publishing remains separately approved.",
+  "surfaces": [
+    "web",
+    "api",
+    "worker"
+  ],
+  "localManifestPaths": [
+    ".juss/app.manifest.json",
+    ".juss/skills.manifest.json"
+  ]
+}

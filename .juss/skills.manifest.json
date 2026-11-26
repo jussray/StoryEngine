@@ -1,0 +1,392 @@
+{
+  "schemaVersion": "1.0",
+  "registryVersion": "2.0.0",
+  "appId": "storyengine",
+  "registry": {
+    "repository": "jussray/promptos",
+    "manifestPath": "manifests/apps/storyengine.json",
+    "revision": "667ba485a051417f4ca6d00810b9732d08c095e0",
+    "sourceRef": "feat/app-skill-registry-v2-20261125",
+    "status": "candidate"
+  },
+  "source": {
+    "repository": "jussray/ULTRATHINK-",
+    "revision": "4e650bdb2ca3a372300ca99bbf8af18c75a1d5ca",
+    "sourceRef": "feat/portable-skill-packages-20261125",
+    "status": "candidate"
+  },
+  "skills": {
+    "shared": [
+      {
+        "id": "goalfix",
+        "sourceRepository": "jussray/ULTRATHINK-",
+        "sourcePath": "skills/goalfix/SKILL.md",
+        "sourceRevision": "4e650bdb2ca3a372300ca99bbf8af18c75a1d5ca",
+        "sourceRef": "feat/portable-skill-packages-20261125",
+        "status": "source-path-verified",
+        "lifecycle": "candidate",
+        "mode": "reference-only",
+        "authority": "advisory",
+        "owner": "ultrathink",
+        "compatibility": {
+          "apps": [
+            "*"
+          ],
+          "surfaces": [
+            "*"
+          ]
+        }
+      },
+      {
+        "id": "ultrathink",
+        "sourceRepository": "jussray/ULTRATHINK-",
+        "sourcePath": "skills/ultrathink/SKILL.md",
+        "sourceRevision": "4e650bdb2ca3a372300ca99bbf8af18c75a1d5ca",
+        "sourceRef": "feat/portable-skill-packages-20261125",
+        "status": "source-path-verified",
+        "lifecycle": "candidate",
+        "mode": "reference-only",
+        "authority": "advisory",
+        "owner": "ultrathink",
+        "compatibility": {
+          "apps": [
+            "*"
+          ],
+          "surfaces": [
+            "*"
+          ]
+        }
+      },
+      {
+        "id": "redteam",
+        "sourceRepository": "jussray/ULTRATHINK-",
+        "sourcePath": "skills/redteam/SKILL.md",
+        "sourceRevision": "4e650bdb2ca3a372300ca99bbf8af18c75a1d5ca",
+        "sourceRef": "feat/portable-skill-packages-20261125",
+        "status": "source-path-verified",
+        "lifecycle": "candidate",
+        "mode": "reference-only",
+        "authority": "advisory",
+        "owner": "ultrathink",
+        "compatibility": {
+          "apps": [
+            "*"
+          ],
+          "surfaces": [
+            "*"
+          ]
+        }
+      },
+      {
+        "id": "proofmode",
+        "sourceRepository": "jussray/ULTRATHINK-",
+        "sourcePath": "skills/proofmode/SKILL.md",
+        "sourceRevision": "4e650bdb2ca3a372300ca99bbf8af18c75a1d5ca",
+        "sourceRef": "feat/portable-skill-packages-20261125",
+        "status": "source-path-verified",
+        "lifecycle": "candidate",
+        "mode": "reference-only",
+        "authority": "advisory",
+        "owner": "ultrathink",
+        "compatibility": {
+          "apps": [
+            "*"
+          ],
+          "surfaces": [
+            "*"
+          ]
+        }
+      }
+    ],
+    "owned": [
+      {
+        "id": "local-goalfix",
+        "sourceRepository": "jussray/StoryEngine",
+        "sourcePath": "systems/skills/local-goalfix/SKILL.md",
+        "sourceRevision": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+        "sourceRef": "main",
+        "status": "source-path-verified",
+        "lifecycle": "current-main",
+        "mode": "app-native",
+        "authority": "advisory",
+        "owner": "storyengine",
+        "compatibility": {
+          "apps": [
+            "storyengine"
+          ],
+          "surfaces": [
+            "web",
+            "api",
+            "worker"
+          ]
+        }
+      },
+      {
+        "id": "local-runtime-kernel",
+        "sourceRepository": "jussray/StoryEngine",
+        "sourcePath": "systems/skills/local-runtime-kernel/SKILL.md",
+        "sourceRevision": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+        "sourceRef": "main",
+        "status": "source-path-verified",
+        "lifecycle": "current-main",
+        "mode": "app-native",
+        "authority": "advisory",
+        "owner": "storyengine",
+        "compatibility": {
+          "apps": [
+            "storyengine"
+          ],
+          "surfaces": [
+            "web",
+            "api",
+            "worker"
+          ]
+        }
+      },
+      {
+        "id": "local-devil",
+        "sourceRepository": "jussray/StoryEngine",
+        "sourcePath": "systems/skills/local-devil/SKILL.md",
+        "sourceRevision": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+        "sourceRef": "main",
+        "status": "source-path-verified",
+        "lifecycle": "current-main",
+        "mode": "app-native",
+        "authority": "advisory",
+        "owner": "storyengine",
+        "compatibility": {
+          "apps": [
+            "storyengine"
+          ],
+          "surfaces": [
+            "web",
+            "api",
+            "worker"
+          ]
+        }
+      },
+      {
+        "id": "local-cortex",
+        "sourceRepository": "jussray/StoryEngine",
+        "sourcePath": "systems/skills/local-cortex/SKILL.md",
+        "sourceRevision": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+        "sourceRef": "main",
+        "status": "source-path-verified",
+        "lifecycle": "current-main",
+        "mode": "app-native",
+        "authority": "advisory",
+        "owner": "storyengine",
+        "compatibility": {
+          "apps": [
+            "storyengine"
+          ],
+          "surfaces": [
+            "web",
+            "api",
+            "worker"
+          ]
+        }
+      },
+      {
+        "id": "local-truthmode",
+        "sourceRepository": "jussray/StoryEngine",
+        "sourcePath": "systems/skills/local-truthmode/SKILL.md",
+        "sourceRevision": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+        "sourceRef": "main",
+        "status": "source-path-verified",
+        "lifecycle": "current-main",
+        "mode": "app-native",
+        "authority": "advisory",
+        "owner": "storyengine",
+        "compatibility": {
+          "apps": [
+            "storyengine"
+          ],
+          "surfaces": [
+            "web",
+            "api",
+            "worker"
+          ]
+        }
+      },
+      {
+        "id": "visual-grammar",
+        "sourceRepository": "jussray/StoryEngine",
+        "sourcePath": "skills/visual-grammar/SKILL.md",
+        "sourceRevision": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+        "sourceRef": "main",
+        "status": "source-path-verified",
+        "lifecycle": "current-main",
+        "mode": "app-native",
+        "authority": "advisory",
+        "owner": "storyengine",
+        "compatibility": {
+          "apps": [
+            "storyengine"
+          ],
+          "surfaces": [
+            "web",
+            "api",
+            "worker"
+          ]
+        }
+      },
+      {
+        "id": "typescript-debugging-chain",
+        "sourceRepository": "jussray/StoryEngine",
+        "sourcePath": "skills/typescript-debugging-chain/SKILL.md",
+        "sourceRevision": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+        "sourceRef": "main",
+        "status": "source-path-verified",
+        "lifecycle": "current-main",
+        "mode": "app-native",
+        "authority": "advisory",
+        "owner": "storyengine",
+        "compatibility": {
+          "apps": [
+            "storyengine"
+          ],
+          "surfaces": [
+            "web",
+            "api",
+            "worker"
+          ]
+        }
+      },
+      {
+        "id": "typescript-behavior-tests",
+        "sourceRepository": "jussray/StoryEngine",
+        "sourcePath": "skills/typescript-behavior-tests/SKILL.md",
+        "sourceRevision": "794e70d7847c93a072e7bc21e6b137d2859b2895",
+        "sourceRef": "main",
+        "status": "source-path-verified",
+        "lifecycle": "current-main",
+        "mode": "app-native",
+        "authority": "advisory",
+        "owner": "storyengine",
+        "compatibility": {
+          "apps": [
+            "storyengine"
+          ],
+          "surfaces": [
+            "web",
+            "api",
+            "worker"
+          ]
+        }
+      }
+    ],
+    "ownedSkillsStatus": "source-audited"
+  },
+  "plugins": [
+    {
+      "id": "github",
+      "provider": "GitHub",
+      "purpose": "Repository, PR, review, and CI evidence.",
+      "mode": "operator-tooling",
+      "status": "declared",
+      "connectionState": "runtime-discovery-required",
+      "authority": "none",
+      "compatibleApps": [
+        "storyengine"
+      ],
+      "capabilities": [
+        "repository.read",
+        "branch.read",
+        "pull-request.read",
+        "checks.read"
+      ],
+      "writePolicy": "explicit-action-approval-required",
+      "secretsPolicy": "never-store-in-manifest"
+    },
+    {
+      "id": "cloudflare",
+      "provider": "Cloudflare",
+      "purpose": "Worker deployment and runtime metadata.",
+      "mode": "operator-tooling",
+      "status": "declared",
+      "connectionState": "runtime-discovery-required",
+      "authority": "none",
+      "compatibleApps": [
+        "storyengine"
+      ],
+      "capabilities": [
+        "worker.read",
+        "deployment.read",
+        "runtime.read"
+      ],
+      "writePolicy": "explicit-action-approval-required",
+      "secretsPolicy": "never-store-in-manifest"
+    },
+    {
+      "id": "adobe",
+      "provider": "Adobe",
+      "purpose": "Creative asset and document production workflows.",
+      "mode": "operator-tooling",
+      "status": "declared",
+      "connectionState": "runtime-discovery-required",
+      "authority": "none",
+      "compatibleApps": [
+        "storyengine"
+      ],
+      "capabilities": [
+        "creative-assets.read",
+        "creative-assets.create"
+      ],
+      "writePolicy": "explicit-action-approval-required",
+      "secretsPolicy": "never-store-in-manifest"
+    },
+    {
+      "id": "elevenlabs",
+      "provider": "ElevenLabs",
+      "purpose": "Voice and audio asset generation workflows.",
+      "mode": "operator-tooling",
+      "status": "declared",
+      "connectionState": "runtime-discovery-required",
+      "authority": "none",
+      "compatibleApps": [
+        "storyengine"
+      ],
+      "capabilities": [
+        "voice.generate",
+        "audio.generate"
+      ],
+      "writePolicy": "explicit-action-approval-required",
+      "secretsPolicy": "never-store-in-manifest"
+    },
+    {
+      "id": "heygen",
+      "provider": "HeyGen",
+      "purpose": "Avatar and creator-video workflows.",
+      "mode": "operator-tooling",
+      "status": "declared",
+      "connectionState": "runtime-discovery-required",
+      "authority": "none",
+      "compatibleApps": [
+        "storyengine"
+      ],
+      "capabilities": [
+        "avatar-video.generate"
+      ],
+      "writePolicy": "explicit-action-approval-required",
+      "secretsPolicy": "never-store-in-manifest"
+    }
+  ],
+  "compatibility": {
+    "surfaces": [
+      "web",
+      "api",
+      "worker"
+    ],
+    "requiresPlaywrightForUi": true,
+    "observedSkillDirectories": [
+      ".agents/skills/",
+      "skills/",
+      "systems/skills/",
+      ".claude/skills/"
+    ]
+  },
+  "authority": "catalog-and-compatibility-only",
+  "installationState": "not-asserted",
+  "executionAuthority": "none"
+}
