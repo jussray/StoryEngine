@@ -11,6 +11,10 @@ import {
   VIDEO_VISUAL_STYLES,
   resolveVideoLook
 } from './visualStyleCatalog.js';
+import {
+  VIDEO_AUDIO_STYLES,
+  resolveVideoAudio
+} from './audioStyleCatalog.js';
 
 const MAX_SHOTS = 12;
 const MAX_SECONDS = 60;
@@ -19,6 +23,7 @@ const LIVE_ACTION_DELIVERY_TARGET = 'finished_playable_live_action';
 export const VIDEO_ENGINE_OPTIONS = Object.freeze({
   modes: VIDEO_RENDER_MODES,
   visual_styles: VIDEO_VISUAL_STYLES,
+  audio_styles: VIDEO_AUDIO_STYLES,
   legacy_mode_aliases: LEGACY_VIDEO_MODE_ALIASES,
   qualities: ['draft', 'standard', 'hero'],
   aspect_ratios: ['16:9', '9:16', '1:1'],
@@ -92,7 +97,7 @@ function productionContextFor(input, story, characterNames, look) {
   };
 }
 
-function makeShot(index, chapter, excerpt, look, characterNames, duration, productionContext) {
+function makeShot(index, chapter, excerpt, look, characterNames, duration, productionContext, audio) {
   const customDirection = look.custom_style_prompt ? ` Creator direction: ${look.custom_style_prompt}` : '';
   const emotion = ['wonder', 'tension', 'resolve'][index % 3];
   const liveAction = productionContext.action_first === true;
@@ -140,6 +145,10 @@ function makeShot(index, chapter, excerpt, look, characterNames, duration, produ
     provider_prompt: `${shotDirection.provider_prompt}${liveActionDirection}`,
     action: excerpt,
     narration: excerpt,
+    audio_style: audio.audio_style,
+    voice_direction: audio.audio_contract.voice,
+    music_direction: audio.audio_contract.music,
+    audio_direction: audio.audio_direction,
     dialogue: null,
     emotion,
     intensity: index % 4 === 3 ? 'high' : 'medium',
@@ -168,6 +177,7 @@ export function ensureVideoEngineSchema(db) {
       source_revision_id TEXT NOT NULL,
       mode TEXT NOT NULL,
       visual_style TEXT NOT NULL DEFAULT 'soft_cinematic_bookish',
+      audio_style TEXT NOT NULL DEFAULT 'founder_voice',
       quality TEXT NOT NULL,
       aspect_ratio TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'planned',
@@ -186,11 +196,15 @@ export function ensureVideoEngineSchema(db) {
   if (!columnExists(db, 'story_video_jobs', 'visual_style')) {
     db.exec("ALTER TABLE story_video_jobs ADD COLUMN visual_style TEXT NOT NULL DEFAULT 'soft_cinematic_bookish'");
   }
+  if (!columnExists(db, 'story_video_jobs', 'audio_style')) {
+    db.exec("ALTER TABLE story_video_jobs ADD COLUMN audio_style TEXT NOT NULL DEFAULT 'founder_voice'");
+  }
 }
 
 export function buildStoryVideoBlueprint(db, input = {}) {
   const workspaceId = text(input.workspace_id);
   const look = resolveVideoLook(input);
+  const audio = resolveVideoAudio(input);
   const quality = text(input.quality, 'draft');
   const aspectRatio = text(input.aspect_ratio, '16:9');
   if (!workspaceId) throw new Error('workspace_id is required.');
@@ -219,7 +233,7 @@ export function buildStoryVideoBlueprint(db, input = {}) {
     : excerpts;
   const productionContext = productionContextFor(input, story, names, look);
   const secondsPerShot = Math.max(4, Math.min(8, Math.floor(MAX_SECONDS / Math.max(1, shotSources.length))));
-  const shots = shotSources.map((item, index) => makeShot(index, item.chapter, item.excerpt, look, names, secondsPerShot, productionContext));
+  const shots = shotSources.map((item, index) => makeShot(index, item.chapter, item.excerpt, look, names, secondsPerShot, productionContext, audio));
   const productionContract = {
     ...productionContext,
     requested_action_beat_count: requestedBeats.length,
@@ -227,7 +241,7 @@ export function buildStoryVideoBlueprint(db, input = {}) {
     generated_visible_action_shots: shots.filter(shot => shot.visible_action_required).length
   };
   return {
-    schema_version: '1.3.0',
+    schema_version: '1.4.0',
     blueprint_id: `video_blueprint_${randomUUID()}`,
     workspace_id: workspaceId,
     source_revision_id: revisionFor(story, chapters, characters),
@@ -237,6 +251,11 @@ export function buildStoryVideoBlueprint(db, input = {}) {
     visual_style: look.visual_style,
     visual_style_label: look.style_contract.label,
     visual_style_description: look.style_contract.description,
+    audio_style: audio.audio_style,
+    audio_style_label: audio.audio_contract.label,
+    audio_style_description: audio.audio_contract.description,
+    audio_contract: audio.audio_contract,
+    audio_direction: audio.audio_direction,
     custom_style_prompt: look.custom_style_prompt,
     style_fit: look.style_fit,
     preview_renderer: 'motion_book_html',
@@ -252,7 +271,8 @@ export function buildStoryVideoBlueprint(db, input = {}) {
       palette: look.style_contract.palette,
       visual_language: look.style_contract.language,
       render_mode: look.mode,
-      visual_style: look.visual_style
+      visual_style: look.visual_style,
+      audio_style: audio.audio_style
     },
     preview_theme: look.style_contract.preview_theme,
     production_contract: productionContract,
@@ -307,7 +327,7 @@ function renderArtifact(blueprint, jobId) {
   const ticks = blueprint.shots.map((shot, index) => `<button class="tick ${index === 0 ? 'active' : ''}" data-index="${index}">${index + 1}<small>${shot.duration_seconds}s</small></button>`).join('');
   return `<!doctype html><html lang="en" data-video-engine="active"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(blueprint.title)}</title><style>
   :root{--bg:${html(theme.bg)};--panel:${html(theme.panel)};--line:${html(theme.line || '#3b3b48')};--text:${html(theme.text || '#f4f1f7')};--muted:${html(theme.muted || '#b4afbd')};--accent:${html(theme.accent)}}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 75% 0,color-mix(in srgb,var(--accent) 35%,transparent),transparent 42%),var(--bg);color:var(--text);font-family:system-ui,sans-serif}.shell{width:min(100%,1000px);padding:18px;border:1px solid var(--line);border-radius:20px;background:color-mix(in srgb,var(--panel) 96%,var(--bg))}.top,.bottom{display:flex;justify-content:space-between;gap:14px;align-items:center}.top h1{margin:4px 0 14px;font-size:clamp(24px,5vw,46px)}.eyebrow,small{color:var(--muted);text-transform:uppercase;letter-spacing:.1em}.look{display:flex;gap:7px;flex-wrap:wrap}.badge{border:1px solid var(--line);border-radius:999px;padding:5px 8px;font-size:11px;color:var(--accent)}.stage{position:relative;aspect-ratio:${ratio(blueprint.aspect_ratio)};overflow:hidden;border:1px solid var(--line);border-radius:16px;background:linear-gradient(135deg,var(--panel),color-mix(in srgb,var(--accent) 18%,var(--panel)))}.shot{position:absolute;inset:0;display:none;background:radial-gradient(circle at 80% 15%,color-mix(in srgb,var(--accent) 32%,transparent),transparent 35%)}.shot.active{display:block}.camera{height:100%;display:flex;flex-direction:column;justify-content:flex-end;padding:clamp(24px,7vw,72px);animation:push 8s ease-out both}.camera.static{animation:none}.camera.pan_right{animation:pan 8s ease-out both}.camera.pull_out{animation:pull 8s ease-out both}.camera h2{margin:8px 0;font-size:clamp(32px,7vw,70px);line-height:1}.camera p{max-width:42ch;font-size:clamp(16px,2.4vw,25px);line-height:1.45}.camera footer{color:var(--muted)}.timeline{display:flex;gap:7px;overflow:auto;margin:12px 0}.tick{min-width:55px;padding:7px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--muted)}.tick.active{border-color:var(--accent);color:var(--text)}.tick small{display:block}.bottom{font-size:12px;color:var(--muted)}@keyframes push{from{transform:scale(1)}to{transform:scale(1.08)}}@keyframes pull{from{transform:scale(1.08)}to{transform:scale(1)}}@keyframes pan{from{transform:translateX(-2%)}to{transform:translateX(2%)}}@media(prefers-reduced-motion:reduce){*{animation:none!important}}
-  </style></head><body><main class="shell" data-testid="l99-video-artifact" data-job-id="${html(jobId)}" data-target-mode="${html(blueprint.target_mode)}" data-visual-style="${html(blueprint.visual_style)}" data-delivery-target="${html(deliveryTarget)}"><header class="top"><div><div class="eyebrow">${html(previewLabel)}</div><h1>${html(blueprint.title)}</h1><div class="look"><span class="badge" data-testid="video-mode-label">${html(blueprint.target_mode_label)}</span><span class="badge" data-testid="video-style-label">${html(blueprint.visual_style_label)}</span><span class="badge">${html(blueprint.style_fit)}</span></div></div><strong data-testid="video-render-status">${html(blueprint.renderer_status)}</strong></header><section class="stage" data-testid="video-stage">${shotMarkup}</section><nav class="timeline" data-testid="video-timeline">${ticks}</nav><footer class="bottom"><span>${blueprint.shot_count} shots · ${blueprint.duration_seconds}s · ${html(blueprint.aspect_ratio)}</span><span>${html(providerLabel)}</span></footer></main><script>
+  </style></head><body><main class="shell" data-testid="l99-video-artifact" data-job-id="${html(jobId)}" data-target-mode="${html(blueprint.target_mode)}" data-visual-style="${html(blueprint.visual_style)}" data-audio-style="${html(blueprint.audio_style || '')}" data-delivery-target="${html(deliveryTarget)}"><header class="top"><div><div class="eyebrow">${html(previewLabel)}</div><h1>${html(blueprint.title)}</h1><div class="look"><span class="badge" data-testid="video-mode-label">${html(blueprint.target_mode_label)}</span><span class="badge" data-testid="video-style-label">${html(blueprint.visual_style_label)}</span><span class="badge" data-testid="video-audio-label">${html(blueprint.audio_style_label || '')}</span><span class="badge">${html(blueprint.style_fit)}</span></div></div><strong data-testid="video-render-status">${html(blueprint.renderer_status)}</strong></header><section class="stage" data-testid="video-stage">${shotMarkup}</section><nav class="timeline" data-testid="video-timeline">${ticks}</nav><footer class="bottom"><span>${blueprint.shot_count} shots · ${blueprint.duration_seconds}s · ${html(blueprint.aspect_ratio)}</span><span>${html(providerLabel)}</span></footer></main><script>
   const shots=[...document.querySelectorAll('[data-testid="video-shot"]')],ticks=[...document.querySelectorAll('.tick')];let current=0,timer;function show(next){current=(next+shots.length)%shots.length;shots.forEach((item,index)=>item.classList.toggle('active',index===current));ticks.forEach((item,index)=>item.classList.toggle('active',index===current));clearTimeout(timer);timer=setTimeout(()=>show(current+1),Number(shots[current].dataset.duration||6)*1000)}ticks.forEach((item,index)=>item.addEventListener('click',()=>show(index)));show(0);
   </script></body></html>`;
 }
@@ -319,12 +339,12 @@ export function createStoryVideoJob(db, input = {}) {
   const blueprint = buildStoryVideoBlueprint(db, input);
   const jobId = `video_job_${randomUUID()}`;
   const now = Date.now();
-  db.prepare(`INSERT INTO story_video_jobs (job_id,workspace_id,source_revision_id,mode,visual_style,quality,aspect_ratio,status,max_cost_usd,estimated_cost_usd,actual_cost_usd,blueprint_json,artifact_id,validation_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'rendering',0,0,0,?,NULL,'{}',?,?)`).run(jobId, blueprint.workspace_id, blueprint.source_revision_id, blueprint.target_mode, blueprint.visual_style, blueprint.quality, blueprint.aspect_ratio, JSON.stringify(blueprint), now, now);
-  log(db, { workspace_id: blueprint.workspace_id, mode: 'video_engine', event_type: 'video.plan.completed', payload: { job_id: jobId, blueprint_id: blueprint.blueprint_id, target_mode: blueprint.target_mode, visual_style: blueprint.visual_style, shot_count: blueprint.shot_count, delivery_target: blueprint.production_contract.delivery_target, estimated_cost_usd: 0 } });
+  db.prepare(`INSERT INTO story_video_jobs (job_id,workspace_id,source_revision_id,mode,visual_style,audio_style,quality,aspect_ratio,status,max_cost_usd,estimated_cost_usd,actual_cost_usd,blueprint_json,artifact_id,validation_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,'rendering',0,0,0,?,NULL,'{}',?,?)`).run(jobId, blueprint.workspace_id, blueprint.source_revision_id, blueprint.target_mode, blueprint.visual_style, blueprint.audio_style, blueprint.quality, blueprint.aspect_ratio, JSON.stringify(blueprint), now, now);
+  log(db, { workspace_id: blueprint.workspace_id, mode: 'video_engine', event_type: 'video.plan.completed', payload: { job_id: jobId, blueprint_id: blueprint.blueprint_id, target_mode: blueprint.target_mode, visual_style: blueprint.visual_style, audio_style: blueprint.audio_style, shot_count: blueprint.shot_count, delivery_target: blueprint.production_contract.delivery_target, estimated_cost_usd: 0 } });
 
   const artifactId = `artifact_${randomUUID()}`;
   const artifactHtml = renderArtifact(blueprint, jobId);
-  const metadata = { video_job_id: jobId, blueprint_id: blueprint.blueprint_id, workspace_id: blueprint.workspace_id, target_mode: blueprint.target_mode, visual_style: blueprint.visual_style, preview_renderer: blueprint.preview_renderer, shot_count: blueprint.shot_count, shot_grammar: blueprint.shot_grammar, duration_seconds: blueprint.duration_seconds, cost_plan: blueprint.cost_plan, production_contract: blueprint.production_contract, playwright_required: true };
+  const metadata = { video_job_id: jobId, blueprint_id: blueprint.blueprint_id, workspace_id: blueprint.workspace_id, target_mode: blueprint.target_mode, visual_style: blueprint.visual_style, audio_style: blueprint.audio_style, preview_renderer: blueprint.preview_renderer, shot_count: blueprint.shot_count, shot_grammar: blueprint.shot_grammar, duration_seconds: blueprint.duration_seconds, cost_plan: blueprint.cost_plan, production_contract: blueprint.production_contract, playwright_required: true };
   db.prepare(`INSERT INTO story_artifacts (artifact_id,run_id,workspace_id,kind,title,status,content_hash,html,metadata_json,validation_json,created_at,updated_at) VALUES (?,?,?,'motion_book_video_preview',?,'generated',?,?,?,'{}',?,?)`).run(artifactId, jobId, blueprint.workspace_id, blueprint.title, createHash('sha256').update(artifactHtml).digest('hex'), artifactHtml, JSON.stringify(metadata), now, now);
   db.prepare(`UPDATE story_video_jobs SET status='ready_for_validation',artifact_id=?,updated_at=? WHERE job_id=?`).run(artifactId, Date.now(), jobId);
   log(db, { workspace_id: blueprint.workspace_id, mode: 'video_engine', event_type: 'video.artifact.generated', payload: { job_id: jobId, artifact_id: artifactId, preview_renderer: blueprint.preview_renderer, target_mode: blueprint.target_mode, visual_style: blueprint.visual_style, delivery_target: blueprint.production_contract.delivery_target, cost_usd: 0 } });
