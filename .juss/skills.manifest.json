@@ -5,7 +5,7 @@
   "registry": {
     "repository": "jussray/promptos",
     "manifestPath": "manifests/apps/storyengine.json",
-    "revision": "eaf8b831de197d97e40c52da885cee932b635f9e",
+    "revision": "28cdecf2bd3d2645de54e617a3fe3e2e3e873fdc",
     "sourceRef": "feat/app-skill-registry-v2-20261125",
     "status": "candidate"
   },
