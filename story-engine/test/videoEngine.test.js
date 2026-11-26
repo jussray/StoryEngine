@@ -90,7 +90,7 @@ test('live action blueprints are action-first and cannot treat preview proof as 
       ]
     });
 
-    assert.equal(blueprint.schema_version, '1.3.0');
+    assert.equal(blueprint.schema_version, '1.4.0');
     assert.equal(blueprint.production_contract.workflow, 'LEEVIZE');
     assert.equal(blueprint.production_contract.delivery_target, 'finished_playable_live_action');
     assert.equal(blueprint.production_contract.preview_can_satisfy_delivery, false);
@@ -159,6 +159,68 @@ test('video job emits a reusable non-anime artifact and Control Room style evide
     assert.equal(overview.total_estimated_cost_usd, 0);
     assert.equal(overview.style_count, 1);
     assert.ok(overview.available_style_count >= 10);
+  } finally {
+    db.close();
+  }
+});
+
+test('canon visual styles carry the founder brand looks', () => {
+  const canonKeys = Object.entries(VIDEO_ENGINE_OPTIONS.visual_styles)
+    .filter(([, style]) => style.canon === true)
+    .map(([key]) => key);
+  assert.deepEqual(canonKeys, ['sunset_lotus', 'luxe_purple_gold', 'noir_gold_counsel', 'storyengine_prism']);
+  assert.equal(VIDEO_ENGINE_OPTIONS.visual_styles.sunset_lotus.preview_theme.accent, '#e8b34b');
+  assert.equal(VIDEO_ENGINE_OPTIONS.visual_styles.noir_gold_counsel.preview_theme.bg, '#05080C');
+  assert.ok(VIDEO_ENGINE_OPTIONS.visual_styles.luxe_purple_gold.negative.some(item => item.includes('lace')));
+  assert.ok(VIDEO_ENGINE_OPTIONS.visual_styles.storyengine_prism.language.includes('Didone'));
+});
+
+test('audio styles default to founder voice and carry the voice law', () => {
+  const db = fixtureDb();
+  try {
+    const audioKeys = Object.keys(VIDEO_ENGINE_OPTIONS.audio_styles);
+    assert.deepEqual(audioKeys, ['founder_voice', 'founder_voice_male', 'noir_counsel_narration', 'storybook_narration', 'score_only', 'silent']);
+
+    const blueprint = buildStoryVideoBlueprint(db, { workspace_id: 'workspace_video_test', mode: 'motion_book' });
+    assert.equal(blueprint.audio_style, 'founder_voice');
+    assert.equal(blueprint.audio_style_label, 'Founder Voice');
+    assert.ok(blueprint.audio_contract.negative.some(item => item.includes('whispery')));
+    assert.ok(blueprint.audio_contract.pronunciation.some(item => item.includes('without the t')));
+    assert.equal(blueprint.shots[0].audio_style, 'founder_voice');
+    assert.ok(blueprint.shots[0].voice_direction.includes('brisk, bright'));
+
+    const scored = buildStoryVideoBlueprint(db, { workspace_id: 'workspace_video_test', mode: 'motion_book', audio_style: 'score_only' });
+    assert.equal(scored.audio_style, 'score_only');
+    assert.equal(scored.shots[0].voice_direction, null);
+    assert.ok(scored.shots[0].music_direction.includes('score'));
+
+    assert.throws(
+      () => buildStoryVideoBlueprint(db, { workspace_id: 'workspace_video_test', mode: 'motion_book', audio_style: 'radio_dj' }),
+      /Unsupported audio style/
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('video job persists the chosen audio style', () => {
+  const db = fixtureDb();
+  try {
+    const job = createStoryVideoJob(db, {
+      workspace_id: 'workspace_video_test',
+      mode: 'motion_book',
+      visual_style: 'sunset_lotus',
+      audio_style: 'noir_counsel_narration',
+      quality: 'draft',
+      aspect_ratio: '9:16'
+    });
+    assert.equal(job.audio_style, 'noir_counsel_narration');
+    assert.equal(job.blueprint.audio_style, 'noir_counsel_narration');
+    assert.equal(job.blueprint.visual_style, 'sunset_lotus');
+
+    const artifact = db.prepare('SELECT * FROM story_artifacts WHERE artifact_id=?').get(job.artifact_id);
+    assert.match(artifact.html, /data-audio-style="noir_counsel_narration"/);
+    assert.match(artifact.html, /data-testid="video-audio-label"/);
   } finally {
     db.close();
   }

@@ -170,6 +170,50 @@ export const VIDEO_VISUAL_STYLES = Object.freeze({
     recommended_modes: ['animation_2d', 'motion_book'],
     preview_theme: { bg: '#17130d', panel: '#292116', accent: '#dfa34f' }
   },
+  sunset_lotus: {
+    label: 'Sunset Lotus',
+    family: 'canon',
+    canon: true,
+    description: 'The Juss & Co house look: a sunset-lotus artwork world in deep violet and gold, Didone serif type, and living ambient motion.',
+    language: 'sunset-lotus artwork world, deep violet and gold, Didone serif typography, lotus motifs, warm dusk glow, living ambient motion, smooth load-in rise and gentle parallax',
+    palette: 'deep violet, antique gold, warm amber highlights, soft cream type',
+    negative: ['no off-brand palettes', 'no flat static frames', 'no generic stock look', 'no sans-serif display type', 'no cold blue corporate grade'],
+    recommended_modes: ['motion_book', 'live_action', 'animation_2d'],
+    preview_theme: { bg: '#160b26', panel: '#241239', accent: '#e8b34b', text: '#f7efe0', muted: '#c4aed8', line: '#3d2560' }
+  },
+  luxe_purple_gold: {
+    label: 'Luxe Purple & Gold',
+    family: 'canon',
+    canon: true,
+    description: 'The Juss Beautiful Hair look: deep purple and gold with real product photography — satin, ribbon, and true hair texture. Photography only, never an illustrated substitute.',
+    language: 'luxe product photography, deep purple and gold, real photography, deep purple satin and ribbon styling, gold props, natural hair texture, true hairlines, fingers through the hair',
+    palette: 'deep purple, gold, rich warm skin tones, satin sheen',
+    negative: ['no warped or melted lace', 'no hairline drift', 'no plastic or fake-looking hair', 'no grading that changes the true product color', 'no illustrated substitute for real product photography', 'no turns or spins — front shot, hard cut to back shot for length'],
+    recommended_modes: ['live_action', 'motion_book'],
+    preview_theme: { bg: '#1b0b26', panel: '#2a1240', accent: '#d4af37', text: '#f6ecff', muted: '#c9aee0', line: '#45205f' }
+  },
+  noir_gold_counsel: {
+    label: 'Noir Gold Counsel',
+    family: 'canon',
+    canon: true,
+    description: 'The Truth Weaver look: near-black ground, thin gold line work, white serif capitals, and plain-language authority.',
+    language: 'near-black noir counsel, thin gold line work, white serif capitals, restrained gold accents, courthouse line motifs, plain-language authority',
+    palette: 'near-black #05080C, thin gold lines, white serif type, gold accents',
+    negative: ['no navy background', 'no clutter', 'no cartoon look', 'no stock-photo filler', 'no loud gradients'],
+    recommended_modes: ['motion_book', 'live_action', 'animation_2d'],
+    preview_theme: { bg: '#05080C', panel: '#0d1117', accent: '#c9a227', text: '#f5f2e8', muted: '#9aa3ab', line: '#2a2f26' }
+  },
+  storyengine_prism: {
+    label: 'StoryEngine Prism',
+    family: 'canon',
+    canon: true,
+    description: 'The StoryEngine wordmark world: pale luminous near-white against a pink-to-violet-to-blue gradient, Playfair Didone display serif, and a soft neon glow.',
+    language: 'StoryEngine prism wordmark world, pale luminous near-white, pink-to-violet-to-blue gradient, Playfair Didone display serif, soft neon glow, one shared wordmark treatment on every surface',
+    palette: 'luminous near-white #fdfaff, pink #ff6fd8, violet #c05cff, blue #4fb8ff, deep violet-black ground',
+    negative: ['no per-page one-off wordmark treatments', 'no external font services', 'no flat matte color replacing the gradient', 'no glow so heavy the type is unreadable'],
+    recommended_modes: ['motion_book', 'animation_2d', 'cinematic_3d'],
+    preview_theme: { bg: '#0d0a18', panel: '#1a1430', accent: '#c05cff', text: '#fdfaff', muted: '#b9a8e8', line: '#372a5e' }
+  },
   custom: {
     label: 'Custom Art Direction',
     family: 'custom',
