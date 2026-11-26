@@ -35,6 +35,8 @@ function renderLookNotes(){
   const style = options?.visual_styles?.[$('visualStyle').value];
   $('modeNote').textContent = mode ? `${mode.label}: ${mode.description} Renderer status: ${mode.status}.` : '';
   $('styleNote').textContent = style ? `${style.label}: ${style.description} Best with: ${style.recommended_modes.map(value=>options.modes[value]?.label || value).join(', ')}.` : '';
+  const audio = options?.audio_styles?.[$('audioStyle').value];
+  $('audioNote').textContent = audio ? `${audio.label}: ${audio.description}` : '';
   $('customStyleField').classList.toggle('hidden', $('visualStyle').value !== 'custom');
   $('liveActionFields').classList.toggle('hidden', !isLiveAction());
   if(isLiveAction() && $('visualStyle').value === 'soft_cinematic_bookish' && options?.visual_styles?.bright_human_future){
@@ -261,6 +263,7 @@ async function loadOptions(){
   options = await api('/api/video-engine/options');
   $('mode').innerHTML = Object.entries(options.modes).map(([value,item])=>`<option value="${esc(value)}">${esc(item.label)} — ${esc(item.status)}</option>`).join('');
   $('visualStyle').innerHTML = Object.entries(options.visual_styles).map(([value,item])=>`<option value="${esc(value)}">${esc(item.label)}</option>`).join('');
+  $('audioStyle').innerHTML = Object.entries(options.audio_styles || {}).map(([value,item])=>`<option value="${esc(value)}">${esc(item.label)}</option>`).join('');
   $('quality').innerHTML = options.qualities.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join('');
   $('aspectRatio').innerHTML = options.aspect_ratios.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join('');
   $('styleStrip').innerHTML = Object.values(options.visual_styles).filter(item=>item.label !== 'Custom Art Direction').map(item=>`<span class="style-chip">${esc(item.label)}</span>`).join('');
@@ -270,6 +273,7 @@ async function loadOptions(){
 
 $('mode').addEventListener('change',renderLookNotes);
 $('visualStyle').addEventListener('change',renderLookNotes);
+$('audioStyle').addEventListener('change',renderLookNotes);
 $('refreshRenderer').addEventListener('click',loadRendererStatus);
 $('referenceImage').addEventListener('change',async event=>{
   try{
@@ -303,7 +307,7 @@ $('importMakeVideoFile').addEventListener('change', async event => {
 $('jobForm').addEventListener('submit',async event=>{
   event.preventDefault(); const button=$('generate'); button.disabled=true; button.textContent='Building production plan…'; $('formStatus').textContent=''; $('formStatus').className='sub';
   try{
-    const body={workspace_id:$('workspaceId').value.trim(),mode:$('mode').value,visual_style:$('visualStyle').value,custom_style_prompt:$('customStylePrompt').value.trim(),quality:$('quality').value,aspect_ratio:$('aspectRatio').value};
+    const body={workspace_id:$('workspaceId').value.trim(),mode:$('mode').value,visual_style:$('visualStyle').value,audio_style:$('audioStyle').value,custom_style_prompt:$('customStylePrompt').value.trim(),quality:$('quality').value,aspect_ratio:$('aspectRatio').value};
     if(isLiveAction()){body.primary_subject=$('primarySubject').value.trim();body.product_or_world=$('productOrWorld').value.trim();body.viewer_takeaway=$('viewerTakeaway').value.trim();body.action_beats=actionBeatValues();}
     const job=await api('/api/video-engine/jobs',{method:'POST',body:JSON.stringify(body)});
     renderJob(job);
