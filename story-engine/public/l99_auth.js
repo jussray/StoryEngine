@@ -8,11 +8,6 @@
     }
   }
 
-  function askBootstrapKey() {
-    const entered = window.prompt('Enter the L99 bootstrap key for this session:');
-    return String(entered || '').trim();
-  }
-
   // Older builds persisted the bootstrap credential in web storage. Purge that
   // state immediately. New credentials remain in memory only long enough to be
   // exchanged for the server-issued HttpOnly SameSite session cookie.
@@ -30,16 +25,22 @@
     return response.json().catch(() => null);
   }
 
+  // A GitHub Actions secret is never an anonymous visitor credential.
+  // Only a deliberate sign-in may exchange an access key for an HttpOnly cookie.
   async function establishSession() {
     const existing = await currentSession();
     if (existing?.authenticated) {
       purgeLegacyBootstrapKey();
       return existing;
     }
+    const error = new Error('Sign in to continue creating.');
+    error.code = 'AUTH_REQUIRED';
+    throw error;
+  }
 
-    const key = askBootstrapKey();
-    if (!key) throw new Error('Authentication required.');
-
+  async function signInWithKey(value) {
+    const key = String(value || '').trim();
+    if (!key) throw new Error('Access key required.');
     try {
       const response = await originalFetch('/api/auth/session', {
         method: 'POST',
@@ -48,11 +49,13 @@
         body: '{}'
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || `Authentication failed (${response.status}).`);
+      if (!response.ok || !payload.authenticated) {
+        throw new Error(payload.error || `Authentication failed (${response.status}).`);
+      }
+      sessionPromise = Promise.resolve(payload);
       return payload;
     } finally {
-      // The lexical key reference becomes unreachable after this call returns;
-      // there is deliberately no localStorage/sessionStorage persistence path.
+      // Never persist the bootstrap key; the server owns the session cookie.
       purgeLegacyBootstrapKey();
     }
   }
@@ -69,6 +72,7 @@
 
   window.L99Auth = {
     ensureSession,
+    signInWithKey,
     currentSession,
     async logout() {
       await originalFetch('/api/auth/logout', {
@@ -95,5 +99,4 @@
     });
   };
 
-  void ensureSession().catch(() => {});
 })();
