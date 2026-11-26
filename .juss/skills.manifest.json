@@ -5,7 +5,7 @@
   "registry": {
     "repository": "jussray/promptos",
     "manifestPath": "manifests/apps/storyengine.json",
-    "revision": "e8e16ba6c197dfbf5a36131d83a990effff20955",
+    "revision": "eaf8b831de197d97e40c52da885cee932b635f9e",
     "sourceRef": "feat/app-skill-registry-v2-20261125",
     "status": "candidate"
   },
@@ -281,6 +281,10 @@
   "plugins": [
     {
       "id": "github",
+      "kind": "chatgpt-plugin",
+      "canonicalPluginId": "plugin_connector_1p_1a69035c238881919c4190932b2df699",
+      "displayName": "GitHub",
+      "catalogStatus": "listed",
       "provider": "GitHub",
       "purpose": "Repository, PR, review, and CI evidence.",
       "mode": "operator-tooling",
@@ -301,6 +305,10 @@
     },
     {
       "id": "cloudflare",
+      "kind": "connector",
+      "canonicalPluginId": null,
+      "displayName": "Cloudflare",
+      "catalogStatus": "namespace-only",
       "provider": "Cloudflare",
       "purpose": "Worker deployment and runtime metadata.",
       "mode": "operator-tooling",
@@ -320,6 +328,10 @@
     },
     {
       "id": "adobe",
+      "kind": "chatgpt-plugin",
+      "canonicalPluginId": "plugin_asdk_app_69312da8e4dc81919370cb86fd172b6c",
+      "displayName": "Adobe",
+      "catalogStatus": "listed",
       "provider": "Adobe",
       "purpose": "Creative asset and document production workflows.",
       "mode": "operator-tooling",
@@ -338,6 +350,10 @@
     },
     {
       "id": "elevenlabs",
+      "kind": "connector",
+      "canonicalPluginId": null,
+      "displayName": "ElevenLabs",
+      "catalogStatus": "namespace-only",
       "provider": "ElevenLabs",
       "purpose": "Voice and audio asset generation workflows.",
       "mode": "operator-tooling",
@@ -356,7 +372,11 @@
     },
     {
       "id": "heygen",
-      "provider": "HeyGen",
+      "kind": "chatgpt-plugin",
+      "canonicalPluginId": "plugin_asdk_app_69418aad55e08191aa5e437b649ca2e4",
+      "displayName": "HeyGen Video, Voice & Avatar",
+      "catalogStatus": "listed",
+      "provider": "HeyGen Video, Voice & Avatar",
       "purpose": "Avatar and creator-video workflows.",
       "mode": "operator-tooling",
       "status": "declared",
