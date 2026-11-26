@@ -143,7 +143,7 @@ function renderRun(run) {
   $('runMeta').textContent = `${assistLabel ? `${assistLabel} · ` : ''}${stageLabel}`;
   // Keep the raw status value in this stable DOM contract for existing proof consumers.
   $('runStatus').textContent = run.status;
-  window.storyCompanion?.setActive(shouldPoll(run), $('runMeta'), stageLabel);
+  window.storyCompanion?.setActive(shouldPoll(run), $('runMeta'), stageLabel, run.current_stage);
   $('approve').classList.toggle('hidden', run.status !== 'awaiting_approval');
 
   const byStage = new Map();
@@ -279,7 +279,7 @@ $('storyForm').addEventListener('submit', async event => {
 $('approve').addEventListener('click', async () => {
   if (!currentRunId) return;
   $('approve').disabled = true;
-  window.storyCompanion?.setActive(true, $('runMeta'), 'Submitting approval…');
+  window.storyCompanion?.setActive(true, $('runMeta'), 'Submitting approval…', 'approval');
   try {
     const run = await api(`/api/story-engine/runs/${encodeURIComponent(currentRunId)}/approve`, { method: 'POST', body: '{}' });
     renderRun(run);
