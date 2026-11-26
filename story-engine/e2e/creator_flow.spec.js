@@ -78,7 +78,7 @@ test('front door preserves base context through shape step and hands exact run i
 
   await page.getByRole('button', { name: /Continue to studio/ }).click();
 
-  expect(createPayload).toMatchObject({
+  await expect.poll(() => createPayload).toMatchObject({
     story_vision: baseContext,
     medium: 'book',
     audience: 'young_adult',
