@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import './sqliteTransaction.js';
 import { extractEntities } from './extractEntities.js';
-import { setCanonAnchor } from './canonMemory.js';
+import { getCanonAnchor, setCanonAnchor, transitionCanonAnchor } from './canonMemory.js';
 import { log } from '../models/eventModel.js';
 
 const MAX_SOURCE_CHARS = Number(process.env.STORY_SOURCE_MAX_CHARS || 60_000);
@@ -180,9 +180,9 @@ function proposalsFromExtraction(extraction, content) {
 
   const seen = new Set();
   return proposals.filter(item => {
-    const key = `${item.kind}\u0000${item.key}\u0000${item.value}`;
-    if (!item.value || seen.has(key)) return false;
-    seen.add(key);
+    const dedupeKey = `${item.kind}\u0000${item.key}\u0000${item.value}`;
+    if (!item.value || seen.has(dedupeKey)) return false;
+    seen.add(dedupeKey);
     return true;
   }).slice(0, 40);
 }
@@ -344,23 +344,63 @@ export function reviewSourceProposal(db, input = {}) {
   const finalKey = cleanText(input.key, proposal.key);
   const finalValue = cleanText(input.value, proposal.value);
   if (!finalKind || !finalKey || !finalValue) throw new Error('Approved canon requires kind, key, and value.');
-  const locked = input.locked === undefined ? Boolean(proposal.locked) : Boolean(input.locked);
+
+  const source = db.prepare(`
+    SELECT source_id, content_hash
+    FROM story_sources
+    WHERE source_id=? AND workspace_id=?
+  `).get(proposal.source_id, workspaceId);
+  if (!source?.content_hash) {
+    throw new Error('Source proposal cannot be approved without its immutable source hash.');
+  }
+  const expectedSourceVersion = `sha256:${source.content_hash}`;
+  const evidenceSourceRef = String(input.evidence?.source_ref || '');
+  const expectedSourceRefPrefix = `source:${source.source_id};proposal:${proposal.proposal_id};reviewer:`;
+  const reviewerRef = evidenceSourceRef.startsWith(expectedSourceRefPrefix)
+    ? evidenceSourceRef.slice(expectedSourceRefPrefix.length).trim()
+    : '';
+  if (!input.evidence) {
+    throw new Error('Source proposal approval requires explicit human evidence.');
+  }
+  if (String(input.evidence.source_version || '') !== expectedSourceVersion) {
+    throw new Error('Source proposal evidence does not match the immutable source hash.');
+  }
+  if (!reviewerRef) {
+    throw new Error('Source proposal evidence does not match the exact workspace-scoped source and proposal.');
+  }
+
+  const existingAnchor = getCanonAnchor(db, workspaceId, finalKind, finalKey);
+  let createLocked;
+  let transitionLocked;
+  if (existingAnchor) {
+    const requestedLocked = input.locked === undefined ? Boolean(existingAnchor.locked) : Boolean(input.locked);
+    if (existingAnchor.locked && requestedLocked === false) {
+      throw new Error('Proposal approval cannot unlock canon; use the dedicated evidence-backed unlock path.');
+    }
+    transitionLocked = !existingAnchor.locked && requestedLocked === true ? true : undefined;
+    createLocked = undefined;
+  } else {
+    createLocked = input.locked === undefined ? Boolean(proposal.locked) : Boolean(input.locked);
+  }
   const reviewedAt = Date.now();
 
   const promote = db.transaction(() => {
-    const anchor = setCanonAnchor(db, {
+    const write = transitionLocked === true ? transitionCanonAnchor : setCanonAnchor;
+    const anchor = write(db, {
       workspace_id: workspaceId,
       kind: finalKind,
       key: finalKey,
       value: finalValue,
-      locked,
-      source: 'human'
+      locked: transitionLocked === true ? true : createLocked,
+      source: 'human',
+      evidence: input.evidence || null,
+      authority_grant: input.authority_grant || null
     });
     db.prepare(`
       UPDATE source_canon_proposals
       SET kind=?, key=?, value=?, locked=?, status='approved', canon_anchor_id=?, reviewed_at=?
       WHERE proposal_id=?
-    `).run(finalKind, finalKey, finalValue, locked ? 1 : 0, anchor.anchor_id, reviewedAt, proposalId);
+    `).run(finalKind, finalKey, finalValue, anchor.locked ? 1 : 0, anchor.anchor_id, reviewedAt, proposalId);
     log(db, {
       workspace_id: workspaceId,
       mode: 'story_universe',
@@ -371,7 +411,7 @@ export function reviewSourceProposal(db, input = {}) {
         anchor_id: anchor.anchor_id,
         kind: finalKind,
         key: finalKey,
-        locked
+        locked: Boolean(anchor.locked)
       }
     });
     return anchor;

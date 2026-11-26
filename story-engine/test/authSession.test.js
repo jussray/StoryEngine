@@ -44,6 +44,14 @@ function dispatch(router, method, url, headers = {}, body = null) {
   return { req, res };
 }
 
+function sessionRouter() {
+  const router = createRouter({ maxBodyBytes: 4096 });
+  router.use('/api', requestContext);
+  router.use('/api', requireAuth);
+  authSessionRoutes(router);
+  return router;
+}
+
 test('session route mints opaque cookie, authenticates it, and logout revokes it', () => {
   const prior = process.env.L99_API_KEYS_JSON;
   process.env.L99_API_KEYS_JSON = JSON.stringify([{
@@ -55,11 +63,7 @@ test('session route mints opaque cookie, authenticates it, and logout revokes it
   }]);
 
   try {
-    const router = createRouter({ maxBodyBytes: 4096 });
-    router.use('/api', requestContext);
-    router.use('/api', requireAuth);
-    authSessionRoutes(router);
-
+    const router = sessionRouter();
     const minted = dispatch(
       router,
       'POST',
@@ -97,6 +101,59 @@ test('session route mints opaque cookie, authenticates it, and logout revokes it
     const after = dispatch(router, 'GET', '/api/auth/me', { cookie }).res;
     assert.equal(after.statusCode, 401);
     assert.equal(JSON.parse(after.body).error, 'unauthorized');
+  } finally {
+    if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
+    else process.env.L99_API_KEYS_JSON = prior;
+  }
+});
+
+test('session is invalidated when its originating credential is removed or downgraded', () => {
+  const prior = process.env.L99_API_KEYS_JSON;
+  const credential = {
+    key: 'human-bootstrap-secret',
+    actor_id: 'creator-human',
+    tenant_id: 'tenant-a',
+    role: 'creator',
+    principal_type: 'human',
+    workspace_ids: ['workspace-a']
+  };
+  process.env.L99_API_KEYS_JSON = JSON.stringify([credential]);
+
+  try {
+    const router = sessionRouter();
+    const minted = dispatch(
+      router,
+      'POST',
+      '/api/auth/session',
+      { 'x-api-key': credential.key, 'content-type': 'application/json' },
+      {}
+    ).res;
+    assert.equal(minted.statusCode, 201);
+    const cookie = minted.headers['set-cookie'];
+    assert.equal(dispatch(router, 'GET', '/api/auth/me', { cookie }).res.statusCode, 200);
+
+    process.env.L99_API_KEYS_JSON = JSON.stringify([{
+      ...credential,
+      principal_type: 'service'
+    }]);
+    const downgraded = dispatch(router, 'GET', '/api/auth/me', { cookie }).res;
+    assert.equal(downgraded.statusCode, 401);
+    assert.equal(JSON.parse(downgraded.body).error, 'unauthorized');
+
+    process.env.L99_API_KEYS_JSON = JSON.stringify([credential]);
+    const reminted = dispatch(
+      router,
+      'POST',
+      '/api/auth/session',
+      { 'x-api-key': credential.key, 'content-type': 'application/json' },
+      {}
+    ).res;
+    assert.equal(reminted.statusCode, 201);
+    const newCookie = reminted.headers['set-cookie'];
+    process.env.L99_API_KEYS_JSON = '[]';
+    const removed = dispatch(router, 'GET', '/api/auth/me', { cookie: newCookie }).res;
+    assert.equal(removed.statusCode, 401);
+    assert.equal(JSON.parse(removed.body).error, 'unauthorized');
   } finally {
     if (prior === undefined) delete process.env.L99_API_KEYS_JSON;
     else process.env.L99_API_KEYS_JSON = prior;

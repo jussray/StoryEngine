@@ -31,7 +31,7 @@ test('Story Universe persists creator-locked canon through the real runtime', as
   await page.locator('#saveCanon').click();
 
   await expect(page.locator('#formStatus')).toContainText('Persisted');
-  const canonRow = page.getByTestId('canon-row').filter({ hasText: 'protagonist.name' });
+  let canonRow = page.getByTestId('canon-row').filter({ hasText: 'protagonist.name' });
   await expect(canonRow).toContainText('Nia Vale is the protagonist.');
   await expect(canonRow).toContainText('Creator locked');
   await expect(page.locator('#anchorCount')).toHaveText('1');
@@ -40,17 +40,47 @@ test('Story Universe persists creator-locked canon through the real runtime', as
   // Browser reload is the boundary that catches presentation-only fake state.
   await page.reload();
   await expect(page.locator('#pageStatus')).toContainText('Runtime connected');
-  await expect(page.getByTestId('canon-row').filter({ hasText: 'protagonist.name' }))
-    .toContainText('Nia Vale is the protagonist.');
+  canonRow = page.getByTestId('canon-row').filter({ hasText: 'protagonist.name' });
+  await expect(canonRow).toContainText('Nia Vale is the protagonist.');
 
-  const canonResponse = await request.get(`/api/memory/${encodeURIComponent(workspaceId)}/canon`, { headers });
+  let canonResponse = await request.get(`/api/memory/${encodeURIComponent(workspaceId)}/canon`, { headers });
   expect(canonResponse.ok()).toBe(true);
-  const canon = await canonResponse.json();
+  let canon = await canonResponse.json();
   expect(canon.anchor_count).toBe(1);
   expect(canon.locked_count).toBe(1);
   expect(canon.anchors.character['protagonist.name']).toEqual({
     value: 'Nia Vale is the protagonist.',
     locked: true,
+    source: 'human'
+  });
+
+  // Exercise the creator-facing unlock route through the real browser form.
+  await page.locator('#kind').selectOption('character');
+  await page.locator('#key').fill('protagonist.name');
+  await page.locator('#value').fill('Nia Vale leads the expedition.');
+  await page.locator('#locked').uncheck();
+  await page.locator('#saveCanon').click();
+
+  await expect(page.locator('#formStatus')).toContainText('Persisted');
+  canonRow = page.getByTestId('canon-row').filter({ hasText: 'protagonist.name' });
+  await expect(canonRow).toContainText('Nia Vale leads the expedition.');
+  await expect(canonRow).toContainText('Editable canon');
+  await expect(page.locator('#lockedCount')).toHaveText('0');
+
+  await page.reload();
+  await expect(page.locator('#pageStatus')).toContainText('Runtime connected');
+  canonRow = page.getByTestId('canon-row').filter({ hasText: 'protagonist.name' });
+  await expect(canonRow).toContainText('Nia Vale leads the expedition.');
+  await expect(canonRow).toContainText('Editable canon');
+
+  canonResponse = await request.get(`/api/memory/${encodeURIComponent(workspaceId)}/canon`, { headers });
+  expect(canonResponse.ok()).toBe(true);
+  canon = await canonResponse.json();
+  expect(canon.anchor_count).toBe(1);
+  expect(canon.locked_count).toBe(0);
+  expect(canon.anchors.character['protagonist.name']).toEqual({
+    value: 'Nia Vale leads the expedition.',
+    locked: false,
     source: 'human'
   });
 
