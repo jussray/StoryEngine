@@ -109,6 +109,13 @@
 
     .status { min-height: 20px; margin: 0; color: var(--muted); font-size: 14px; text-align: center; }
     .status.error { color: var(--error); }
+    .access-panel { width: 100%; max-width: 480px; padding: 18px; border: 1px solid var(--line);
+      border-radius: 18px; background: var(--panel); text-align: left; }
+    .access-panel label { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 8px; }
+    .access-panel input { width: 100%; padding: 14px; color: var(--text); background: var(--bg);
+      border: 1px solid var(--line); border-radius: 12px; font: inherit; }
+    .access-panel .primary { height: 46px; max-width: none; margin-top: 12px; }
+    .access-panel p { color: var(--muted); font-size: 14px; }
 
     .shape-view { gap: 20px; }
     .idea-card {
@@ -275,6 +282,14 @@
         <button class="primary" id="continueBtn" type="button">Continue to studio <span aria-hidden="true">→</span></button>
       </div>
       <p class="status" id="status" aria-live="polite"></p>
+      <form id="accessForm" class="access-panel hidden" aria-labelledby="accessTitle">
+        <h3 id="accessTitle">Sign in to create</h3>
+        <p>StoryEngine is in a limited-access release. Your ideas stay on this page until you sign in.</p>
+        <label for="accessKey">Creator access key</label>
+        <input id="accessKey" name="accessKey" type="password" autocomplete="off" required />
+        <button id="accessSubmit" class="primary" type="submit">Sign in and continue</button>
+        <p id="accessStatus" class="status" role="status" aria-live="polite"></p>
+      </form>
     </section>
   </main>
 
@@ -289,6 +304,10 @@
     const statusEl = document.getElementById('status');
     const frontStatusEl = document.getElementById('frontStatus');
     const charCount = document.getElementById('charCount');
+    const accessForm = document.getElementById('accessForm');
+    const accessKey = document.getElementById('accessKey');
+    const accessStatus = document.getElementById('accessStatus');
+    const accessSubmit = document.getElementById('accessSubmit');
 
     const selections = {
       medium: 'book',
@@ -370,9 +389,32 @@
         if (workspaceId) next.set('workspace_id', workspaceId);
         window.location.href = `/story_engine.html?${next.toString()}`;
       } catch (error) {
+        if (error.code === 'AUTH_REQUIRED') {
+          accessForm.classList.remove('hidden');
+          accessKey.focus();
+        }
         statusEl.textContent = error.message || 'Something went wrong. Try again.';
         statusEl.className = 'status error';
         continueBtn.disabled = false;
+      }
+    });
+
+    accessForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      accessSubmit.disabled = true;
+      accessStatus.textContent = 'Signing in…';
+      accessStatus.className = 'status';
+      try {
+        await window.L99Auth.signInWithKey(accessKey.value);
+        accessKey.value = '';
+        accessForm.classList.add('hidden');
+        accessStatus.textContent = '';
+        continueBtn.click();
+      } catch (error) {
+        accessStatus.textContent = error.message || 'Sign-in failed.';
+        accessStatus.className = 'status error';
+      } finally {
+        accessSubmit.disabled = false;
       }
     });
 
