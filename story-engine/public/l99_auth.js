@@ -57,6 +57,28 @@
     }
   }
 
+  // Public account entry uses an explicit, styled sign-in form rather than
+  // a browser prompt. The key is exchanged for an HttpOnly SameSite cookie
+  // and is never saved in browser storage.
+  async function signInWithAccessKey(entered) {
+    const key = String(entered || '').trim();
+    if (!key) throw new Error('Enter your access key.');
+    try {
+      const response = await originalFetch('/api/auth/session', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'x-api-key': key, 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.authenticated) throw new Error('Sign-in failed. Check your access key.');
+      sessionPromise = Promise.resolve(payload);
+      return payload;
+    } finally {
+      purgeLegacyBootstrapKey();
+    }
+  }
+
   function ensureSession() {
     if (!sessionPromise) {
       sessionPromise = establishSession().catch(error => {
@@ -69,6 +91,7 @@
 
   window.L99Auth = {
     ensureSession,
+    signInWithAccessKey,
     currentSession,
     async logout() {
       await originalFetch('/api/auth/logout', {
@@ -95,5 +118,7 @@
     });
   };
 
-  void ensureSession().catch(() => {});
+  if (!document.querySelector('meta[name="storyengine-manual-auth"]')) {
+    void ensureSession().catch(() => {});
+  }
 })();
