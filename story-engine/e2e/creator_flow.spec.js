@@ -18,7 +18,7 @@ test('front door preserves base context through shape step and hands exact run i
     }]
   };
   const requestedRunIds = [];
-  let createPayload = null;
+  const createRequests = [];
 
   await establishBrowserSession(page);
 
@@ -32,7 +32,7 @@ test('front door preserves base context through shape step and hands exact run i
 
   await page.route('**/api/story-engine/runs', async route => {
     if (route.request().method() !== 'POST') return route.continue();
-    createPayload = route.request().postDataJSON();
+    createRequests.push(route.request().postDataJSON());
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
@@ -76,9 +76,17 @@ test('front door preserves base context through shape step and hands exact run i
   await expect(page.locator('#ideaPreview')).toHaveText(baseContext);
   await expect(page.getByRole('button', { name: /Continue to studio/ })).toBeVisible();
 
-  await page.getByRole('button', { name: /Continue to studio/ }).click();
+  // The authenticated fetch wrapper awaits the session before the POST starts.
+  // A click alone does not guarantee that the intercepted request has arrived.
+  const [createRequest] = await Promise.all([
+    page.waitForRequest(request =>
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname === '/api/story-engine/runs'
+    ),
+    page.getByRole('button', { name: /Continue to studio/ }).click()
+  ]);
 
-  expect(createPayload).toMatchObject({
+  expect(createRequest.postDataJSON()).toMatchObject({
     story_vision: baseContext,
     medium: 'book',
     audience: 'young_adult',
@@ -98,6 +106,7 @@ test('front door preserves base context through shape step and hands exact run i
   await expect(page.locator('#creationCard')).toHaveClass(/hidden/);
   await expect(page.getByText('L99 runtime', { exact: false })).toHaveCount(0);
 
+  expect(createRequests).toEqual([createRequest.postDataJSON()]);
   expect(requestedRunIds).toEqual([run.run_id]);
   expect(requestedRunIds).not.toContain(run.workspace_id);
 });
