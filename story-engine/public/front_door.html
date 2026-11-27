@@ -445,11 +445,17 @@
       loginKey.focus({ preventScroll: true });
     }
 
+    const creatorRoles = new Set(['creator', 'editor', 'reviewer', 'release_manager', 'administrator']);
+
     function showCreator() {
       guestPortal.classList.add('hidden');
       guestLogin.classList.add('hidden');
       creatorShell.classList.remove('hidden');
       loginKey.value = '';
+    }
+
+    function allowCreator(session) {
+      return Boolean(session?.authenticated && creatorRoles.has(session.session?.role));
     }
 
     document.getElementById('enterBtn').addEventListener('click', showLogin);
@@ -470,7 +476,8 @@
       loginBtn.disabled = true;
       loginMessage.textContent = 'Checking your account…';
       try {
-        await window.L99Auth.signInWithAccessKey(key);
+        const session = await window.L99Auth.signInWithAccessKey(key);
+        if (!allowCreator(session)) throw new Error('This account does not have creator access.');
         showCreator();
         window.scrollTo({ top: 0, behavior: 'instant' });
       } catch (error) {
@@ -492,7 +499,7 @@
     const directLogin = new URLSearchParams(window.location.search).get('view') === 'login';
     void window.L99Auth.currentSession()
       .then(session => {
-        if (session?.authenticated) showCreator();
+        if (allowCreator(session)) showCreator();
         else if (directLogin) showLogin();
         else showPortal();
       })
