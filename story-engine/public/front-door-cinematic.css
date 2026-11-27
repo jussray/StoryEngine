@@ -1,0 +1,365 @@
+/* StoryEngine cinematic front door.
+ * Uses the existing approved storybook art; the functional creator journey
+ * remains the same. No invented login/checkout or external assets.
+ */
+body {
+  background: #0b0719;
+  overflow-x: hidden;
+}
+body .ambient { display: none; }
+.app {
+  padding: 0;
+  display: block;
+  min-height: 100svh;
+}
+#frontView.cinematic-door {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(260px, 335px) minmax(110px, 1fr) minmax(345px, 430px);
+  grid-template-rows: auto minmax(390px, 1fr) auto;
+  align-items: center;
+  column-gap: clamp(14px, 2.2vw, 38px);
+  row-gap: clamp(12px, 2vh, 24px);
+  max-width: none;
+  width: 100%;
+  min-height: 100svh;
+  padding: clamp(20px, 3vh, 36px) clamp(20px, 3.2vw, 64px) 24px;
+  overflow: hidden;
+}
+#frontView .hero-art {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: center 55%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  filter: saturate(1.08) contrast(1.08);
+  pointer-events: none;
+  z-index: -3;
+}
+#frontView::before,
+#frontView::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+#frontView::before {
+  z-index: -2;
+  background:
+    linear-gradient(90deg, rgba(9, 5, 25, .79), rgba(9, 5, 25, .24) 33%, rgba(9, 5, 25, .10) 54%, rgba(9, 5, 25, .65) 100%),
+    linear-gradient(0deg, rgba(9, 5, 25, .91), transparent 28%, transparent 70%, rgba(9, 5, 25, .56));
+}
+#frontView::after {
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 46% 32% at 50% 76%, rgba(255, 164, 64, .16), transparent 72%),
+    radial-gradient(ellipse 32% 25% at 8% 8%, rgba(213, 66, 255, .20), transparent 80%),
+    radial-gradient(ellipse 30% 28% at 100% 15%, rgba(48, 156, 255, .16), transparent 85%);
+}
+#frontView .stage-spark {
+  position: absolute;
+  z-index: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ffe5be;
+  box-shadow: 0 0 16px 4px rgba(255, 149, 233, .68);
+  pointer-events: none;
+  animation: story-spark 6s ease-in-out infinite alternate;
+}
+#frontView .stage-spark.one { top: 27%; left: 36%; }
+#frontView .stage-spark.two { top: 42%; left: 70%; width: 5px; height: 5px; animation-delay: -2s; }
+#frontView .stage-spark.three { top: 69%; left: 52%; width: 6px; height: 6px; animation-delay: -4s; }
+@keyframes story-spark {
+  from { opacity: .24; transform: translateY(8px) scale(.75); }
+  to { opacity: .88; transform: translateY(-9px) scale(1.25); }
+}
+#frontView .front-masthead {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  justify-self: center;
+  align-self: start;
+  text-align: center;
+  z-index: 2;
+}
+#frontView .front-masthead .brand { gap: 0; }
+#frontView .front-masthead .se-wordmark {
+  font-size: clamp(48px, 5.8vw, 82px);
+  filter: drop-shadow(0 4px 20px rgba(25, 7, 46, .95));
+}
+#frontView .front-masthead .brand i {
+  width: 40px;
+  height: 18px;
+  margin-top: 3px;
+  border-color: rgba(255, 132, 234, .85);
+  box-shadow: 0 0 24px rgba(255, 100, 238, .66);
+}
+#frontView .front-masthead .tagline {
+  font-size: clamp(16px, 1.55vw, 23px);
+  color: #fff2ff;
+  margin-top: 9px;
+  text-shadow: 0 2px 14px rgba(10, 4, 25, .96);
+}
+#frontView .story-glass {
+  width: 100%;
+  z-index: 2;
+  background: linear-gradient(140deg, rgba(30, 14, 59, .70), rgba(8, 7, 29, .76));
+  border: 1px solid rgba(248, 200, 255, .38);
+  border-radius: 26px;
+  box-shadow:
+    0 24px 75px rgba(6, 4, 20, .55),
+    inset 0 1px 0 rgba(255, 255, 255, .18),
+    0 0 30px rgba(174, 64, 238, .21);
+  backdrop-filter: blur(18px) saturate(128%);
+  -webkit-backdrop-filter: blur(18px) saturate(128%);
+}
+#frontView .intro-glass {
+  grid-column: 1;
+  grid-row: 2;
+  padding: clamp(24px, 2.4vw, 34px) clamp(22px, 2.1vw, 30px);
+  align-self: center;
+}
+#frontView .eyebrow {
+  color: #ffc6f3;
+  text-transform: uppercase;
+  letter-spacing: .19em;
+  font-size: 11px;
+  font-weight: 800;
+  margin: 0 0 16px;
+}
+#frontView .intro-glass h2 {
+  font: 400 clamp(29px, 2.55vw, 40px)/1.13 Georgia, 'Times New Roman', serif;
+  text-shadow: 0 2px 15px rgba(4, 2, 16, .7);
+  margin: 0 0 16px;
+}
+#frontView .intro-glass .intro-copy {
+  font-size: 15px;
+  line-height: 1.75;
+  color: #f4eaff;
+  margin: 0 0 22px;
+}
+#frontView .intro-glass .intro-note {
+  border-radius: 14px;
+  padding: 15px 16px;
+  background: rgba(249, 214, 255, .09);
+  border: 1px solid rgba(255, 239, 255, .17);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  line-height: 1.45;
+  font-style: italic;
+  color: #ffe6fc;
+}
+#frontView .intro-glass .intro-note strong {
+  display: block;
+  margin-bottom: 5px;
+  font: 700 11px/1.2 Inter, system-ui, sans-serif;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: #ffd580;
+}
+#frontView .creator-glass {
+  grid-column: 3;
+  grid-row: 2;
+  padding: clamp(24px, 2.3vw, 32px);
+  align-self: center;
+}
+#frontView .creator-glass .front-copy {
+  margin-bottom: 20px;
+  text-align: left;
+}
+#frontView .creator-glass .front-copy h1 {
+  font: 400 clamp(30px, 2.7vw, 42px)/1.12 Georgia, 'Times New Roman', serif;
+  letter-spacing: -.02em;
+  text-shadow: 0 3px 15px rgba(2, 0, 12, .8);
+}
+#frontView .creator-glass .front-copy p:not(.eyebrow) {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #f0e8ff;
+  margin: 12px 0 0;
+}
+#frontView .creator-glass .front-copy .eyebrow {
+  margin-bottom: 10px;
+}
+#frontView .creator-glass .context-panel {
+  padding: 10px 14px;
+  border-radius: 16px;
+  border-color: rgba(223, 203, 255, .35);
+  background: rgba(4, 3, 17, .48);
+  box-shadow: inset 0 1px 12px rgba(5, 4, 15, .25);
+}
+#frontView .creator-glass textarea {
+  min-height: 104px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+#frontView .creator-glass textarea::placeholder {
+  color: #d7c5e4;
+  opacity: .92;
+}
+#frontView .creator-glass .context-hint {
+  padding-top: 9px;
+  line-height: 1.4;
+  font-size: 11px;
+  color: #e7d9f6;
+}
+#frontView .creator-glass .front-actions { margin-top: 18px; }
+#frontView .creator-glass .primary {
+  max-width: none;
+  min-height: 54px;
+  color: #140d29;
+  font-weight: 800;
+  background: linear-gradient(95deg, #ff83e8, #b679ff 48%, #55d9ff);
+  box-shadow: 0 3px 22px rgba(240, 92, 255, .5), inset 0 1px 0 rgba(255, 255, 255, .34);
+}
+#frontView .creator-glass .primary:disabled {
+  opacity: .55;
+  box-shadow: none;
+}
+#frontView .creator-glass .status { margin: 12px 0 0; min-height: 20px; }
+#frontView .creator-footnote {
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: .02em;
+  color: #efe2f9;
+  margin: 9px 0 0;
+}
+#frontView .format-rail {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: clamp(6px, .8vw, 12px);
+  padding: 12px;
+  border: 1px solid rgba(247, 214, 255, .27);
+  border-radius: 22px;
+  background: rgba(12, 7, 33, .62);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  box-shadow: 0 16px 50px rgba(3, 2, 18, .54);
+}
+#frontView .quick-format {
+  min-height: 87px;
+  padding: 13px 8px 10px;
+  border: 1px solid rgba(211, 172, 255, .22);
+  border-radius: 14px;
+  color: #fff5ff;
+  background: linear-gradient(160deg, rgba(70, 36, 110, .50), rgba(8, 9, 28, .67));
+  font: 700 13px/1.3 Inter, system-ui, sans-serif;
+  cursor: pointer;
+  display: flex;
+  gap: 7px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: transform .2s ease, background .2s ease, border-color .2s ease;
+}
+#frontView .quick-format .quick-icon { font-size: 27px; line-height: 1.1; }
+#frontView .quick-format[aria-pressed="true"] {
+  border-color: #ff92f6;
+  background: linear-gradient(160deg, rgba(119, 49, 171, .70), rgba(41, 37, 100, .72));
+  box-shadow: inset 0 0 0 1px rgba(255, 185, 252, .25), 0 0 19px rgba(227, 83, 255, .27);
+}
+#frontView .quick-format:hover { transform: translateY(-3px); border-color: #ffb9f5; }
+#frontView .quick-format:focus-visible,
+#frontView .primary:focus-visible,
+#frontView .context-panel:focus-within {
+  outline: 2px solid #a9f1ff;
+  outline-offset: 3px;
+}
+#shapeView.view {
+  max-width: min(1000px, calc(100% - 28px));
+  margin: 24px auto 44px;
+  padding: clamp(18px, 3vw, 38px);
+  border: 1px solid rgba(248, 200, 255, .20);
+  border-radius: 27px;
+  background:
+    radial-gradient(ellipse at top, rgba(153, 76, 220, .19), transparent 58%),
+    rgba(12, 8, 32, .94);
+  box-shadow: 0 24px 68px rgba(2, 1, 13, .58);
+}
+#shapeView .shape-panel,
+#shapeView .idea-card {
+  background: rgba(28, 17, 57, .70);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+#shapeView .choice {
+  min-height: 86px;
+  background: rgba(59, 41, 88, .38);
+}
+#shapeView .choice:focus-visible,
+#shapeView .edit-idea:focus-visible,
+#shapeView .primary:focus-visible { outline: 2px solid #a9f1ff; outline-offset: 3px; }
+@media (max-width: 1100px) {
+  #frontView.cinematic-door {
+    grid-template-columns: minmax(215px, 290px) minmax(10px, 1fr) minmax(325px, 400px);
+    padding-inline: 20px;
+    gap: 12px;
+  }
+  #frontView .intro-glass { padding: 20px; }
+  #frontView .creator-glass { padding: 22px; }
+}
+@media (max-width: 850px) {
+  #frontView.cinematic-door {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(230px, .55fr) auto auto;
+    padding: 18px 16px 22px;
+    gap: 14px;
+  }
+  #frontView .front-masthead { grid-column: 1; grid-row: 1; }
+  #frontView .hero-art { object-position: 50% 35%; }
+  #frontView::before {
+    background: linear-gradient(180deg, rgba(8, 5, 23, .52) 0%, rgba(8, 5, 23, .14) 35%, rgba(8, 5, 23, .65) 62%, rgba(8, 5, 23, .90) 100%);
+  }
+  #frontView .intro-glass { display: none; }
+  #frontView .creator-glass {
+    grid-column: 1;
+    grid-row: 3;
+    max-width: 540px;
+    justify-self: center;
+    background: linear-gradient(145deg, rgba(27, 12, 57, .78), rgba(8, 7, 29, .85));
+  }
+  #frontView .format-rail {
+    grid-column: 1;
+    grid-row: 4;
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 10px;
+    max-width: 100%;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+  }
+  #frontView .quick-format { flex: 0 0 102px; scroll-snap-align: start; }
+}
+@media (max-width: 720px) {
+  #frontView.cinematic-door {
+    min-height: 100svh;
+    grid-template-rows: auto clamp(160px, 27vh, 250px) auto auto;
+    padding: 18px 12px 28px;
+  }
+  #frontView .front-masthead .se-wordmark { font-size: clamp(43px, 11vw, 64px); }
+  #frontView .front-masthead .tagline { font-size: 15px; }
+  #frontView .creator-glass { padding: 20px 18px; border-radius: 20px; }
+  #frontView .creator-glass .front-copy h1 { font-size: clamp(27px, 7.5vw, 36px); }
+  #frontView .creator-glass textarea { min-height: 90px; }
+  #frontView .format-rail { border-radius: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #frontView .stage-spark { animation: none; }
+  #frontView .quick-format { transition: none; }
+  #frontView .quick-format:hover { transform: none; }
+}
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  #frontView .story-glass,
+  #frontView .format-rail { background: rgba(16, 9, 38, .91); }
+}
