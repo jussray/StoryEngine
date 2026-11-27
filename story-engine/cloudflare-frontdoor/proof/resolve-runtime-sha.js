@@ -5,11 +5,11 @@ import { readFileSync } from 'node:fs';
 import { resolveExpectedRuntimeSha } from './runtime-equivalence.js';
 
 const targetSha = (process.argv[2] || '').trim().toLowerCase();
-const { productionOrigin } = JSON.parse(readFileSync(
+const { runtimeOrigin } = JSON.parse(readFileSync(
   new URL('../../config/domain-authority.json', import.meta.url), 'utf8'
 ));
 
-const response = await fetch(`${productionOrigin}/runtime-identity`, { redirect: 'manual' });
+const response = await fetch(`${runtimeOrigin}/runtime-identity`, { redirect: 'manual' });
 if (response.status !== 200) {
   console.error(`runtime-identity returned ${response.status}`);
   process.exit(1);

@@ -1,0 +1,95 @@
+name: Cloudflare Containers Docker Proof
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/cloudflare-containers-docker-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  TEMPLATE_SHA: 9674298a122ac464f8d4d8d2b38c3491d6b35d18
+
+jobs:
+  pinned-container-smoke:
+    name: Build and smoke-test Cloudflare's pinned Containers starter
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact workflow revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Confirm immutable workflow head
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Fetch audited upstream starter at exact commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMPLATE_DIR="$RUNNER_TEMP/cloudflare-templates"
+          mkdir -p "$TEMPLATE_DIR"
+          git -C "$TEMPLATE_DIR" init -q
+          git -C "$TEMPLATE_DIR" remote add origin https://github.com/cloudflare/templates.git
+          git -C "$TEMPLATE_DIR" fetch --depth 1 origin "$TEMPLATE_SHA"
+          git -C "$TEMPLATE_DIR" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$TEMPLATE_DIR" rev-parse HEAD)" = "$TEMPLATE_SHA"
+          test -f "$TEMPLATE_DIR/containers-template/Dockerfile"
+          test -f "$TEMPLATE_DIR/containers-template/wrangler.jsonc"
+
+      - name: Confirm container and Durable Object declarations
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          const file = process.env.RUNNER_TEMP + '/cloudflare-templates/containers-template/wrangler.jsonc';
+          const config = JSON.parse(readFileSync(file, 'utf8'));
+          assert.ok(config.containers?.some(x => x.class_name === 'MyContainer'));
+          assert.ok(config.durable_objects?.bindings?.some(x => x.class_name === 'MyContainer'));
+          console.log('Pinned upstream Container and Durable Object configuration verified');
+          NODE
+
+      - name: Verify Docker and build isolated starter image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker info > /dev/null
+          docker build --pull --tag storyengine-cloudflare-containers-proof:ci \
+            "$RUNNER_TEMP/cloudflare-templates/containers-template"
+
+      - name: Start container and verify HTTP health
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name storyengine-cloudflare-proof \
+            --publish 127.0.0.1:18080:8080 \
+            --env MESSAGE=ci-isolated \
+            --env INSTANCE_ID=github-actions \
+            storyengine-cloudflare-containers-proof:ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18080/health > /dev/null; then
+              body="$(curl --fail --silent http://127.0.0.1:18080/)"
+              [[ "$body" == *"ci-isolated"* ]]
+              [[ "$body" == *"github-actions"* ]]
+              echo 'Pinned Cloudflare Containers Docker image: health and response PASS'
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs storyengine-cloudflare-proof
+          exit 1
+
+      - name: Remove test container
+        if: always()
+        shell: bash
+        run: docker rm --force storyengine-cloudflare-proof 2>/dev/null || true
