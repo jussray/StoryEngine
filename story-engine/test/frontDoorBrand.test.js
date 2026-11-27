@@ -22,6 +22,7 @@ test('cinematic style uses the real artwork as an immersive scene and keeps mobi
   const css = readFileSync(new URL('../public/front-door-cinematic.css', import.meta.url), 'utf8');
   assert.match(css, /#frontView\s+\.hero-art\s*\{/);
   assert.match(css, /object-fit:\s*cover/);
+  assert.match(css, /main\.app\s*\{[^}]*padding:\s*0;/);
   assert.match(css, /backdrop-filter:\s*blur/);
   assert.match(css, /@media\s*\(max-width:\s*720px\)/);
   assert.match(css, /\.quick-format:focus-visible/);
