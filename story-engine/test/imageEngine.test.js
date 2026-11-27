@@ -226,3 +226,102 @@ test('the cost cap refuses a job whose estimate exceeds it, before any provider 
     assert.equal(rows.n, 0);
   } finally { db.close(); }
 });
+
+test('two connections attempt the same job but only the atomic reservation owner submits', async () => {
+  const dbPath = join(mkdtempSync(join(tmpdir(), 'l99-image-reservation-')), 'storage.sqlite');
+  const a = new DatabaseSync(dbPath);
+  const b = new DatabaseSync(dbPath);
+  try {
+    a.exec(schema);
+    a.prepare('INSERT INTO stories (workspace_id,title) VALUES (?,?)').run('workspace_image_test','A fixture book');
+    const job = createImageGenerationJob(a,{workspace_id:'workspace_image_test'});
+    await withToken(async () => {
+      let resolveProvider;
+      let creates=0;
+      const fetchImpl=(_url,options)=>{
+        assert.equal(options.method,'POST');
+        creates++;
+        return new Promise(resolve=>{resolveProvider=resolve;});
+      };
+      const first=submitImageGenerationJob(a,job.job_id,{fetchImpl});
+      const second=await submitImageGenerationJob(b,job.job_id,{fetchImpl});
+      assert.equal(second.status,'submitting');
+      assert.equal(second.attempt_count,1);
+      assert.equal(creates,1);
+      resolveProvider({ok:true,json:async()=>({id:'pred_atomic'})});
+      assert.equal((await first).provider_prediction_id,'pred_atomic');
+      assert.equal(getImageGenerationJob(b,job.job_id).status,'processing');
+    });
+  } finally { b.close();a.close(); }
+});
+
+test('an uncertain create stays in reconciliation across repeat submits and does not expose provider errors', async () => {
+  const db = fixtureDb();
+  try {
+    const job = createImageGenerationJob(db,{workspace_id:'workspace_image_test'});
+    let calls=0;
+    const deps={fetchImpl:async()=>{calls++;throw new Error('internal connection details');}};
+    await withToken(async()=>{
+      for(let i=0;i<3;i++){
+        const result=await submitImageGenerationJob(db,job.job_id,deps);
+        assert.equal(result.status,'submission_reconciliation_required');
+        assert.equal(result.provider_prediction_id,null);
+        assert.equal(result.attempt_count,1);
+        assert.equal(result.error.code,'REPLICATE_RECONCILIATION_REQUIRED');
+        assert.doesNotMatch(result.error.message,/internal connection/);
+      }
+    });
+    assert.equal(calls,1);
+    assert.equal(imageEngineOverview(db).reconciliation_required_count,1);
+  } finally { db.close(); }
+});
+
+test('old unclaimed rows and stale claims require reconciliation instead of automatic repost', async () => {
+  const db = fixtureDb();
+  try {
+    const old = createImageGenerationJob(db,{workspace_id:'workspace_image_test',prompt:'Old job'});
+    const stale = createImageGenerationJob(db,{workspace_id:'workspace_image_test',prompt:'Stale claim'});
+    db.prepare('UPDATE story_image_jobs SET submission_contract=0 WHERE job_id=?').run(old.job_id);
+    db.prepare("UPDATE story_image_jobs SET status='submitting',updated_at=?,attempt_count=1 WHERE job_id=?").run(Date.now()-180_000,stale.job_id);
+    await withToken(async()=>{
+      for(const job of [old,stale]){
+        const result=await submitImageGenerationJob(db,job.job_id,{fetchImpl:()=>assert.fail('no provider POST')});
+        assert.equal(result.status,'submission_reconciliation_required');
+      }
+    });
+  } finally { db.close(); }
+});
+
+test('the server-owned catalog rejects unpriced models and malformed caps before creating a job', () => {
+  const db=fixtureDb();
+  try {
+    const input={workspace_id:'workspace_image_test'};
+    for(const provider_model of ['not/approved','constructor','__proto__']){
+      assert.throws(()=>createImageGenerationJob(db,{...input,provider_model}),{code:'IMAGE_MODEL_UNSUPPORTED'});
+    }
+    for(const max_cost_usd of ['not a number',Infinity,-1]){
+      assert.throws(()=>createImageGenerationJob(db,{...input,max_cost_usd}),{code:'IMAGE_COST_CAP_INVALID'});
+    }
+    assert.equal(imageEngineOverview(db).total_jobs,0);
+  } finally { db.close(); }
+});
+
+test('actual billed cost stays unknown even for historical rows that copied the estimate', async () => {
+  const db=fixtureDb();
+  try {
+    const job=createImageGenerationJob(db,{workspace_id:'workspace_image_test'});
+    await withToken(async()=>{
+      const fake=fakeReplicate();
+      await submitImageGenerationJob(db,job.job_id,{fetchImpl:fake.fetchImpl});
+      const done=await pollImageGenerationJob(db,job.job_id,{fetchImpl:fake.fetchImpl});
+      assert.equal(done.status,'succeeded');
+      assert.equal(done.actual_cost_usd,null);
+      assert.equal(done.receipt.cost_basis,'model_rate_estimate');
+      assert.equal(done.receipt.estimated_cost_usd,0.003);
+    });
+    db.prepare('UPDATE story_image_jobs SET actual_cost_usd=? WHERE job_id=?').run(0.003,job.job_id);
+    assert.equal(getImageGenerationJob(db,job.job_id).actual_cost_usd,null);
+    assert.equal(imageEngineOverview(db).total_actual_cost_usd,null);
+    assert.equal(imageEngineOverview(db).recent_jobs[0].actual_cost_usd,null);
+  } finally { db.close(); }
+});

@@ -5,10 +5,9 @@
 //   1. Durable async jobs — the job row, provider prediction id, retry state,
 //      and completion receipt persist in SQLite; a restart never silently
 //      loses work, and in-flight jobs resume by polling, never by respawning.
-//   2. No duplicate billing — a UNIQUE fingerprint constraint dedupes
-//      identical generation requests, and the provider prediction id is
-//      persisted BEFORE any polling, so a timeout can never spawn a second
-//      paid prediction.
+//   2. Claim the job once before submitting to Replicate. An uncertain
+//      create outcome is not retried automatically. A persisted prediction
+//      id is the only handle used for subsequent polling.
 //   3. Save files immediately — provider output URLs expire in ~1 hour, so a
 //      succeeded prediction is copied onto durable owned storage (var/
 //      image-generations) and hash-verified before the job reports success.
@@ -28,9 +27,12 @@ import { VIDEO_VISUAL_STYLES } from './visualStyleCatalog.js';
 export const IMAGE_PURPOSES = Object.freeze(['book_cover', 'story_image']);
 export const IMAGE_ASPECT_RATIOS = Object.freeze(['2:3', '3:2', '1:1', '16:9', '9:16']);
 export const IMAGE_JOB_STATUSES = Object.freeze([
-  'queued', 'processing', 'copy_failed', 'submit_failed',
+  'queued', 'submitting', 'submission_reconciliation_required', 'processing', 'copy_failed', 'submit_failed',
   'provider_unconfigured', 'succeeded', 'failed'
 ]);
+
+const SUBMIT_TIMEOUT_MS = 30_000;
+const STALE_RESERVATION_MS = 120_000;
 
 const MODEL_RATES_USD = Object.freeze({
   'black-forest-labs/flux-schnell': 0.003,
@@ -46,7 +48,7 @@ export const IMAGE_ENGINE_OPTIONS = Object.freeze({
   default_model: process.env.REPLICATE_IMAGE_MODEL || 'black-forest-labs/flux-schnell',
   model_rates_usd: MODEL_RATES_USD,
   storage: 'var/image-generations (override with L99_IMAGE_OUTPUT_DIR)',
-  laws: ['durable_async_jobs', 'fingerprint_dedupe_no_duplicate_billing', 'prediction_id_persisted_before_polling', 'immediate_verified_durable_copy', 'cover_never_gates_book_release']
+  laws: ['durable_async_jobs', 'atomic_submission_reservation_no_automatic_resubmit', 'prediction_id_persisted_before_polling', 'immediate_verified_durable_copy', 'cover_never_gates_book_release']
 });
 
 function text(value, fallback = '') {
@@ -88,6 +90,7 @@ export function ensureImageEngineSchema(db) {
       fingerprint TEXT NOT NULL UNIQUE,
       status TEXT NOT NULL DEFAULT 'queued',
       attempt_count INTEGER NOT NULL DEFAULT 0,
+      submission_contract INTEGER NOT NULL DEFAULT 0,
       max_cost_usd REAL NOT NULL DEFAULT 0,
       estimated_cost_usd REAL NOT NULL DEFAULT 0,
       actual_cost_usd REAL,
@@ -103,6 +106,15 @@ export function ensureImageEngineSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_story_image_jobs_workspace ON story_image_jobs(workspace_id,created_at);
     CREATE INDEX IF NOT EXISTS idx_story_image_jobs_status ON story_image_jobs(status,created_at);
   `);
+  // Legacy code did not persist anything before a provider create. Even an
+  // old row that still says 'queued' might already have caused a charge.
+  if (!db.prepare('PRAGMA table_info(story_image_jobs)').all().some(column => column.name === 'submission_contract')) {
+    try { db.exec('ALTER TABLE story_image_jobs ADD COLUMN submission_contract INTEGER NOT NULL DEFAULT 0'); }
+    catch (error) {
+      // A concurrent schema initializer may have added it during startup.
+      if (!db.prepare('PRAGMA table_info(story_image_jobs)').all().some(column => column.name === 'submission_contract')) throw error;
+    }
+  }
 }
 
 export function imageFingerprint({ workspace_id, purpose, visual_style, prompt, negative_prompt, provider_model, aspect_ratio }) {
@@ -135,7 +147,18 @@ export function buildImagePrompt(db, input = {}) {
 }
 
 function hydrate(row) {
-  return row ? { ...row, error: safeJson(row.error_json, {}), receipt: safeJson(row.receipt_json, {}) } : null;
+  if (!row) return null;
+  const { submission_contract: internalContract, ...visible } = row;
+  let receipt = safeJson(row.receipt_json, {});
+  // Legacy completion receipts copied a model estimate into the actual field.
+  // Preserve stored evidence but don't present it to callers as a bill.
+  if (row.actual_cost_usd !== null) {
+    receipt = { ...receipt, cost_basis: 'model_rate_estimate',
+      estimated_cost_usd: row.estimated_cost_usd,
+      cost_note: 'Actual spend is not verified without an independent provider billing record.' };
+  }
+  return { ...visible, actual_cost_usd: null, receipt_json: JSON.stringify(receipt),
+    error: safeJson(row.error_json, {}), receipt };
 }
 
 export function createImageGenerationJob(db, input = {}) {
@@ -143,8 +166,14 @@ export function createImageGenerationJob(db, input = {}) {
   const built = buildImagePrompt(db, input);
   const { model } = providerConfig();
   const providerModel = text(input.provider_model, model);
-  const estimated = MODEL_RATES_USD[providerModel] ?? MODEL_RATES_USD['black-forest-labs/flux-schnell'];
-  const maxCost = Number(input.max_cost_usd || 0);
+  if (!Object.hasOwn(MODEL_RATES_USD, providerModel)) {
+    throw Object.assign(new Error('Unsupported image provider model.'), { code: 'IMAGE_MODEL_UNSUPPORTED' });
+  }
+  const estimated = MODEL_RATES_USD[providerModel];
+  const maxCost = Number(input.max_cost_usd ?? 0);
+  if (!Number.isFinite(maxCost) || maxCost < 0) {
+    throw Object.assign(new Error('The image cost cap must be a non-negative finite number.'), { code: 'IMAGE_COST_CAP_INVALID' });
+  }
   if (maxCost > 0 && estimated > maxCost) {
     throw Object.assign(new Error(`Estimated cost $${estimated} exceeds the job cap of $${maxCost}.`), { code: 'IMAGE_COST_CAP_EXCEEDED' });
   }
@@ -160,19 +189,33 @@ export function createImageGenerationJob(db, input = {}) {
   }
   const jobId = `image_job_${randomUUID()}`;
   const now = Date.now();
-  db.prepare(`INSERT INTO story_image_jobs (job_id,workspace_id,purpose,visual_style,prompt,negative_prompt,aspect_ratio,provider,provider_model,provider_prediction_id,fingerprint,status,attempt_count,max_cost_usd,estimated_cost_usd,actual_cost_usd,artifact_id,storage_path,content_hash,provider_output_url,error_json,receipt_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,NULL,?,'queued',0,?,?,NULL,NULL,NULL,NULL,NULL,'{}','{}',?,?)`)
+  const insert = db.prepare(`INSERT INTO story_image_jobs (job_id,workspace_id,purpose,visual_style,prompt,negative_prompt,aspect_ratio,provider,provider_model,provider_prediction_id,fingerprint,status,attempt_count,submission_contract,max_cost_usd,estimated_cost_usd,actual_cost_usd,artifact_id,storage_path,content_hash,provider_output_url,error_json,receipt_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,NULL,?,'queued',0,1,?,?,NULL,NULL,NULL,NULL,NULL,'{}','{}',?,?) ON CONFLICT(fingerprint) DO NOTHING`)
     .run(jobId, built.workspace_id, built.purpose, built.visual_style, built.prompt, built.negative_prompt, built.aspect_ratio, 'replicate', providerModel, fingerprint, maxCost, estimated, now, now);
+  if (!insert.changes) return { ...hydrate(db.prepare('SELECT * FROM story_image_jobs WHERE fingerprint=?').get(fingerprint)), reused: true };
   log(db, { workspace_id: built.workspace_id, mode: 'image_engine', event_type: 'image.job.created', payload: { job_id: jobId, fingerprint, purpose: built.purpose, visual_style: built.visual_style, provider_model: providerModel, estimated_cost_usd: estimated } });
   return { ...getImageGenerationJob(db, jobId), reused: false };
 }
 
 export function getImageGenerationJob(db, jobId) {
   ensureImageEngineSchema(db);
+  reconcileUncertainReservations(db, jobId);
   return hydrate(db.prepare('SELECT * FROM story_image_jobs WHERE job_id=?').get(jobId));
+}
+
+function reconcileUncertainReservations(db, jobId = null, workspaceId = null) {
+  const now = Date.now();
+  const error = JSON.stringify({ code: 'REPLICATE_RECONCILIATION_REQUIRED',
+    message: 'Submission outcome is unknown. Check provider prediction and billing records before any retry.' });
+  db.prepare(`UPDATE story_image_jobs SET status='submission_reconciliation_required',error_json=?,updated_at=?
+    WHERE (? IS NULL OR job_id=?) AND (? IS NULL OR workspace_id=?) AND provider_prediction_id IS NULL
+      AND ((submission_contract=0 AND status IN ('queued','processing','provider_unconfigured','submit_failed'))
+        OR (status='submitting' AND updated_at<=?))`)
+    .run(error,now,jobId,jobId,workspaceId,workspaceId,now-STALE_RESERVATION_MS);
 }
 
 export function listImageGenerationJobs(db, workspaceId, limit = 50) {
   ensureImageEngineSchema(db);
+  reconcileUncertainReservations(db, null, workspaceId);
   return db.prepare('SELECT * FROM story_image_jobs WHERE workspace_id=? ORDER BY created_at DESC LIMIT ?')
     .all(workspaceId, Math.max(1, Math.min(200, Number(limit) || 50))).map(hydrate);
 }
@@ -205,19 +248,31 @@ export async function submitImageGenerationJob(db, jobId, deps = {}) {
   // Law 2: a persisted prediction id means the paid request already exists.
   // Any later submit is a resume (poll), never a second prediction.
   if (job.provider_prediction_id) return pollImageGenerationJob(db, jobId, deps);
+  if (!['queued','provider_unconfigured'].includes(job.status)) return job;
+  if (!Object.hasOwn(MODEL_RATES_USD, job.provider_model) ||
+      (job.max_cost_usd > 0 && MODEL_RATES_USD[job.provider_model] > job.max_cost_usd)) {
+    throw Object.assign(new Error('The current model rate is not approved by the job budget.'), { code: 'IMAGE_COST_CAP_EXCEEDED' });
+  }
 
   const { token, apiBase } = providerConfig();
   if (!token) {
-    db.prepare(`UPDATE story_image_jobs SET status='provider_unconfigured',error_json=?,updated_at=? WHERE job_id=?`)
+    db.prepare(`UPDATE story_image_jobs SET status='provider_unconfigured',error_json=?,updated_at=? WHERE job_id=? AND submission_contract=1 AND provider_prediction_id IS NULL AND status IN ('queued','provider_unconfigured')`)
       .run(JSON.stringify({ code: 'REPLICATE_NOT_CONFIGURED', message: 'REPLICATE_API_TOKEN is not set; image generation is unconfigured and no provider request was made.' }), Date.now(), jobId);
     log(db, { workspace_id: job.workspace_id, mode: 'image_engine', event_type: 'image.job.provider_unconfigured', payload: { job_id: jobId } });
     return getImageGenerationJob(db, jobId);
   }
 
+  const claim = db.prepare(`UPDATE story_image_jobs SET status='submitting',attempt_count=attempt_count+1,error_json='{}',updated_at=?
+    WHERE job_id=? AND submission_contract=1 AND provider_prediction_id IS NULL AND status IN ('queued','provider_unconfigured')`)
+    .run(Date.now(),jobId);
+  if (!claim.changes) return getImageGenerationJob(db,jobId);
+
   let prediction;
   try {
     const response = await providerFetch(deps, `${apiBase}/v1/models/${job.provider_model}/predictions`, {
       method: 'POST',
+      redirect: 'error',
+      signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         input: {
@@ -231,18 +286,20 @@ export async function submitImageGenerationJob(db, jobId, deps = {}) {
     });
     if (!response.ok) throw new Error(`Replicate prediction create failed with HTTP ${response.status}.`);
     prediction = await response.json();
-    if (!prediction?.id) throw new Error('Replicate prediction create returned no prediction id.');
+    if (typeof prediction?.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(prediction.id)) throw new Error('Replicate prediction create returned no valid prediction id.');
   } catch (error) {
-    // No prediction id exists, so nothing was billed: the submit is safely
-    // retryable and the job stays durable in submit_failed.
-    db.prepare(`UPDATE story_image_jobs SET status='submit_failed',attempt_count=attempt_count+1,error_json=?,updated_at=? WHERE job_id=?`)
-      .run(JSON.stringify({ code: 'REPLICATE_SUBMIT_FAILED', message: error.message }), Date.now(), jobId);
-    log(db, { workspace_id: job.workspace_id, mode: 'image_engine', event_type: 'image.job.submit_failed', payload: { job_id: jobId, error: error.message } });
+    // A lost response, HTTP failure, or invalid id cannot prove non-acceptance.
+    // The reservation is never released for an automatic second provider POST.
+    db.prepare(`UPDATE story_image_jobs SET status='submission_reconciliation_required',error_json=?,updated_at=?
+      WHERE job_id=? AND status='submitting' AND provider_prediction_id IS NULL`)
+      .run(JSON.stringify({ code: 'REPLICATE_RECONCILIATION_REQUIRED', message: 'Submission outcome is unknown. Check provider prediction and billing records before any retry.' }), Date.now(), jobId);
+    log(db, { workspace_id: job.workspace_id, mode: 'image_engine', event_type: 'image.job.reconciliation_required', payload: { job_id: jobId } });
     return getImageGenerationJob(db, jobId);
   }
 
-  // Law 2: persist the prediction id BEFORE any polling happens.
-  db.prepare(`UPDATE story_image_jobs SET provider_prediction_id=?,status='processing',attempt_count=attempt_count+1,error_json='{}',updated_at=? WHERE job_id=?`)
+  // A valid late response may resolve its own reservation after a stale read.
+  db.prepare(`UPDATE story_image_jobs SET provider_prediction_id=?,status='processing',error_json='{}',updated_at=?
+    WHERE job_id=? AND submission_contract=1 AND provider_prediction_id IS NULL AND status IN ('submitting','submission_reconciliation_required')`)
     .run(prediction.id, Date.now(), jobId);
   log(db, { workspace_id: job.workspace_id, mode: 'image_engine', event_type: 'image.job.submitted', payload: { job_id: jobId, provider_prediction_id: prediction.id, provider_model: job.provider_model } });
   return getImageGenerationJob(db, jobId);
@@ -336,14 +393,16 @@ export async function pollImageGenerationJob(db, jobId, deps = {}) {
     content_hash: stored.content_hash,
     byte_size: stored.byte_size,
     format: stored.ext,
-    cost_note: 'Replicate does not itemize per-prediction cost on the prediction object; actual recorded at the published model rate.',
+    cost_basis: 'model_rate_estimate',
+    estimated_cost_usd: job.estimated_cost_usd,
+    cost_note: 'Actual spend is not verified without an independent provider billing record.',
     completed_at: now
   };
   db.transaction(() => {
     db.prepare(`INSERT INTO story_artifacts (artifact_id,run_id,workspace_id,kind,title,status,content_hash,html,metadata_json,validation_json,created_at,updated_at) VALUES (?,?,?,'generated_image',?,'generated',?,'',?,'{}',?,?)`)
       .run(artifactId, jobId, job.workspace_id, job.purpose === 'book_cover' ? 'Book cover image' : 'Story image', stored.content_hash, JSON.stringify({ image_job_id: jobId, ...receipt }), now, now);
-    db.prepare(`UPDATE story_image_jobs SET status='succeeded',artifact_id=?,storage_path=?,content_hash=?,provider_output_url=?,actual_cost_usd=?,receipt_json=?,error_json='{}',updated_at=? WHERE job_id=?`)
-      .run(artifactId, stored.path, stored.content_hash, outputUrl, job.estimated_cost_usd, JSON.stringify(receipt), now, jobId);
+    db.prepare(`UPDATE story_image_jobs SET status='succeeded',artifact_id=?,storage_path=?,content_hash=?,provider_output_url=?,actual_cost_usd=NULL,receipt_json=?,error_json='{}',updated_at=? WHERE job_id=?`)
+      .run(artifactId, stored.path, stored.content_hash, outputUrl, JSON.stringify(receipt), now, jobId);
   })();
   log(db, { workspace_id: job.workspace_id, mode: 'image_engine', event_type: 'image.job.succeeded', payload: { job_id: jobId, artifact_id: artifactId, content_hash: stored.content_hash, byte_size: stored.byte_size, purpose: job.purpose, visual_style: job.visual_style } });
   return getImageGenerationJob(db, jobId);
@@ -359,18 +418,19 @@ export function getImageGenerationFile(db, jobId) {
 
 export function imageEngineOverview(db) {
   ensureImageEngineSchema(db);
+  reconcileUncertainReservations(db);
   const totals = db.prepare(`SELECT COUNT(*) total_jobs,
     SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END) succeeded_count,
     SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed_count,
-    SUM(CASE WHEN status IN ('queued','processing') THEN 1 ELSE 0 END) in_flight_count,
+    SUM(CASE WHEN status IN ('queued','submitting','processing') THEN 1 ELSE 0 END) in_flight_count,
     SUM(CASE WHEN status='provider_unconfigured' THEN 1 ELSE 0 END) unconfigured_count,
-    COALESCE(SUM(actual_cost_usd),0) total_actual_cost_usd,
+    SUM(CASE WHEN status='submission_reconciliation_required' THEN 1 ELSE 0 END) reconciliation_required_count,
     COALESCE(SUM(estimated_cost_usd),0) total_estimated_cost_usd
     FROM story_image_jobs`).get();
-  const recentJobs = db.prepare(`SELECT job_id,workspace_id,purpose,visual_style,status,provider_model,estimated_cost_usd,actual_cost_usd,artifact_id,created_at,updated_at FROM story_image_jobs ORDER BY created_at DESC LIMIT 10`).all();
+  const recentJobs = db.prepare(`SELECT job_id,workspace_id,purpose,visual_style,status,provider_model,estimated_cost_usd,NULL AS actual_cost_usd,artifact_id,created_at,updated_at FROM story_image_jobs ORDER BY created_at DESC LIMIT 10`).all();
   const { token } = providerConfig();
   return {
-    status: !token ? 'provider_unconfigured' : Number(totals.failed_count || 0) ? 'error' : Number(totals.in_flight_count || 0) ? 'in_flight' : 'idle',
+    status: !token ? 'provider_unconfigured' : Number(totals.reconciliation_required_count || 0) ? 'reconciliation_required' : Number(totals.failed_count || 0) ? 'error' : Number(totals.in_flight_count || 0) ? 'in_flight' : 'idle',
     provider: 'replicate',
     provider_configured: Boolean(token),
     total_jobs: Number(totals.total_jobs || 0),
@@ -378,7 +438,8 @@ export function imageEngineOverview(db) {
     failed_count: Number(totals.failed_count || 0),
     in_flight_count: Number(totals.in_flight_count || 0),
     unconfigured_count: Number(totals.unconfigured_count || 0),
-    total_actual_cost_usd: Number(totals.total_actual_cost_usd || 0),
+    reconciliation_required_count: Number(totals.reconciliation_required_count || 0),
+    total_actual_cost_usd: null,
     total_estimated_cost_usd: Number(totals.total_estimated_cost_usd || 0),
     recent_jobs: recentJobs
   };
