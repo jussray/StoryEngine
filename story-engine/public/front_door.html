@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StoryEngine — Create</title>
+  <title>StoryEngine — Your next world starts here</title>
+  <meta name="storyengine-manual-auth" content="true" />
   <link rel="stylesheet" href="/brand.css" />
   <link rel="stylesheet" href="/front-door-cinematic.css" />
   <script src="/l99_auth.js"></script>
@@ -173,7 +174,47 @@
     <span class="ambient-label podcast">Podcast</span>
   </div>
 
-  <main class="app">
+  <section id="guestPortal" class="guest-stage portal-stage" aria-labelledby="portalTitle">
+    <div class="guest-art" aria-hidden="true"></div>
+    <div class="portal-shade" aria-hidden="true"></div>
+    <div class="portal-brand" aria-label="StoryEngine">
+      <div class="portal-sigil" aria-hidden="true">✧</div>
+      <h1 id="portalTitle" class="se-wordmark"><span class="se-story">Story</span><span class="se-engine">Engine</span></h1>
+      <p>Turn ideas into visual stories.</p>
+    </div>
+    <div class="portal-entry">
+      <p class="portal-script">Same Moments. New Worlds. ♡</p>
+      <button type="button" id="enterBtn" class="portal-action">Enter StoryEngine <span aria-hidden="true">→</span></button>
+    </div>
+  </section>
+
+  <section id="guestLogin" class="guest-stage login-stage hidden" aria-labelledby="loginTitle">
+    <div class="guest-art" aria-hidden="true"></div>
+    <div class="login-shade" aria-hidden="true"></div>
+    <header class="login-brand">
+      <span class="se-wordmark"><span class="se-story">Story</span><span class="se-engine">Engine</span></span>
+      <p>Turn ideas into visual stories.</p>
+    </header>
+    <div class="login-glass">
+      <p class="login-eyebrow">✧ Welcome back</p>
+      <h1 id="loginTitle">Your stories are waiting.</h1>
+      <p class="login-description">Sign in to enter your creative studio.</p>
+      <form id="loginForm" autocomplete="off">
+        <label for="loginAccessKey">Account access key</label>
+        <div class="login-input-wrap">
+          <span aria-hidden="true">✧</span>
+          <input id="loginAccessKey" type="password" name="access_key" required autocomplete="off" spellcheck="false" placeholder="Enter your StoryEngine access key" />
+          <button type="button" id="toggleAccessKey" class="reveal-key" aria-label="Show access key" aria-pressed="false">Show</button>
+        </div>
+        <button class="login-submit" id="loginBtn" type="submit">Sign in <span aria-hidden="true">→</span></button>
+        <p class="login-message" id="loginMessage" role="alert" aria-live="polite"></p>
+      </form>
+      <p class="login-footnote">Account access currently uses your authorized StoryEngine access key. Public email and social sign-in are not connected.</p>
+      <button type="button" class="login-back" id="backToPortal">← Back to the storybook</button>
+    </div>
+  </section>
+
+  <main id="creatorShell" class="app hidden">
     <section id="frontView" class="view cinematic-door" aria-labelledby="frontTitle">
       <img class="hero-art" src="/assets/front-door/hero-art.jpg" alt="" width="1422" height="640" />
       <span class="stage-spark one" aria-hidden="true"></span>
@@ -207,22 +248,14 @@
             </div>
           </div>
         </div>
-        <div class="front-actions">
+        <div class="creator-exit"><button id="signOutBtn" type="button">Sign out</button></div>
+      <div class="front-actions">
           <button class="primary" id="startBtn" type="button" disabled>Begin creating <span aria-hidden="true">→</span></button>
         </div>
         <p class="status" id="frontStatus" aria-live="polite"></p>
         <p class="creator-footnote">Your imagination is the starting point. ✧</p>
       </div>
 
-      <div class="format-rail" role="group" aria-label="Choose a storytelling format">
-        <button class="quick-format" type="button" data-quick-medium="book" aria-pressed="true"><span class="quick-icon" aria-hidden="true">📖</span>Book</button>
-        <button class="quick-format" type="button" data-quick-medium="movie" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🎬</span>Film</button>
-        <button class="quick-format" type="button" data-quick-medium="series" aria-pressed="false"><span class="quick-icon" aria-hidden="true">📺</span>Series</button>
-        <button class="quick-format" type="button" data-quick-medium="song" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🎵</span>Music</button>
-        <button class="quick-format" type="button" data-quick-medium="game" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🎮</span>Game</button>
-        <button class="quick-format" type="button" data-quick-medium="comic" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🖼️</span>Comic</button>
-        <button class="quick-format" type="button" data-quick-medium="podcast" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🎙️</span>Podcast</button>
-      </div>
     </section>
 
     <section id="shapeView" class="view shape-view hidden" aria-labelledby="shapeTitle">
@@ -324,25 +357,6 @@
       assist: 'writer'
     };
 
-    const quickFormats = Array.from(document.querySelectorAll('[data-quick-medium]'));
-
-    function selectQuickMedium(value) {
-      selections.medium = value;
-      quickFormats.forEach(button => {
-        button.setAttribute('aria-pressed', String(button.dataset.quickMedium === value));
-      });
-      document.querySelectorAll('.choices[data-group="medium"] .choice').forEach(button => {
-        button.classList.toggle('active', button.dataset.value === value);
-      });
-    }
-
-    quickFormats.forEach(button => {
-      button.addEventListener('click', () => {
-        selectQuickMedium(button.dataset.quickMedium);
-        if (!frontView.classList.contains('hidden')) visionEl.focus({ preventScroll: true });
-      });
-    });
-
     function updateFront() {
       const length = visionEl.value.trim().length;
       startBtn.disabled = length < 10;
@@ -375,7 +389,7 @@
         group.querySelectorAll('.choice').forEach(item => item.classList.remove('active'));
         choice.classList.add('active');
         selections[group.dataset.group] = choice.dataset.value;
-        if (group.dataset.group === 'medium') selectQuickMedium(choice.dataset.value);
+
       });
     });
 
@@ -422,6 +436,79 @@
         continueBtn.disabled = false;
       }
     });
+
+    const guestPortal = document.getElementById('guestPortal');
+    const guestLogin = document.getElementById('guestLogin');
+    const creatorShell = document.getElementById('creatorShell');
+    const loginForm = document.getElementById('loginForm');
+    const loginKey = document.getElementById('loginAccessKey');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginMessage = document.getElementById('loginMessage');
+
+    function showPortal() {
+      guestPortal.classList.remove('hidden');
+      guestLogin.classList.add('hidden');
+      creatorShell.classList.add('hidden');
+      loginMessage.textContent = '';
+    }
+
+    function showLogin() {
+      guestPortal.classList.add('hidden');
+      guestLogin.classList.remove('hidden');
+      creatorShell.classList.add('hidden');
+      loginKey.focus({ preventScroll: true });
+    }
+
+    function showCreator() {
+      guestPortal.classList.add('hidden');
+      guestLogin.classList.add('hidden');
+      creatorShell.classList.remove('hidden');
+      loginKey.value = '';
+    }
+
+    document.getElementById('enterBtn').addEventListener('click', showLogin);
+    document.getElementById('backToPortal').addEventListener('click', showPortal);
+    document.getElementById('toggleAccessKey').addEventListener('click', event => {
+      const reveal = loginKey.type === 'password';
+      loginKey.type = reveal ? 'text' : 'password';
+      event.currentTarget.setAttribute('aria-pressed', String(reveal));
+      event.currentTarget.textContent = reveal ? 'Hide' : 'Show';
+      event.currentTarget.setAttribute('aria-label', reveal ? 'Hide access key' : 'Show access key');
+    });
+
+    loginForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!loginKey.value.trim()) return;
+      const key = loginKey.value;
+      loginKey.value = '';
+      loginBtn.disabled = true;
+      loginMessage.textContent = 'Checking your account…';
+      try {
+        await window.L99Auth.signInWithAccessKey(key);
+        showCreator();
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      } catch (error) {
+        loginMessage.textContent = error.message || 'Sign-in was not completed.';
+        loginKey.focus();
+      } finally {
+        loginBtn.disabled = false;
+      }
+    });
+
+    document.getElementById('signOutBtn').addEventListener('click', async () => {
+      await window.L99Auth.logout();
+      shapeView.classList.add('hidden');
+      frontView.classList.remove('hidden');
+      showPortal();
+    });
+
+    // Guests cannot see the creator workspace; valid sessions may resume it.
+    void window.L99Auth.currentSession()
+      .then(session => {
+        if (session?.authenticated) showCreator();
+        else showPortal();
+      })
+      .catch(showPortal);
 
     updateFront();
   </script>
