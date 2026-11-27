@@ -2,12 +2,12 @@
  * Uses the existing approved storybook art; the functional creator journey
  * remains the same. No invented login/checkout or external assets.
  */
-body {
+body:has(#frontView) {
   background: #0b0719;
   overflow-x: hidden;
 }
 body .ambient { display: none; }
-.app {
+main.app {
   padding: 0;
   display: block;
   min-height: 100svh;
