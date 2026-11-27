@@ -56,6 +56,7 @@ import artifactRoutes from './routes/artifacts.js';
 import revenueRoutes from './routes/revenue.js';
 import syncAvenueRoutes from './routes/syncAvenue.js';
 import videoEngineRoutes from './routes/videoEngine.js';
+import imageEngineRoutes from './routes/imageEngine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -129,6 +130,7 @@ artifactRoutes(router, db);
 revenueRoutes(router, db);
 syncAvenueRoutes(router, db);
 videoEngineRoutes(router, db);
+imageEngineRoutes(router, db);
 
 const oodaClients = new Set();
 let latestIncidents = [];
