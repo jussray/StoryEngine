@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StoryEngine — Create</title>
   <link rel="stylesheet" href="/brand.css" />
+  <link rel="stylesheet" href="/front-door-cinematic.css" />
   <script src="/l99_auth.js"></script>
   <style>
     :root {
@@ -173,29 +174,55 @@
   </div>
 
   <main class="app">
-    <section id="frontView" class="view" aria-labelledby="frontTitle">
-      <div class="brand" aria-label="StoryEngine"><span class="se-wordmark"><span class="se-story">Story</span><span class="se-engine">Engine</span></span><i></i></div>
-      <p class="tagline">Turn ideas into visual stories.</p>
+    <section id="frontView" class="view cinematic-door" aria-labelledby="frontTitle">
       <img class="hero-art" src="/assets/front-door/hero-art.jpg" alt="" width="1422" height="640" />
-      <div class="front-copy">
-        <h1 id="frontTitle">What do you want to create?</h1>
-        <p>Start with the idea. We’ll shape the rest together.</p>
-      </div>
+      <span class="stage-spark one" aria-hidden="true"></span>
+      <span class="stage-spark two" aria-hidden="true"></span>
+      <span class="stage-spark three" aria-hidden="true"></span>
 
-      <div class="context-shell">
-        <div class="context-panel">
-          <textarea id="vision" aria-label="Base context" maxlength="1000" placeholder="A girl discovers an abandoned train station that only appears at midnight."></textarea>
-          <div class="context-hint">
-            <span><strong>Base context</strong> · your original creative intent</span>
-            <span id="charCount">0 / 1000</span>
+      <header class="front-masthead">
+        <div class="brand" aria-label="StoryEngine"><span class="se-wordmark"><span class="se-story">Story</span><span class="se-engine">Engine</span></span><i></i></div>
+        <p class="tagline">Turn ideas into visual stories.</p>
+      </header>
+
+      <aside class="story-glass intro-glass" aria-label="Welcome to StoryEngine">
+        <p class="eyebrow">✦ A world of possibilities</p>
+        <h2>Every great world starts with a spark.</h2>
+        <p class="intro-copy">From the first line of a book to the last frame of a film, bring your imagination into focus.</p>
+        <div class="intro-note"><strong>From your imagination</strong>Your ideas.<br />Your style.<br />Your story. ♡</div>
+      </aside>
+
+      <div class="story-glass creator-glass">
+        <div class="front-copy">
+          <p class="eyebrow">✦ Create your next world</p>
+          <h1 id="frontTitle">What do you want to create?</h1>
+          <p>Start with the idea. We’ll shape the rest together.</p>
+        </div>
+        <div class="context-shell">
+          <div class="context-panel">
+            <textarea id="vision" aria-label="Base context" maxlength="1000" placeholder="A girl discovers an abandoned train station that only appears at midnight."></textarea>
+            <div class="context-hint">
+              <span><strong>Base context</strong> · your original creative intent</span>
+              <span id="charCount">0 / 1000</span>
+            </div>
           </div>
         </div>
+        <div class="front-actions">
+          <button class="primary" id="startBtn" type="button" disabled>Begin creating <span aria-hidden="true">→</span></button>
+        </div>
+        <p class="status" id="frontStatus" aria-live="polite"></p>
+        <p class="creator-footnote">Your imagination is the starting point. ✧</p>
       </div>
 
-      <div class="front-actions">
-        <button class="primary" id="startBtn" type="button" disabled>Begin creating <span aria-hidden="true">→</span></button>
+      <div class="format-rail" role="group" aria-label="Choose a storytelling format">
+        <button class="quick-format" type="button" data-quick-medium="book" aria-pressed="true"><span class="quick-icon" aria-hidden="true">📖</span>Book</button>
+        <button class="quick-format" type="button" data-quick-medium="movie" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🎬</span>Film</button>
+        <button class="quick-format" type="button" data-quick-medium="series" aria-pressed="false"><span class="quick-icon" aria-hidden="true">📺</span>Series</button>
+        <button class="quick-format" type="button" data-quick-medium="song" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🎵</span>Music</button>
+        <button class="quick-format" type="button" data-quick-medium="game" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🎮</span>Game</button>
+        <button class="quick-format" type="button" data-quick-medium="comic" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🖼️</span>Comic</button>
+        <button class="quick-format" type="button" data-quick-medium="podcast" aria-pressed="false"><span class="quick-icon" aria-hidden="true">🎙️</span>Podcast</button>
       </div>
-      <p class="status" id="frontStatus" aria-live="polite"></p>
     </section>
 
     <section id="shapeView" class="view shape-view hidden" aria-labelledby="shapeTitle">
@@ -297,6 +324,25 @@
       assist: 'writer'
     };
 
+    const quickFormats = Array.from(document.querySelectorAll('[data-quick-medium]'));
+
+    function selectQuickMedium(value) {
+      selections.medium = value;
+      quickFormats.forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.quickMedium === value));
+      });
+      document.querySelectorAll('.choices[data-group="medium"] .choice').forEach(button => {
+        button.classList.toggle('active', button.dataset.value === value);
+      });
+    }
+
+    quickFormats.forEach(button => {
+      button.addEventListener('click', () => {
+        selectQuickMedium(button.dataset.quickMedium);
+        if (!frontView.classList.contains('hidden')) visionEl.focus({ preventScroll: true });
+      });
+    });
+
     function updateFront() {
       const length = visionEl.value.trim().length;
       startBtn.disabled = length < 10;
@@ -329,6 +375,7 @@
         group.querySelectorAll('.choice').forEach(item => item.classList.remove('active'));
         choice.classList.add('active');
         selections[group.dataset.group] = choice.dataset.value;
+        if (group.dataset.group === 'medium') selectQuickMedium(choice.dataset.value);
       });
     });
 
