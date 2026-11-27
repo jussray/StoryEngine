@@ -3,12 +3,14 @@
   "project": "story-engine",
   "mode": "production",
   "localOrigin": "http://127.0.0.1:3000",
-  "productionOrigin": "https://story-engine-production-1e6b.up.railway.app",
+  "productionOrigin": "https://storyengine.jussco.company",
   "promotionRequirements": [
-    "choose a canonical HTTPS production origin",
+    "keep the canonical HTTPS public production origin bound to storyengine.jussco.company",
+    "keep the stateful runtime origin separate from the edge/front-door origin",
     "deploy the stateful container with persistent storage bound to L99_DB_PATH",
     "deploy a runtime with a public identity endpoint bound to the exact source SHA",
-    "bind the production origin in source-controlled deployment config",
+    "bind production and runtime origins in source-controlled deployment config",
     "pass production Playwright browser proof before claiming the domain live"
-  ]
+  ],
+  "runtimeOrigin": "https://story-engine-production-1e6b.up.railway.app"
 }

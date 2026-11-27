@@ -150,14 +150,18 @@ test('wrangler config deploys the front door only with a first-class API rate-li
   }]);
 });
 
-test('deployed runtime origin matches canonical production domain authority', () => {
+test('public canonical origin and stateful runtime origin remain distinct', () => {
   const raw = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
   const authority = JSON.parse(readFileSync(new URL('../config/domain-authority.json', import.meta.url), 'utf8'));
   assert.equal(authority.mode, 'production');
-  assert.equal(config.vars.STORYENGINE_RUNTIME_ORIGIN, authority.productionOrigin);
-  assert.equal(new URL(authority.productionOrigin).protocol, 'https:');
-  assert.equal(new URL(authority.productionOrigin).origin, authority.productionOrigin);
+  assert.equal(authority.productionOrigin, 'https://storyengine.jussco.company');
+  assert.equal(config.vars.STORYENGINE_RUNTIME_ORIGIN, authority.runtimeOrigin);
+  assert.notEqual(authority.productionOrigin, authority.runtimeOrigin);
+  for (const origin of [authority.productionOrigin, authority.runtimeOrigin]) {
+    assert.equal(new URL(origin).protocol, 'https:');
+    assert.equal(new URL(origin).origin, origin);
+  }
 });
 
 test('manual front-door proof defaults to runtime-equivalence mode', () => {
