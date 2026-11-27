@@ -123,3 +123,16 @@ Never commit `.codex/.env`, `OPENAI_API_KEY`, `MODEL_API_KEY`, service-role keys
 ## Evidence report
 
 List files changed, contracts changed, tests run, Playwright result or inapplicability, artifacts produced, failures or skips, isolation impact, release impact, Cloudflare and Founder Control Room evidence when applicable, rollback, residual risk, and next gate.
+
+
+## Portfolio cinematic composition — staged agent design requirement
+
+For any **authorized** app, game, site, page, screen, creative or delegated design job, produce **one cohesive cinematic composition**: a unified purpose, environment, focal hierarchy, depth, lighting, type, imagery, motion, pacing and primary action. Carry the product's *own* art direction across every actual related route/state, including navigation, auth, dashboard, commerce, loading/error and mobile where they exist. **Never** impose one portfolio palette, invent branding, or promote provisional mockups to founder-approved canon.
+
+Inspect the actual source, approved original visual, tokens, routes and current rendered behavior first. Respect contrast, keyboard/focus, touch, reduced motion, media optimization and sound consent. Do not weaken functionality, accuracy, security, privacy, teen/family protection, auth, payment, ownership, or creator rights for visual effects.
+
+StoryEngine keeps its own creator/storytelling identity, source rights, story provenance, audience and publication boundaries. Cinematic continuity applies to storyboards, scenes, transitions, media and app pages, but is not a claim that audio/video rendering or publication actually ran.
+
+For any visual PASS claim require the **exact candidate branch and head**, product-specific approved reference, observed rendered desktop/mobile screenshots, interaction checks, keyboard/reduced-motion/contrast/performance evidence, and a responsible human design review. Treat absent proof as UNKNOWN/BLOCKED, not green. Keep AUTHORED, TESTED, VISUAL_REVIEWED, AGENT_LOADED, MERGED, DEPLOYED and USER_OUTCOME separate. A staged file is not runtime integration or release approval.
+
+Long-form local-source candidate: `jussray/founder-control-room/skills/cinematic-composition/SKILL.md` at `feat/cinematic-composition-contract-20261126`; portable agent candidate: `jussray/ULTRATHINK-/.claude/skills/cinematic-composition/SKILL.md` at the same branch. Neither cross-repository pointer automatically installs or executes a skill. All stronger founder and local approval, non-deletion, privacy and separate provider gates remain in force.
