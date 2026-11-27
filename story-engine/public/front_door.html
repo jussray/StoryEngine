@@ -160,20 +160,6 @@
   </style>
 </head>
 <body>
-  <div class="ambient" aria-hidden="true">
-    <div class="ambient-card book"></div>
-    <div class="ambient-card film"></div>
-    <div class="ambient-card music"></div>
-    <div class="ambient-card world"></div>
-    <span class="ambient-label book">Book</span>
-    <span class="ambient-label film">Film</span>
-    <span class="ambient-label music">Music</span>
-    <span class="ambient-label series">Series</span>
-    <span class="ambient-label comic">Comic</span>
-    <span class="ambient-label game">Game</span>
-    <span class="ambient-label podcast">Podcast</span>
-  </div>
-
   <section id="guestPortal" class="guest-stage portal-stage" aria-labelledby="portalTitle">
     <div class="guest-art" aria-hidden="true"></div>
     <div class="portal-shade" aria-hidden="true"></div>
@@ -503,12 +489,14 @@
     });
 
     // Guests cannot see the creator workspace; valid sessions may resume it.
+    const directLogin = new URLSearchParams(window.location.search).get('view') === 'login';
     void window.L99Auth.currentSession()
       .then(session => {
         if (session?.authenticated) showCreator();
+        else if (directLogin) showLogin();
         else showPortal();
       })
-      .catch(showPortal);
+      .catch(() => directLogin ? showLogin() : showPortal());
 
     updateFront();
   </script>
