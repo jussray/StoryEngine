@@ -52,3 +52,10 @@ Require explicit founder approval before: merging, deploying, publishing stories
 ## Output Format
 
 Return: completed 5W1H · repo/branch/SHA · files touched · checks run · founder truth artifact · preserved work · rollback path · blocker classification and next owner.
+
+
+## Cinematic composition — visual-task rule (candidate)
+
+For any authorized UI, app, web, game, story scene or visual design job, apply **one cohesive cinematic composition** across every actual in-scope screen and related state. Inspect current approved founder artwork, product tokens, source UI and rendering first; preserve the product's own brand instead of generic parent-company styling. Preserve creator rights, story provenance and StoryEngine visual identity in storyboards, render planning, timelines and app pages. Do not claim generated scenes or publication without actual artifacts.
+
+Include purposeful hierarchy, lighting, depth, type, motion and transitions without sacrificing keyboard/focus, contrast, mobile, reduced-motion, consent, performance, truthfulness or protected functionality. For a QA claim require approved reference plus real exact-head desktop/mobile screenshots, interaction and accessibility/performance evidence. An instructions-only edit, a written storyboard, a screenshot reference or a generated prompt is not proof of a deployed implementation. Do not infer permissions for publishing, provider writes, spending, access, merge, or deletion. Review the staged long-form skill in `jussray/founder-control-room/skills/cinematic-composition/SKILL.md` on `feat/cinematic-composition-contract-20261126`; reading a pointer is not runtime adoption.
